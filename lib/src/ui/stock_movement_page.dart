@@ -4,12 +4,16 @@ import 'package:intl/intl.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
+import '../services/esc_pos_service.dart';
+import 'barcode_label_print_page.dart';
+import 'widgets/thermal_slip_preview_sheet.dart';
 
 enum StockDirection { inward, outward }
 
 /// Stock in / stock out. Writes an append-only movement row — the
 /// product's stock number is only ever a derived cache.
-/// Supports batch assignment and FIFO expiry tracking.
+/// Supports batch assignment, FIFO expiry tracking, supplier linkage,
+/// ESC/POS delivery slip printing, and barcode sticker generation.
 class StockMovementPage extends StatefulWidget {
   const StockMovementPage({
     super.key,
@@ -39,6 +43,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
   final _batchNumberController = TextEditingController();
   DateTime? _expiryDate;
   int? _selectedBatchId;
+  int? _selectedSupplierId;
   List<ProductBatch> _availableBatches = [];
   bool _saving = false;
 
@@ -47,6 +52,14 @@ class _StockMovementPageState extends State<StockMovementPage> {
     super.initState();
     _selectedBatchId = widget.initialBatchId;
     _loadBatches();
+    _loadDefaultSupplier();
+  }
+
+  Future<void> _loadDefaultSupplier() async {
+    final prod = await widget.db.productDao.getById(widget.productId);
+    if (mounted && prod?.supplierId != null && _selectedSupplierId == null) {
+      setState(() => _selectedSupplierId = prod!.supplierId);
+    }
   }
 
   Future<void> _loadBatches() async {
@@ -210,6 +223,37 @@ class _StockMovementPageState extends State<StockMovementPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                StreamBuilder<List<Supplier>>(
+                  stream: widget.db.supplierDao.watchAll(),
+                  builder: (context, snapshot) {
+                    final suppliers = snapshot.data ?? [];
+                    if (suppliers.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<int?>(
+                        initialValue: _selectedSupplierId,
+                        decoration: const InputDecoration(
+                          labelText: 'Delivered by Supplier / Vendor (Optional)',
+                          prefixIcon: Icon(Icons.store_outlined),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('General / Unspecified Vendor'),
+                          ),
+                          for (final s in suppliers)
+                            DropdownMenuItem<int?>(
+                              value: s.id,
+                              child: Text('${s.name} (${s.phone})'),
+                            ),
+                        ],
+                        onChanged: (val) => setState(() => _selectedSupplierId = val),
+                      ),
+                    );
+                  },
+                ),
               ] else if (_direction == StockDirection.outward && _availableBatches.isNotEmpty) ...[
                 Card(
                   elevation: 0,
@@ -332,7 +376,141 @@ class _StockMovementPageState extends State<StockMovementPage> {
       reason: reason,
       note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       batchId: batchIdToRecord,
+      supplierId: _direction == StockDirection.inward ? _selectedSupplierId : null,
     );
+
+    if (!mounted) return;
+
+    if (_direction == StockDirection.inward) {
+      final product = await widget.db.productDao.getById(widget.productId);
+      Supplier? supplier;
+      if (_selectedSupplierId != null) {
+        supplier = await widget.db.supplierDao.getById(_selectedSupplierId!);
+      }
+
+      setState(() => _saving = false);
+      if (!mounted) return;
+
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Wrap(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Stock Inward Recorded (+ $qty ${product?.unit ?? "units"})',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.print_outlined, color: Colors.blueGrey),
+                title: const Text('Print Delivery Slip (ESC/POS)'),
+                subtitle: const Text('Thermal receipt for vendor or shopkeeper record'),
+                onTap: () => Navigator.pop(ctx, 'print_slip'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.qr_code_2, color: Colors.deepPurple),
+                title: const Text('Print Barcode Stickers'),
+                subtitle: Text('Generate $qty sticker labels for packets'),
+                onTap: () => Navigator.pop(ctx, 'print_labels'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.check),
+                title: const Text('Done & Return'),
+                onTap: () => Navigator.pop(ctx, 'done'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (action == 'print_slip' && product != null) {
+        final shopName = await widget.db.settingDao.get('shop_name') ?? 'STOCKSAFE';
+        final b58 = EscPosService.buildDeliverySlipBytes(
+          product: product,
+          quantity: qty,
+          reason: reason,
+          supplier: supplier,
+          batchNumber: batchNum.isEmpty ? null : batchNum,
+          expiryDate: _expiryDate,
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          shopName: shopName,
+          paperWidth: ThermalPaperWidth.mm58,
+        );
+        final b80 = EscPosService.buildDeliverySlipBytes(
+          product: product,
+          quantity: qty,
+          reason: reason,
+          supplier: supplier,
+          batchNumber: batchNum.isEmpty ? null : batchNum,
+          expiryDate: _expiryDate,
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          shopName: shopName,
+          paperWidth: ThermalPaperWidth.mm80,
+        );
+        final t58 = EscPosService.buildDeliverySlipText(
+          product: product,
+          quantity: qty,
+          reason: reason,
+          supplier: supplier,
+          batchNumber: batchNum.isEmpty ? null : batchNum,
+          expiryDate: _expiryDate,
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          shopName: shopName,
+          paperWidth: ThermalPaperWidth.mm58,
+        );
+        final t80 = EscPosService.buildDeliverySlipText(
+          product: product,
+          quantity: qty,
+          reason: reason,
+          supplier: supplier,
+          batchNumber: batchNum.isEmpty ? null : batchNum,
+          expiryDate: _expiryDate,
+          note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+          shopName: shopName,
+          paperWidth: ThermalPaperWidth.mm80,
+        );
+
+        if (mounted) {
+          await ThermalSlipPreviewSheet.show(
+            context,
+            title: 'Stock Inward Delivery Slip',
+            slipBytes58: b58,
+            slipBytes80: b80,
+            slipText58: t58,
+            slipText80: t80,
+            fileNamePrefix: 'delivery_slip',
+          );
+        }
+      } else if (action == 'print_labels' && product != null) {
+        if (mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BarcodeLabelPrintPage(
+                db: widget.db,
+                initialProduct: product,
+                initialCount: qty,
+                batchNumber: batchNum.isEmpty ? null : batchNum,
+                expiryDate: _expiryDate,
+              ),
+            ),
+          );
+        }
+      }
+    }
 
     if (mounted) Navigator.pop(context);
   }

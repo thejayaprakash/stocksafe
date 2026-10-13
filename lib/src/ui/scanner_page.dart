@@ -26,10 +26,14 @@ class ScannerPage extends StatefulWidget {
 class _ScannerPageState extends State<ScannerPage> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
-    // Bundled model — works with no Play Services and no internet.
   );
 
   bool _processing = false;
+  bool _isContinuousMode = false;
+  final Map<String, _BatchScanItem> _batchItems = {};
+  DateTime? _lastScannedTime;
+  String? _lastScannedBarcode;
+  bool _showingBatchDrawer = false;
 
   @override
   void dispose() {
@@ -37,21 +41,48 @@ class _ScannerPageState extends State<ScannerPage> {
     super.dispose();
   }
 
+  int get _totalScannedUnits =>
+      _batchItems.values.fold(0, (sum, item) => sum + item.quantity);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Barcode'),
+        title: Text(_isContinuousMode ? 'Continuous Batch Scan' : 'Scan Barcode'),
         actions: [
+          // Continuous mode toggle button
+          IconButton(
+            icon: Icon(
+              _isContinuousMode ? Icons.repeat_on : Icons.repeat,
+              color: _isContinuousMode ? Colors.amber : null,
+            ),
+            tooltip: _isContinuousMode ? 'Switch to Single Scan' : 'Switch to Continuous Batch Scan',
+            onPressed: () {
+              setState(() {
+                _isContinuousMode = !_isContinuousMode;
+                _showingBatchDrawer = _isContinuousMode && _batchItems.isNotEmpty;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  duration: const Duration(seconds: 1),
+                  content: Text(
+                    _isContinuousMode
+                        ? '⚡ Continuous Mode ON: Scan multiple items rapidly'
+                        : 'Single Scan Mode ON',
+                  ),
+                ),
+              );
+            },
+          ),
           // Manual entry fallback
           IconButton(
             icon: const Icon(Icons.keyboard_outlined),
             onPressed: _showManualBarcodeDialog,
             tooltip: 'Enter barcode manually',
           ),
-          // Torch toggle — storerooms are dark.
+          // Torch toggle
           ValueListenableBuilder<MobileScannerState>(
             valueListenable: _controller,
             builder: (_, state, __) {
@@ -127,68 +158,277 @@ class _ScannerPageState extends State<ScannerPage> {
               height: 160,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                  color: _isContinuousMode
+                      ? Colors.amber.withValues(alpha: 0.85)
+                      : theme.colorScheme.primary.withValues(alpha: 0.8),
                   width: 3,
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
           ),
-          // Bottom instruction and manual entry quick-action
-          Positioned(
-            bottom: 36,
-            left: 16,
-            right: 16,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Text(
-                      _processing ? 'Looking up…' : 'Point camera at a barcode',
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
-                    ),
+
+          // Top continuous mode status pill
+          if (_isContinuousMode)
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.amber, width: 1),
                   ),
-                  const SizedBox(height: 10),
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: Colors.black54,
-                    ),
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Enter code manually'),
-                    onPressed: _showManualBarcodeDialog,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.bolt, color: Colors.amber, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Continuous Mode: ${_batchItems.length} items ($_totalScannedUnits units)',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+
+          // Bottom Single-Scan Prompt
+          if (!_isContinuousMode)
+            Positioned(
+              bottom: 36,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        _processing ? 'Looking up…' : 'Point camera at a barcode',
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.black54,
+                      ),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Enter code manually'),
+                      onPressed: _showManualBarcodeDialog,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Bottom Continuous Batch Drawer / Tray
+          if (_isContinuousMode && _batchItems.isNotEmpty)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, -2)),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: () => setState(() => _showingBatchDrawer = !_showingBatchDrawer),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.inventory, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Batch Tray (${_batchItems.length} items, $_totalScannedUnits units)',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const Spacer(),
+                            Icon(_showingBatchDrawer ? Icons.expand_more : Icons.expand_less),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showingBatchDrawer) ...[
+                      const Divider(height: 1),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 180),
+                        child: ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          children: _batchItems.values.map((item) {
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.product?.name ?? 'Unknown #${item.barcode}',
+                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        'Code: ${item.barcode}',
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, size: 20),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (item.quantity > 1) {
+                                        item.quantity--;
+                                      } else {
+                                        _batchItems.remove(item.barcode);
+                                      }
+                                    });
+                                  },
+                                ),
+                                Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, size: 20),
+                                  onPressed: () => setState(() => item.quantity++),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                              icon: const Icon(Icons.arrow_downward, size: 18),
+                              label: Text('Stock In (+$_totalScannedUnits)'),
+                              onPressed: () => _applyBatchMovements(true),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                              icon: const Icon(Icons.arrow_upward, size: 18),
+                              label: Text('Stock Out (-$_totalScannedUnits)'),
+                              onPressed: () => _applyBatchMovements(false),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_processing) return;
     final barcodes = capture.barcodes;
     if (barcodes.isEmpty) return;
 
     final code = barcodes.first.rawValue;
     if (code == null || code.trim().isEmpty) return;
 
-    await _handleBarcode(code.trim());
+    final trimmed = code.trim();
+
+    if (_isContinuousMode) {
+      await _handleContinuousBarcode(trimmed);
+    } else {
+      await _handleBarcode(trimmed);
+    }
+  }
+
+  Future<void> _handleContinuousBarcode(String code) async {
+    final now = DateTime.now();
+    // Debounce duplicate camera frames for same barcode within 1.2s
+    if (_lastScannedBarcode == code &&
+        _lastScannedTime != null &&
+        now.difference(_lastScannedTime!) < const Duration(milliseconds: 1200)) {
+      return;
+    }
+
+    _lastScannedBarcode = code;
+    _lastScannedTime = now;
+
+    await HapticFeedback.mediumImpact();
+
+    if (_batchItems.containsKey(code)) {
+      setState(() {
+        _batchItems[code]!.quantity++;
+        _showingBatchDrawer = true;
+      });
+    } else {
+      final p = await widget.db.productDao.getByBarcode(code);
+      setState(() {
+        _batchItems[code] = _BatchScanItem(barcode: code, product: p, quantity: 1);
+        _showingBatchDrawer = true;
+      });
+    }
+  }
+
+  Future<void> _applyBatchMovements(bool isStockIn) async {
+    final items = _batchItems.values.where((i) => i.product != null).toList();
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No registered products in batch to update.')),
+      );
+      return;
+    }
+
+    for (final item in items) {
+      final delta = isStockIn ? item.quantity : -item.quantity;
+      final reason = isStockIn ? 'Continuous Stock In' : 'Continuous Stock Out';
+      await widget.db.movementDao.recordMovement(
+        productId: item.product!.id,
+        qtyDelta: delta,
+        reason: reason,
+        note: 'Continuous Barcode Batch',
+      );
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Batch complete: ${items.length} products updated (${isStockIn ? "+" : "-"}$_totalScannedUnits units)',
+        ),
+      ),
+    );
+    Navigator.pop(context);
   }
 
   Future<void> _handleBarcode(String code) async {
     if (_processing) return;
     setState(() => _processing = true);
 
-    // Haptic feedback — shopkeepers scan without looking.
     await HapticFeedback.mediumImpact();
 
     final existing = await widget.db.productDao.getByBarcode(code);
@@ -196,7 +436,6 @@ class _ScannerPageState extends State<ScannerPage> {
     if (!mounted) return;
 
     if (existing != null) {
-      // Known product — jump to detail.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -207,7 +446,6 @@ class _ScannerPageState extends State<ScannerPage> {
         ),
       );
     } else {
-      // Unknown barcode — query catalog enrichment before navigating to add-product.
       final catalogInfo = await CatalogEnrichmentService().lookupBarcode(code);
 
       if (!mounted) return;
@@ -245,7 +483,11 @@ class _ScannerPageState extends State<ScannerPage> {
             final trimmed = val.trim();
             if (trimmed.isNotEmpty) {
               Navigator.pop(ctx);
-              _handleBarcode(trimmed);
+              if (_isContinuousMode) {
+                _handleContinuousBarcode(trimmed);
+              } else {
+                _handleBarcode(trimmed);
+              }
             }
           },
         ),
@@ -259,13 +501,30 @@ class _ScannerPageState extends State<ScannerPage> {
               final trimmed = textController.text.trim();
               if (trimmed.isNotEmpty) {
                 Navigator.pop(ctx);
-                _handleBarcode(trimmed);
+                if (_isContinuousMode) {
+                  _handleContinuousBarcode(trimmed);
+                } else {
+                  _handleBarcode(trimmed);
+                }
               }
             },
-            child: const Text('Search / Add'),
+            child: const Text('Add to Scan'),
           ),
         ],
       ),
     );
   }
 }
+
+class _BatchScanItem {
+  final String barcode;
+  Product? product;
+  int quantity;
+
+  _BatchScanItem({
+    required this.barcode,
+    this.product,
+    this.quantity = 1,
+  });
+}
+

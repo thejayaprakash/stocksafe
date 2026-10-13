@@ -1,5 +1,24 @@
 import 'package:drift/drift.dart';
 
+/// Supplier / Vendor Contacts Directory.
+/// Lightweight directory allowing retailers to record contact details,
+/// call suppliers directly for restocks, and link inward movements.
+class Suppliers extends Table {
+  @override
+  String get tableName => 'supplier';
+
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get name => text().withLength(min: 1, max: 200)();
+  TextColumn get phone => text().withLength(min: 1, max: 50)();
+  TextColumn get gstin => text().nullable()();
+  TextColumn get notes => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+}
+
 /// Product master data. Soft delete only — `deletedAt` marks removal,
 /// the row is never dropped. Cached `stockQty` is a speed convenience;
 /// the movement ledger is the source of truth and it is rebuildable.
@@ -23,6 +42,10 @@ class Products extends Table {
   /// Rebuildable cache of SUM(movement.qty_delta). Never authoritative.
   IntColumn get stockQty => integer().withDefault(const Constant(0))();
 
+  /// Preferred supplier / vendor for this product.
+  IntColumn get supplierId =>
+      integer().nullable().references(Suppliers, #id, onDelete: KeyAction.setNull)();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -44,6 +67,8 @@ class Movements extends Table {
   TextColumn get note => text().nullable()();
   IntColumn get auditSessionId => integer().nullable()();
   IntColumn get batchId => integer().nullable()();
+  IntColumn get supplierId =>
+      integer().nullable().references(Suppliers, #id, onDelete: KeyAction.setNull)();
   DateTimeColumn get createdAt => dateTime()();
 }
 

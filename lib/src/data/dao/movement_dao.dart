@@ -22,6 +22,7 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
     String? note,
     int? batchId,
     int? auditSessionId,
+    int? supplierId,
     DateTime? createdAt,
   }) async {
     if (qtyDelta == 0) {
@@ -36,6 +37,7 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
           note: Value(note),
           batchId: Value(batchId),
           auditSessionId: Value(auditSessionId),
+          supplierId: Value(supplierId),
           createdAt: createdAt ?? DateTime.now(),
         ),
       );

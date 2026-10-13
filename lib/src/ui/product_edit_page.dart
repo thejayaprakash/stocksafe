@@ -60,6 +60,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _lowStock = TextEditingController(
     text: widget.product == null ? '' : '${widget.product!.lowStockLevel}',
   );
+  int? _supplierId;
 
   bool _isOcrProcessing = false;
   bool _isCatalogLoading = false;
@@ -68,6 +69,12 @@ class _ProductEditPageState extends State<ProductEditPage> {
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   bool get _isEdit => widget.product != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _supplierId = widget.product?.supplierId;
+  }
 
   @override
   void dispose() {
@@ -262,6 +269,36 @@ class _ProductEditPageState extends State<ProductEditPage> {
                 helperText: 'Shows restock alert when count is at or below this level',
                 border: OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 14),
+
+            // Preferred Supplier Dropdown
+            StreamBuilder<List<Supplier>>(
+              stream: widget.db.supplierDao.watchAll(),
+              builder: (context, snapshot) {
+                final suppliers = snapshot.data ?? [];
+                return DropdownButtonFormField<int?>(
+                  initialValue: _supplierId,
+                  decoration: const InputDecoration(
+                    labelText: 'Preferred Supplier / Vendor',
+                    hintText: 'Select supplier for reorders',
+                    prefixIcon: Icon(Icons.store_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('None (Unassigned)'),
+                    ),
+                    for (final s in suppliers)
+                      DropdownMenuItem<int?>(
+                        value: s.id,
+                        child: Text('${s.name} (${s.phone})'),
+                      ),
+                  ],
+                  onChanged: (val) => setState(() => _supplierId = val),
+                );
+              },
             ),
             const SizedBox(height: 24),
 
@@ -539,6 +576,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
           buyPrice: Value(buyPrice),
           sellPrice: Value(sellPrice),
           lowStockLevel: Value(lowStock),
+          supplierId: Value(_supplierId),
         ),
       );
     } else {
@@ -552,6 +590,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
           buyPrice: Value(buyPrice),
           sellPrice: Value(sellPrice),
           lowStockLevel: Value(lowStock),
+          supplierId: Value(_supplierId),
           createdAt: now,
           updatedAt: now,
         ),

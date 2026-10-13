@@ -7,6 +7,7 @@ import 'package:stocksafe/src/data/backup_service.dart';
 import 'package:stocksafe/src/data/database.dart';
 import 'package:stocksafe/src/services/app_localization.dart';
 import 'package:stocksafe/src/services/csv_import_service.dart';
+import 'package:stocksafe/src/services/voice_assistant_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -356,6 +357,58 @@ Sugar 1kg,Groceries,,42,48,200,kg
 
       // Reset back to English
       AppLocale.instance.setLanguage(AppLanguage.english);
+    });
+  });
+
+  group('Voice Assistant Command Parser (Bilingual English & Tamil)', () {
+    test('Parses English retail queries accurately', () {
+      final lowStock = VoiceAssistantService.parseCommand('Which items are low stock?');
+      expect(lowStock.intent, VoiceIntentType.navigateLowStock);
+
+      final expiring = VoiceAssistantService.parseCommand('Show me expiring items');
+      expect(expiring.intent, VoiceIntentType.navigateExpiring);
+
+      final valuation = VoiceAssistantService.parseCommand('What is my inventory valuation?');
+      expect(valuation.intent, VoiceIntentType.navigateValuation);
+
+      final stockIn = VoiceAssistantService.parseCommand('Add 15 Parle-G');
+      expect(stockIn.intent, VoiceIntentType.quickStockMovement);
+      expect(stockIn.isStockIn, isTrue);
+      expect(stockIn.quantity, 15);
+      expect(stockIn.productName, contains('parle-g'));
+
+      final search = VoiceAssistantService.parseCommand('Find Tata Tea');
+      expect(search.intent, VoiceIntentType.search);
+      expect(search.searchQuery, 'tata tea');
+    });
+
+    test('Parses Tamil (தமிழ்) retail voice queries accurately', () {
+      final lowStock = VoiceAssistantService.parseCommand('குறைந்த இருப்பு பொருட்கள் என்ன');
+      expect(lowStock.intent, VoiceIntentType.navigateLowStock);
+
+      final expiring = VoiceAssistantService.parseCommand('காலாவதி பொருட்கள் காட்டு');
+      expect(expiring.intent, VoiceIntentType.navigateExpiring);
+
+      final valuation = VoiceAssistantService.parseCommand('மொத்த மதிப்பு என்ன');
+      expect(valuation.intent, VoiceIntentType.navigateValuation);
+
+      final audit = VoiceAssistantService.parseCommand('இருப்பு தணிக்கை தொடங்கு');
+      expect(audit.intent, VoiceIntentType.navigateAudit);
+
+      final stockOut = VoiceAssistantService.parseCommand('விற்பனை 5 ஆவின் பால்');
+      expect(stockOut.intent, VoiceIntentType.quickStockMovement);
+      expect(stockOut.isStockIn, isFalse);
+      expect(stockOut.quantity, 5);
+      expect(stockOut.productName, contains('ஆவின் பால்'));
+    });
+  });
+
+  group('Backup Hygiene and Overdue Detection', () {
+    test('Correctly identifies overdue backups', () async {
+      final backup = BackupService(db);
+      // Initially overdue since never backed up
+      final isOverdueInitial = await backup.isBackupOverdue();
+      expect(isOverdueInitial, isTrue);
     });
   });
 }

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/app_localization.dart';
+import '../services/voice_assistant_service.dart';
 import 'ask_stocksafe_page.dart';
+import 'backup_page.dart';
+import 'barcode_label_print_page.dart';
 import 'low_stock_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
@@ -10,9 +14,12 @@ import 'scanner_page.dart';
 import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
+import 'suppliers_page.dart';
+import 'widgets/voice_assistant_dialog.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
-/// scanner FAB. Supports real-time category filtering and dual-language localization.
+/// scanner FAB. Supports real-time category filtering, dual-language localization,
+/// voice search & commands, and backup hygiene reminders.
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.db});
 
@@ -26,21 +33,82 @@ class _HomePageState extends State<HomePage> {
   int _tabIndex = 0;
   String _query = '';
   String? _selectedCategory;
+  final TextEditingController _searchController = TextEditingController();
+  bool _backupBannerDismissed = false;
+  bool _isBackupOverdue = false;
 
   @override
   void initState() {
     super.initState();
     AppLocale.instance.addListener(_onLocaleChange);
+    _checkBackupHygiene();
+  }
+
+  Future<void> _checkBackupHygiene() async {
+    final overdue = await BackupService(widget.db).isBackupOverdue();
+    if (mounted) setState(() => _isBackupOverdue = overdue);
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
     AppLocale.instance.removeListener(_onLocaleChange);
     super.dispose();
   }
 
   void _onLocaleChange() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _openVoiceAssistant() async {
+    final result = await VoiceAssistantDialog.show(context);
+    if (result == null || !mounted) return;
+
+    switch (result.intent) {
+      case VoiceIntentType.navigateLowStock:
+        setState(() => _tabIndex = 1);
+        break;
+      case VoiceIntentType.navigateExpiring:
+        setState(() => _tabIndex = 1);
+        break;
+      case VoiceIntentType.navigateAudit:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => StockAuditPage(db: widget.db)));
+        break;
+      case VoiceIntentType.navigateBackup:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => BackupPage(db: widget.db)));
+        break;
+      case VoiceIntentType.navigateValuation:
+        setState(() => _tabIndex = 0);
+        break;
+      case VoiceIntentType.quickStockMovement:
+        if (result.productName != null) {
+          final prods = await widget.db.productDao.watchAll(query: result.productName!).first;
+          if (prods.isNotEmpty && mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StockMovementPage(
+                  db: widget.db,
+                  productId: prods.first.id,
+                  initialDirection: result.isStockIn == true ? StockDirection.inward : StockDirection.outward,
+                  initialQty: result.quantity,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+        final q = result.productName ?? result.searchQuery ?? result.rawTranscript;
+        _searchController.text = q;
+        setState(() => _query = q.trim());
+        break;
+      case VoiceIntentType.search:
+      case VoiceIntentType.unknown:
+        final q = result.searchQuery ?? result.rawTranscript;
+        _searchController.text = q;
+        setState(() => _query = q.trim());
+        break;
+    }
   }
 
   @override
@@ -69,6 +137,45 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Operations',
+            onSelected: (val) {
+              if (val == 'suppliers') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => SuppliersPage(db: widget.db)),
+                );
+              } else if (val == 'labels') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage(db: widget.db)),
+                );
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'suppliers',
+                child: Row(
+                  children: [
+                    const Icon(Icons.contact_phone_outlined, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLocale.tr('suppliers')),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'labels',
+                child: Row(
+                  children: [
+                    const Icon(Icons.qr_code_2, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLocale.tr('barcode_label_printing')),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
         bottom: _tabIndex == 0
             ? PreferredSize(
@@ -78,8 +185,16 @@ class _HomePageState extends State<HomePage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
                       child: SearchBar(
+                        controller: _searchController,
                         hintText: AppLocale.tr('search_hint'),
                         leading: const Icon(Icons.search),
+                        trailing: [
+                          IconButton(
+                            icon: const Icon(Icons.mic, color: Colors.blue),
+                            tooltip: 'Voice Search',
+                            onPressed: _openVoiceAssistant,
+                          ),
+                        ],
                         onChanged: (value) => setState(() => _query = value.trim()),
                       ),
                     ),
@@ -126,6 +241,8 @@ class _HomePageState extends State<HomePage> {
           db: widget.db,
           query: _query,
           category: _selectedCategory,
+          showBackupReminder: _isBackupOverdue && !_backupBannerDismissed,
+          onDismissBackupBanner: () => setState(() => _backupBannerDismissed = true),
         );
       case 1:
         return LowStockPage(db: widget.db);
@@ -228,11 +345,15 @@ class _ProductListBody extends StatelessWidget {
     required this.db,
     required this.query,
     this.category,
+    this.showBackupReminder = false,
+    this.onDismissBackupBanner,
   });
 
   final AppDatabase db;
   final String query;
   final String? category;
+  final bool showBackupReminder;
+  final VoidCallback? onDismissBackupBanner;
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +399,11 @@ class _ProductListBody extends StatelessWidget {
 
         return Column(
           children: [
+            if (showBackupReminder && query.isEmpty && category == null)
+              _BackupReminderBanner(
+                db: db,
+                onDismiss: onDismissBackupBanner,
+              ),
             if (query.isEmpty && category == null)
               _InventoryValuationCard(db: db),
             Expanded(
@@ -495,6 +621,51 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
         const SizedBox(height: 2),
         Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
       ],
+    );
+  }
+}
+
+/// Subtle actionable reminder for regular backup hygiene.
+class _BackupReminderBanner extends StatelessWidget {
+  const _BackupReminderBanner({required this.db, this.onDismiss});
+  final AppDatabase db;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade300),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.shield_outlined, color: Colors.orange, size: 22),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Backup Recommended: Protect data against device damage.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.brown),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => BackupPage(db: db)),
+            ),
+            child: const Text('Backup'),
+          ),
+          if (onDismiss != null)
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              onPressed: onDismiss,
+              tooltip: 'Dismiss',
+            ),
+        ],
+      ),
     );
   }
 }

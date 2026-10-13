@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'barcode_label_print_page.dart';
 import 'product_edit_page.dart';
 import 'stock_movement_page.dart';
 
@@ -33,7 +36,21 @@ class ProductDetailPage extends StatelessWidget {
             title: Text(product.name),
             actions: [
               IconButton(
+                icon: const Icon(Icons.qr_code_2),
+                tooltip: 'Print Barcode Labels',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BarcodeLabelPrintPage(
+                      db: db,
+                      initialProduct: product,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
                 icon: const Icon(Icons.edit),
+                tooltip: 'Edit Product',
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -80,9 +97,10 @@ class ProductDetailPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       [
+                        if (product.category != null) 'Category: ${product.category}',
                         if (product.sku != null) 'SKU: ${product.sku}',
                         if (product.barcode != null) 'Barcode: ${product.barcode}',
-                        'Buy: ${product.buyPrice}  ·  Sell: ${product.sellPrice}',
+                        'Buy: ₹${product.buyPrice}  ·  Sell: ₹${product.sellPrice}',
                         'Alert at: ${product.lowStockLevel}',
                       ].join('\n'),
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -90,6 +108,44 @@ class ProductDetailPage extends StatelessWidget {
                   ],
                 ),
               ),
+
+              // SUPPLIER CARD (TAP-TO-CALL)
+              if (product.supplierId != null)
+                StreamBuilder<Supplier?>(
+                  stream: db.supplierDao.watchById(product.supplierId!),
+                  builder: (context, supSnap) {
+                    final s = supSnap.data;
+                    if (s == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Card.outlined(
+                        color: Colors.green.withValues(alpha: 0.05),
+                        child: ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            child: Icon(Icons.store_outlined),
+                          ),
+                          title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text('Vendor: ${s.phone}${s.gstin != null ? " · GST: ${s.gstin}" : ""}'),
+                          trailing: FilledButton.tonalIcon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.green.withValues(alpha: 0.2),
+                              foregroundColor: Colors.green.shade900,
+                            ),
+                            icon: const Icon(Icons.phone, size: 16, color: Colors.green),
+                            label: const Text('Call'),
+                            onPressed: () {
+                              final clean = s.phone.replaceAll(RegExp(r'[^0-9+]'), '');
+                              launchUrl(Uri.parse('tel:$clean'));
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
               const Divider(),
               // BATCHES & EXPIRY SECTION
               Padding(
