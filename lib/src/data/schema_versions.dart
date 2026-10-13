@@ -821,10 +821,183 @@ class Shape9 extends i0.VersionedTable {
       columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
 }
 
+final class Schema5 extends i0.VersionedSchema {
+  Schema5({required super.database}) : super(version: 5);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    supplier,
+    product,
+    movement,
+    setting,
+    stockAuditSession,
+    stockAuditItem,
+    batch,
+    idxProductBarcodeLive,
+    idxProductNameLive,
+    idxMovementProduct,
+    idxMovementCreated,
+    idxMovementBatch,
+    idxAuditItemSession,
+  ];
+  late final Shape6 supplier = Shape6(
+      source: i0.VersionedTable(
+        entityName: 'supplier',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_1,
+          _column_37,
+          _column_38,
+          _column_28,
+          _column_10,
+          _column_11,
+          _column_12,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape7 product = Shape7(
+      source: i0.VersionedTable(
+        entityName: 'product',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_1,
+          _column_2,
+          _column_3,
+          _column_4,
+          _column_5,
+          _column_6,
+          _column_7,
+          _column_8,
+          _column_9,
+          _column_39,
+          _column_10,
+          _column_11,
+          _column_12,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape8 movement = Shape8(
+      source: i0.VersionedTable(
+        entityName: 'movement',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_13,
+          _column_14,
+          _column_15,
+          _column_16,
+          _column_17,
+          _column_18,
+          _column_39,
+          _column_10,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape2 setting = Shape2(
+      source: i0.VersionedTable(
+        entityName: 'setting',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [
+          'PRIMARY KEY("key")',
+        ],
+        columns: [
+          _column_19,
+          _column_20,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape3 stockAuditSession = Shape3(
+      source: i0.VersionedTable(
+        entityName: 'stock_audit_session',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_1,
+          _column_21,
+          _column_22,
+          _column_23,
+          _column_24,
+          _column_25,
+          _column_26,
+          _column_27,
+          _column_28,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape4 stockAuditItem = Shape4(
+      source: i0.VersionedTable(
+        entityName: 'stock_audit_item',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_29,
+          _column_13,
+          _column_30,
+          _column_31,
+          _column_32,
+          _column_33,
+          _column_34,
+          _column_28,
+          _column_11,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  late final Shape9 batch = Shape9(
+      source: i0.VersionedTable(
+        entityName: 'batch',
+        withoutRowId: false,
+        isStrict: false,
+        tableConstraints: [],
+        columns: [
+          _column_0,
+          _column_13,
+          _column_35,
+          _column_36,
+          _column_9,
+          _column_10,
+          _column_11,
+          _column_12,
+        ],
+        attachedDatabase: database,
+      ),
+      alias: null);
+  final i1.Index idxProductBarcodeLive = i1.Index('idx_product_barcode_live',
+      'CREATE UNIQUE INDEX idx_product_barcode_live ON product (barcode) WHERE barcode IS NOT NULL AND deleted_at IS NULL');
+  final i1.Index idxProductNameLive = i1.Index('idx_product_name_live',
+      'CREATE INDEX idx_product_name_live ON product (name) WHERE deleted_at IS NULL');
+  final i1.Index idxMovementProduct = i1.Index('idx_movement_product',
+      'CREATE INDEX idx_movement_product ON movement (product_id)');
+  final i1.Index idxMovementCreated = i1.Index('idx_movement_created',
+      'CREATE INDEX idx_movement_created ON movement (created_at)');
+  final i1.Index idxMovementBatch = i1.Index('idx_movement_batch',
+      'CREATE INDEX idx_movement_batch ON movement (batch_id)');
+  final i1.Index idxAuditItemSession = i1.Index('idx_audit_item_session',
+      'CREATE INDEX idx_audit_item_session ON stock_audit_item (session_id)');
+}
+
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
+  required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -843,6 +1016,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from3To4(migrator, schema);
         return 4;
+      case 4:
+        final schema = Schema5(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from4To5(migrator, schema);
+        return 5;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -853,10 +1031,12 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
   required Future<void> Function(i1.Migrator m, Schema4 schema) from3To4,
+  required Future<void> Function(i1.Migrator m, Schema5 schema) from4To5,
 }) =>
     i0.VersionedSchema.stepByStepHelper(
         step: migrationSteps(
       from1To2: from1To2,
       from2To3: from2To3,
       from3To4: from3To4,
+      from4To5: from4To5,
     ));

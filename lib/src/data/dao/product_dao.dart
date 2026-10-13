@@ -153,43 +153,51 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
           .get();
 
   /// Calculate live total inventory valuation (cost price, retail price, margin, units).
-  Future<InventoryValuationSummary> getInventoryValuation() async {
-    final active = await (select(products)..where((p) => p.deletedAt.isNull())).get();
-    return _computeValuation(active);
-  }
+  Future<InventoryValuationSummary> getInventoryValuation() =>
+      _valuationQuery().getSingle().then(_readValuation);
 
   /// Watch live inventory valuation reactively.
-  Stream<InventoryValuationSummary> watchInventoryValuation() {
-    return (select(products)..where((p) => p.deletedAt.isNull()))
-        .watch()
-        .map(_computeValuation);
-  }
+  ///
+  /// Aggregated in SQL rather than by loading the catalogue into Dart. The
+  /// valuation card sits on the home screen, so the previous version
+  /// materialised every active product on every change to the table — a full
+  /// catalogue load after each stock movement.
+  Stream<InventoryValuationSummary> watchInventoryValuation() =>
+      _valuationQuery().watchSingle().map(_readValuation);
 
-  static InventoryValuationSummary _computeValuation(List<Product> prods) {
-    double totalCost = 0.0;
-    double totalRetail = 0.0;
-    int totalUnits = 0;
+  Selectable<QueryRow> _valuationQuery() => customSelect(
+        '''
+        SELECT
+          COUNT(*)                                            AS total_products,
+          COALESCE(SUM(CASE WHEN stock_qty > 0 THEN stock_qty END), 0)
+                                                              AS total_units,
+          COALESCE(SUM(CASE WHEN stock_qty > 0
+                            THEN stock_qty * buy_price END), 0.0)
+                                                              AS total_cost,
+          COALESCE(SUM(CASE WHEN stock_qty > 0
+                            THEN stock_qty * sell_price END), 0.0)
+                                                              AS total_retail
+        FROM product
+        WHERE deleted_at IS NULL
+        ''',
+        readsFrom: {products},
+      );
 
-    for (final p in prods) {
-      if (p.stockQty > 0) {
-        totalCost += p.stockQty * p.buyPrice;
-        totalRetail += p.stockQty * p.sellPrice;
-        totalUnits += p.stockQty;
-      }
-    }
-
+  static InventoryValuationSummary _readValuation(QueryRow row) {
+    final totalCost = row.read<double>('total_cost');
+    final totalRetail = row.read<double>('total_retail');
     final potentialProfit = totalRetail - totalCost;
-    final marginPercent = totalCost > 0 ? ((potentialProfit / totalCost) * 100) : 0.0;
 
     return InventoryValuationSummary(
-      totalProducts: prods.length,
-      totalUnits: totalUnits,
+      totalProducts: row.read<int>('total_products'),
+      totalUnits: row.read<int>('total_units'),
       totalCostValue: totalCost,
       totalRetailValue: totalRetail,
       potentialProfit: potentialProfit,
-      marginPercent: marginPercent,
+      marginPercent: totalCost > 0 ? (potentialProfit / totalCost) * 100 : 0.0,
     );
   }
+
 
   static String _escapeLike(String input) =>
       input.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');

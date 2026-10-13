@@ -38,10 +38,16 @@ class StockSafeApp extends StatelessWidget {
     return AppScopeHost(
       createDatabase: createDatabase ?? _defaultDatabase,
       onReady: (db) async {
-        // Unchanged startup order: rebuild the cache from the ledger, then
-        // load the persisted theme. (Dropping the launch-time rebuild is
-        // roadmap D.3 — behaviour is deliberately preserved here.)
-        await db.rebuildAllStockCaches();
+        // No cache rebuild here. It was an unconditional full-table UPDATE
+        // with a correlated subquery, awaited before the first frame, so cold
+        // start grew with the catalogue and the ledger — and it was defending
+        // against a drift the write path makes impossible: recordMovement
+        // re-derives the cache inside the same transaction.
+        //
+        // The cache is still rebuilt where it genuinely can be stale: after a
+        // schema upgrade (beforeOpen), after a restore, and on demand from
+        // Settings. A consistency check runs after the first frame and repairs
+        // only if it actually finds a mismatch — see HomePage.
         await ThemeService.instance.init(db);
       },
       splash: const _Splash(),

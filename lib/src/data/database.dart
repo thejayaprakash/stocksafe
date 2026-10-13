@@ -33,7 +33,9 @@ class DatabaseMigrations {
   // 2 — enterprise schema (category, stockAuditSessions, stockAuditItems, batches)
   // 3 — supplier directory schema (suppliers table, product.supplierId, movement.supplierId)
   // 4 — batch.deletedAt (soft delete) + unique index on live product barcodes
-  static const int currentVersion = 4;
+  // 5 — indexes on the hot paths: movement.product_id / created_at / batch_id,
+  //     product.name (live rows), stock_audit_item.session_id
+  static const int currentVersion = 5;
 
   /// Tables renamed in 35073b4, oldest name first. Order matters: renaming
   /// `products` first lets SQLite rewrite the foreign key in `movements`
@@ -95,6 +97,21 @@ class AppDatabase extends _$AppDatabase {
         await _clearDuplicateBarcodes();
 
         await m.create(schema.idxProductBarcodeLive);
+      },
+      from4To5: (m, schema) async {
+        // Indexes only — no column or table changes, so nothing can be lost.
+        // The ledger is append-only and only grows, which is why these were
+        // worth a migration of their own rather than waiting for the next
+        // schema change.
+        for (final index in [
+          schema.idxMovementProduct,
+          schema.idxMovementCreated,
+          schema.idxMovementBatch,
+          schema.idxProductNameLive,
+          schema.idxAuditItemSession,
+        ]) {
+          await m.create(index);
+        }
       },
     ),
     beforeOpen: (details) async {

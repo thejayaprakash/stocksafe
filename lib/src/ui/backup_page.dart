@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -5,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/csv_import_service.dart';
+import '../services/diagnostic_service.dart';
 import '../app_scope.dart';
 
 /// Enterprise Backup & Data Sovereignty Screen.
@@ -109,14 +113,31 @@ class _BackupPageState extends State<BackupPage> {
             ...[
               for (final snap in _snapshots)
                 ListTile(
+                  // Three states, not two: not yet checked, checked and sound,
+                  // checked and damaged. Hashing every snapshot on open read
+                  // hundreds of megabytes on the UI isolate, so it is deferred
+                  // to restore time — but "not checked" must not be dressed up
+                  // as either answer.
                   leading: Icon(
-                    snap.isIntegrityVerified ? Icons.verified : Icons.warning_amber_rounded,
-                    color: snap.isIntegrityVerified ? Colors.green : Colors.red,
+                    switch (snap.isIntegrityVerified) {
+                      true => Icons.verified,
+                      false => Icons.error_outline,
+                      null => Icons.inventory_2_outlined,
+                    },
+                    color: switch (snap.isIntegrityVerified) {
+                      true => Colors.green,
+                      false => Colors.red,
+                      null => Theme.of(context).colorScheme.onSurfaceVariant,
+                    },
                   ),
                   title: Text(snap.fileName),
                   subtitle: Text(
                     '${dateFmt.format(snap.modified)}  ·  ${_formatSize(snap.sizeBytes)}'
-                    '${snap.isIntegrityVerified ? '  ·  SHA-256 OK' : '  ·  Unverified'}',
+                    '${switch (snap.isIntegrityVerified) {
+                      true => '  ·  SHA-256 OK',
+                      false => '  ·  Damaged',
+                      null => '',
+                    }}',
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.restore),
@@ -125,6 +146,72 @@ class _BackupPageState extends State<BackupPage> {
                   ),
                 ),
             ],
+
+          const Divider(height: 32),
+
+          const Divider(height: 32),
+
+          // ── Portable backup file ───────────────────────────────
+          _SectionHeader(
+            title: 'Backup File (survives losing this phone)',
+            icon: Icons.save_alt_outlined,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Snapshots above live on this phone. If it is lost, broken or reset, '
+              'they go with it. Export a backup file and keep it somewhere else — '
+              'your Drive, an SD card, a computer. It is an ordinary zip you own '
+              'and can open without StockSafe.\n\n'
+              'The file is not password protected, so store it somewhere only you '
+              'can reach.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _working ? null : _importArchive,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: const Text('Import backup'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _working ? null : _exportArchive,
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text('Export backup'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<bool>(
+            future: _backup.isAutoSnapshotEnabled(),
+            builder: (context, snap) {
+              final enabled = snap.data ?? true;
+              return SwitchListTile(
+                value: enabled,
+                title: const Text('Automatic daily snapshot'),
+                subtitle: const Text(
+                  'Takes a snapshot when you open the app, if a day has passed.',
+                ),
+                onChanged: _working
+                    ? null
+                    : (value) async {
+                        await _backup.setAutoSnapshotEnabled(value);
+                        if (mounted) setState(() {});
+                      },
+              );
+            },
+          ),
 
           const Divider(height: 32),
 
@@ -173,24 +260,24 @@ class _BackupPageState extends State<BackupPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      // Only claim "verified" when it actually verified.
+                      // Never claim "verified" for something not checked.
                       Icon(
-                        _snapshots.first.isIntegrityVerified
-                            ? Icons.check_circle
-                            : Icons.warning_amber_rounded,
-                        color: _snapshots.first.isIntegrityVerified
-                            ? Colors.green
-                            : Colors.orange,
+                        _snapshots.first.isIntegrityVerified == false
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_circle,
+                        color: _snapshots.first.isIntegrityVerified == false
+                            ? Colors.orange
+                            : Colors.green,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _snapshots.first.isIntegrityVerified
-                              ? 'Latest verified backup: '
-                                  '${_relativeTime(_snapshots.first.modified)}'
-                              : 'Latest backup: '
+                          _snapshots.first.isIntegrityVerified == false
+                              ? 'Latest backup: '
                                   '${_relativeTime(_snapshots.first.modified)} '
-                                  '— not verified, no checksum recorded',
+                                  '— damaged, do not rely on it'
+                              : 'Latest backup: '
+                                  '${_relativeTime(_snapshots.first.modified)}',
                           style: theme.textTheme.bodyMedium,
                         ),
                       ),
@@ -233,7 +320,15 @@ class _BackupPageState extends State<BackupPage> {
   }
 
   Future<void> _confirmRestore(SnapshotInfo snap) async {
-    if (!snap.isIntegrityVerified) {
+    // Verify here rather than when the list is built. Hashing every snapshot
+    // on open read hundreds of megabytes on the UI isolate; this is the one
+    // moment the answer actually changes what happens.
+    setState(() => _working = true);
+    final verified = await _backup.verifySnapshotIntegrity(snap.path);
+    if (!mounted) return;
+    setState(() => _working = false);
+
+    if (!verified) {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -289,10 +384,7 @@ class _BackupPageState extends State<BackupPage> {
       // `force` only when the user has already acknowledged the integrity
       // warning above. The connection is closed, swapped and reopened inside
       // the repository, so there is nothing for the user to restart.
-      await _backup.restoreFromSnapshot(
-        snap.path,
-        force: !snap.isIntegrityVerified,
-      );
+      await _backup.restoreFromSnapshot(snap.path, force: !verified);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Restored. Your data is back.')),
@@ -308,6 +400,165 @@ class _BackupPageState extends State<BackupPage> {
     } finally {
       if (mounted) setState(() => _working = false);
     }
+  }
+
+  /// Builds the zip and hands it to the system share sheet, so the user picks
+  /// where it goes — their Drive, WhatsApp, a file manager. The point is that
+  /// the file leaves this phone; which app receives it is their call.
+  Future<void> _exportArchive() async {
+    // Shown before the file exists, not after it has been shared. The archive
+    // is deliberately not password-protected — a forgotten password would lock
+    // the user out of their own backup — so the honest trade is that they must
+    // choose where it goes. Saying so afterwards would be too late.
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_open_outlined),
+        title: const Text('This backup is not password protected'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Anyone who opens the file can read your stock list, your buying '
+              'and selling prices, your margins, and your suppliers\' contact '
+              'details.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'There is no password because a forgotten one would lock you out '
+              'of your own backup for good.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Send it somewhere only you can reach — your own cloud drive, '
+              'your computer, a USB stick. Not a group chat or a shared folder.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('I understand, export'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+
+    setState(() => _working = true);
+    try {
+      final file = await _backup.exportArchive();
+      final sizeMb = (await file.length()) / (1024 * 1024);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'StockSafe backup',
+        text: 'StockSafe backup — keep this somewhere other than your phone.',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Backup file created (${sizeMb.toStringAsFixed(1)} MB). '
+              'Save it somewhere off this phone.',
+            ),
+          ),
+        );
+        await _loadSnapshots();
+      }
+    } catch (e) {
+      _showError('Could not create the backup file', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _importArchive() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null || !mounted) return;
+
+    setState(() => _working = true);
+    try {
+      // Tell the user what they are about to replace, before replacing it.
+      final inspection = await _backup.inspectArchive(File(path));
+      if (!mounted) return;
+
+      if (!inspection.isValid) {
+        _showError('That file cannot be used', inspection.error);
+        return;
+      }
+
+      final currentProducts = await _db.productDao.countActive();
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Replace your data with this backup?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('This backup holds:\n${inspection.describe()}'),
+              const SizedBox(height: 12),
+              Text(
+                'Your current data ($currentProducts products) will be replaced. '
+                'A copy of it is saved first, so this can be undone.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Replace'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+
+      await _backup.importArchive(File(path));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Backup imported. Your data is restored.')),
+        );
+        await _loadSnapshots();
+      }
+    } catch (e) {
+      _showError('Import failed', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  /// Error messages a shopkeeper can act on, with the detail kept for the log
+  /// rather than interpolated raw into the UI.
+  void _showError(String what, Object? detail) {
+    if (!mounted) return;
+    final message = switch (detail) {
+      FormatException(:final message) => message,
+      StateError(:final message) => message,
+      final String s => s,
+      _ => 'Please try again.',
+    };
+    DiagnosticService.instance.log('$what: $detail', level: 'ERROR');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$what. $message')),
+    );
   }
 
   Future<void> _exportCsv() async {
