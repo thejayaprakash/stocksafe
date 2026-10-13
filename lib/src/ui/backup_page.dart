@@ -310,9 +310,7 @@ class _BackupPageState extends State<BackupPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backup failed: $e')),
-        );
+        _showError('Could not create the snapshot', e);
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -393,9 +391,7 @@ class _BackupPageState extends State<BackupPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Restore failed: $e')),
-        );
+        _showError('Restore failed', e);
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -572,9 +568,7 @@ class _BackupPageState extends State<BackupPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
+        _showError('Could not export the CSV files', e);
       }
     } finally {
       if (mounted) setState(() => _working = false);
@@ -684,9 +678,7 @@ class _BackupPageState extends State<BackupPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
-        );
+        _showError('Import failed', e);
       }
     } finally {
       if (mounted) setState(() => _working = false);

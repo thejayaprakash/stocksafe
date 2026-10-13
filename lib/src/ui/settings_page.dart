@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
@@ -281,13 +282,24 @@ class _SettingsPageState extends State<SettingsPage> {
             );
           },
         ),
-        ListTile(
-          leading: const Icon(Icons.shield_outlined),
-          title: const Text('StockSafe Enterprise v0.3.0'),
-          subtitle: Text(
-            'Offline stock manager for small shops.\n'
-            '${AppLocale.tr("offline_tag")}',
-          ),
+        // Read from the build rather than hardcoded. Three different version
+        // strings were in circulation — pubspec said 0.1.0, this tile said
+        // 0.3.0 — so a support request could not establish what was running.
+        FutureBuilder<PackageInfo>(
+          future: PackageInfo.fromPlatform(),
+          builder: (_, snap) {
+            final info = snap.data;
+            final version =
+                info == null ? '…' : 'v${info.version} (${info.buildNumber})';
+            return ListTile(
+              leading: const Icon(Icons.shield_outlined),
+              title: Text('StockSafe $version'),
+              subtitle: Text(
+                'Offline stock manager for small shops.\n'
+                '${AppLocale.tr("offline_tag")}',
+              ),
+            );
+          },
         ),
       ],
     );

@@ -78,11 +78,9 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
             ]))
           .get();
 
-  /// Append-only guard: refuses deletion. If you ever genuinely need to
-  /// void a row, add a `voided_at` column — do not delete.
-  Future<void> deleteMovementNever(int movementId) async {
-    throw UnsupportedError(
-      'The movement ledger is append-only. Add a void marker instead of deleting.',
-    );
-  }
+  // There is deliberately no delete method here. The ledger is append-only:
+  // stock levels are derived from it, so removing a row rewrites history and
+  // silently changes every quantity after it. To reverse a movement, record a
+  // compensating one. If voiding is ever genuinely needed, add a `voided_at`
+  // column and filter on it — do not delete.
 }

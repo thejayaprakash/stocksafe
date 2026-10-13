@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/database.dart';
-import '../services/catalog_enrichment_service.dart';
+import '../services/diagnostic_service.dart';
 import '../services/label_ocr_service.dart';
 import '../services/license_service.dart';
 import 'widgets/paywall_sheet.dart';
@@ -15,17 +15,14 @@ import '../app_scope.dart';
 ///
 /// [prefillBarcode] is set when arriving from the scanner with an unknown
 /// barcode — saves the user from typing it manually.
-/// [catalogInfo] is populated if online enrichment found details.
 class ProductEditPage extends StatefulWidget {
   const ProductEditPage({
     super.key,
     this.product,
     this.prefillBarcode,
-    this.catalogInfo,
   });
   final Product? product;
   final String? prefillBarcode;
-  final CatalogProductInfo? catalogInfo;
 
   @override
   State<ProductEditPage> createState() => _ProductEditPageState();
@@ -43,19 +40,19 @@ class _ProductEditPageState extends State<ProductEditPage> {
   final _picker = ImagePicker();
 
   late final TextEditingController _name = TextEditingController(
-    text: widget.product?.name ?? widget.catalogInfo?.displayName ?? '',
+    text: widget.product?.name ?? '',
   );
   late final TextEditingController _category = TextEditingController(
     text: widget.product?.category ?? '',
   );
   late final TextEditingController _sku = TextEditingController(
-    text: widget.product?.sku ?? widget.catalogInfo?.brand ?? '',
+    text: widget.product?.sku ?? '',
   );
   late final TextEditingController _barcode = TextEditingController(
-    text: widget.product?.barcode ?? widget.catalogInfo?.barcode ?? widget.prefillBarcode ?? '',
+    text: widget.product?.barcode ?? widget.prefillBarcode ?? '',
   );
   late final TextEditingController _unit = TextEditingController(
-    text: widget.product?.unit ?? widget.catalogInfo?.unit ?? 'pcs',
+    text: widget.product?.unit ?? 'pcs',
   );
   late final TextEditingController _buyPrice = TextEditingController(
     text: widget.product == null ? '' : _fmt(widget.product!.buyPrice),
@@ -69,7 +66,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
   int? _supplierId;
 
   bool _isOcrProcessing = false;
-  bool _isCatalogLoading = false;
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
@@ -98,7 +94,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -116,40 +111,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Online Catalog Enrichment Banner
-            if (widget.catalogInfo != null) ...[
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.12),
-                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.auto_awesome, color: Colors.green),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'AI Auto-filled from Catalog',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                          ),
-                          Text(
-                            'Found online info for barcode ${widget.catalogInfo!.barcode}',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
             // AI Label OCR Trigger
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -219,20 +180,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
                 labelText: 'Barcode',
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.qr_code),
-                suffixIcon: _isCatalogLoading
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.cloud_download_outlined, color: Colors.blue),
-                        tooltip: 'Enrich from Online Catalog',
-                        onPressed: _lookupBarcodeOnline,
-                      ),
               ),
             ),
             const SizedBox(height: 14),
@@ -368,8 +315,14 @@ class _ProductEditPageState extends State<ProductEditPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isOcrProcessing = false);
+      DiagnosticService.instance.log('Label OCR failed: $e', level: 'ERROR');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('OCR Error: $e')),
+        const SnackBar(
+          content: Text(
+            'Could not read the label. Try better light, or type the '
+            'details in.',
+          ),
+        ),
       );
     }
   }
@@ -481,46 +434,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
     );
   }
 
-  Future<void> _lookupBarcodeOnline() async {
-    final code = _barcode.text.trim();
-    if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a barcode to lookup.')),
-      );
-      return;
-    }
-
-    setState(() => _isCatalogLoading = true);
-    final info = await CatalogEnrichmentService().lookupBarcode(code);
-    if (!mounted) return;
-    setState(() => _isCatalogLoading = false);
-
-    if (info == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No online catalog data found for barcode $code.')),
-      );
-      return;
-    }
-
-    setState(() {
-      if (_name.text.isEmpty && info.displayName.isNotEmpty) {
-        _name.text = info.displayName;
-      }
-      if (_sku.text.isEmpty && info.brand != null) {
-        _sku.text = info.brand!;
-      }
-      if ((_unit.text.isEmpty || _unit.text == 'pcs') && info.unit != null) {
-        _unit.text = info.unit!;
-      }
-      if (_category.text.isEmpty && info.category != null) {
-        _category.text = info.category!;
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('✅ Enriched: ${info.displayName}')),
-    );
-  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;

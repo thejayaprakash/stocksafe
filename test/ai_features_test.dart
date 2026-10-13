@@ -1,75 +1,11 @@
-import 'dart:convert';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:stocksafe/src/data/database.dart';
-import 'package:stocksafe/src/services/catalog_enrichment_service.dart';
 import 'package:stocksafe/src/services/label_ocr_service.dart';
 import 'package:stocksafe/src/services/restock_analytics_service.dart';
 
 void main() {
-  group('CatalogEnrichmentService', () {
-    test('displayName combines brand and name cleanly without duplication', () {
-      const info1 = CatalogProductInfo(
-        barcode: '8901030895421',
-        name: 'Classic Masala Noodles',
-        brand: 'Maggi',
-      );
-      expect(info1.displayName, 'Maggi Classic Masala Noodles');
-
-      const info2 = CatalogProductInfo(
-        barcode: '8901030895422',
-        name: 'Maggi 2-Minute Noodles',
-        brand: 'Maggi',
-      );
-      expect(info2.displayName, 'Maggi 2-Minute Noodles');
-    });
-
-    test('lookupBarcode queries Open Food Facts API and maps response fields', () async {
-      final mockClient = MockClient((request) async {
-        if (request.url.path.contains('8901030895421')) {
-          return http.Response(
-            jsonEncode({
-              'status': 1,
-              'product': {
-                'product_name': 'Classic Noodles',
-                'brands': 'Maggi, Nestle',
-                'quantity': '70 g',
-                'categories': 'Groceries, Noodles',
-                'image_front_small_url': 'https://images.example.com/front.jpg',
-              },
-            }),
-            200,
-          );
-        }
-        return http.Response(jsonEncode({'status': 0}), 404);
-      });
-
-      final service = CatalogEnrichmentService(client: mockClient);
-      final info = await service.lookupBarcode('8901030895421');
-
-      expect(info, isNotNull);
-      expect(info!.barcode, '8901030895421');
-      expect(info.name, 'Classic Noodles');
-      expect(info.brand, 'Maggi');
-      expect(info.unit, '70 g');
-      expect(info.category, 'Groceries');
-      expect(info.displayName, 'Maggi Classic Noodles');
-    });
-
-    test('lookupBarcode returns null gracefully on network failure or 404', () async {
-      final mockClient = MockClient((request) async {
-        return http.Response('Not found', 404);
-      });
-
-      final service = CatalogEnrichmentService(client: mockClient);
-      final info = await service.lookupBarcode('9999999999999');
-      expect(info, isNull);
-    });
-  });
-
   group('LabelOcrService parsing', () {
     final ocr = LabelOcrService();
 

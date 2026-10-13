@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../data/database.dart';
-import '../services/catalog_enrichment_service.dart';
 import '../services/license_service.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
@@ -41,6 +40,16 @@ class _ScannerPageState extends State<ScannerPage> {
   DateTime? _lastScannedTime;
   String? _lastScannedBarcode;
   bool _showingBatchDrawer = false;
+
+  /// Feedback on every successful scan.
+  ///
+  /// The dev plan is explicit that this is worth more goodwill than any
+  /// feature: shopkeepers scan without looking at the screen, so the scan has
+  /// to announce itself. Only the vibration existed; the beep did not.
+  Future<void> _confirmScan() async {
+    await SystemSound.play(SystemSoundType.click);
+    await HapticFeedback.mediumImpact();
+  }
 
   @override
   void dispose() {
@@ -385,7 +394,7 @@ class _ScannerPageState extends State<ScannerPage> {
     _lastScannedBarcode = code;
     _lastScannedTime = now;
 
-    await HapticFeedback.mediumImpact();
+    await _confirmScan();
 
     if (_batchItems.containsKey(code)) {
       setState(() {
@@ -436,7 +445,7 @@ class _ScannerPageState extends State<ScannerPage> {
     if (_processing) return;
     setState(() => _processing = true);
 
-    await HapticFeedback.mediumImpact();
+    await _confirmScan();
 
     final existing = await _db.productDao.getByBarcode(code);
 
@@ -461,17 +470,10 @@ class _ScannerPageState extends State<ScannerPage> {
       }
       if (!mounted) return;
 
-      final catalogInfo = await CatalogEnrichmentService().lookupBarcode(code);
-
-      if (!mounted) return;
-
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ProductEditPage(
-            prefillBarcode: code,
-            catalogInfo: catalogInfo,
-          ),
+          builder: (_) => ProductEditPage(prefillBarcode: code),
         ),
       );
     }

@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
+
 import '../data/database.dart';
 
 /// Diagnostic error and system health audit record.
@@ -51,11 +55,56 @@ class DiagnosticService {
   DiagnosticService._();
   static final DiagnosticService instance = DiagnosticService._();
 
-  final List<DiagnosticLogEntry> _logs = [];
+  /// A queue rather than a List: the buffer drops its oldest entry on every
+  /// write once full, and removeAt(0) on a List is O(n).
+  final Queue<DiagnosticLogEntry> _logs = Queue<DiagnosticLogEntry>();
   static const int _maxLogs = 100;
 
   int _sessionCount = 1;
   int _errorCount = 0;
+
+  /// Where errors are persisted. Set once, on launch.
+  File? _logFile;
+  static const int _maxLogFileBytes = 256 * 1024;
+
+  /// Points the service at a file so ERROR entries survive the process.
+  ///
+  /// The buffer was in-memory only, so a crash — the single event worth
+  /// diagnosing — destroyed the evidence, and the export action could only
+  /// ever report a clean session. Only errors and warnings are written: INFO
+  /// is noise, and this runs on the UI isolate.
+  Future<void> attachLogFile(Directory directory) async {
+    try {
+      final file = File('${directory.path}/diagnostics.log');
+      if (!await file.exists()) await file.create(recursive: true);
+      _logFile = file;
+      await _trimLogFile();
+    } catch (_) {
+      // Diagnostics must never be the reason the app fails to start.
+      _logFile = null;
+    }
+  }
+
+  /// Entries carried over from previous runs, newest last.
+  Future<List<String>> previousSessionLog() async {
+    final file = _logFile;
+    if (file == null || !await file.exists()) return const [];
+    try {
+      return (await file.readAsLines()).where((l) => l.trim().isNotEmpty).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _trimLogFile() async {
+    final file = _logFile;
+    if (file == null) return;
+    try {
+      if (await file.length() <= _maxLogFileBytes) return;
+      final lines = await file.readAsLines();
+      await file.writeAsString('${lines.skip(lines.length ~/ 2).join('\n')}\n');
+    } catch (_) {/* best effort */}
+  }
 
   /// Increments total sessions for health telemetry.
   void recordSession() => _sessionCount++;
@@ -63,30 +112,55 @@ class DiagnosticService {
   /// Records a log event.
   void log(String message, {String level = 'INFO', String? stackTrace}) {
     if (_logs.length >= _maxLogs) {
-      _logs.removeAt(0);
+      _logs.removeFirst();
     }
     if (level == 'ERROR') {
       _errorCount++;
     }
-    _logs.add(
-      DiagnosticLogEntry(
-        timestamp: DateTime.now(),
-        level: level,
-        message: message,
-        stackTrace: stackTrace,
-      ),
+    final entry = DiagnosticLogEntry(
+      timestamp: DateTime.now(),
+      level: level,
+      message: message,
+      stackTrace: stackTrace,
     );
+    _logs.add(entry);
+
+    if (level == 'ERROR' || level == 'WARN') {
+      unawaited(_persist(entry));
+    }
   }
 
-  /// Get unmodifiable list of recent logs.
+  Future<void> _persist(DiagnosticLogEntry entry) async {
+    final file = _logFile;
+    if (file == null) return;
+    try {
+      await file.writeAsString(
+        '${jsonEncode(entry.toJson())}\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {/* best effort */}
+  }
+
+  /// Recent logs from this session, oldest first.
   List<DiagnosticLogEntry> get logs => List.unmodifiable(_logs);
 
-  /// Compute crash-free / error-free rate percentage (e.g. 100.0%).
+  /// Error-free session rate.
+  ///
+  /// The clamp that used to floor this at 90% is gone: a health figure that
+  /// cannot report ill health is decoration presented as telemetry. The
+  /// denominator was also always 1, because recordSession() was defined and
+  /// never called — it is now called on launch.
   double get crashFreeRate {
     if (_sessionCount <= 0) return 100.0;
     final rate = ((_sessionCount - _errorCount) / _sessionCount) * 100.0;
-    return rate.clamp(90.0, 100.0);
+    return rate.clamp(0.0, 100.0);
   }
+
+  /// Sessions counted so far, for display alongside the rate — a percentage
+  /// over a handful of sessions should not be read as a trend.
+  int get sessionCount => _sessionCount;
+  int get errorCount => _errorCount;
 
   /// Audits the entire movement ledger against cached product stock.
   /// Guarantees that every product's `stock_qty` strictly matches `SELECT SUM(qty_delta)`.
