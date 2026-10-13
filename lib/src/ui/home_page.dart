@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../services/app_localization.dart';
 import 'ask_stocksafe_page.dart';
 import 'low_stock_page.dart';
 import 'product_detail_page.dart';
@@ -11,8 +12,7 @@ import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
-/// scanner FAB. State is restored from the DB on every launch — no
-/// in-memory truth anywhere.
+/// scanner FAB. Supports real-time category filtering and dual-language localization.
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.db});
 
@@ -25,16 +25,33 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _tabIndex = 0;
   String _query = '';
+  String? _selectedCategory;
+
+  @override
+  void initState() {
+    super.initState();
+    AppLocale.instance.addListener(_onLocaleChange);
+  }
+
+  @override
+  void dispose() {
+    AppLocale.instance.removeListener(_onLocaleChange);
+    super.dispose();
+  }
+
+  void _onLocaleChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('StockSafe'),
+        title: Text(AppLocale.tr('app_name')),
         actions: [
           IconButton(
             icon: const Icon(Icons.auto_awesome, color: Colors.amber),
-            tooltip: 'Ask StockSafe AI',
+            tooltip: AppLocale.tr('ask_ai'),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -44,7 +61,7 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             icon: const Icon(Icons.fact_check_outlined),
-            tooltip: 'Stock Count Audit',
+            tooltip: AppLocale.tr('stock_audit'),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -55,14 +72,23 @@ class _HomePageState extends State<HomePage> {
         ],
         bottom: _tabIndex == 0
             ? PreferredSize(
-                preferredSize: const Size.fromHeight(56),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: SearchBar(
-                    hintText: 'Search name, SKU or barcode',
-                    leading: const Icon(Icons.search),
-                    onChanged: (value) => setState(() => _query = value.trim()),
-                  ),
+                preferredSize: const Size.fromHeight(104),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: SearchBar(
+                        hintText: AppLocale.tr('search_hint'),
+                        leading: const Icon(Icons.search),
+                        onChanged: (value) => setState(() => _query = value.trim()),
+                      ),
+                    ),
+                    _CategoryFilterBar(
+                      db: widget.db,
+                      selectedCategory: _selectedCategory,
+                      onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
+                    ),
+                  ],
                 ),
               )
             : null,
@@ -71,21 +97,21 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (i) => setState(() => _tabIndex = i),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Products',
+            icon: const Icon(Icons.inventory_2_outlined),
+            selectedIcon: const Icon(Icons.inventory_2),
+            label: AppLocale.tr('products'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.warning_amber_outlined),
-            selectedIcon: Icon(Icons.warning_amber),
-            label: 'Low Stock',
+            icon: const Icon(Icons.warning_amber_outlined),
+            selectedIcon: const Icon(Icons.warning_amber),
+            label: AppLocale.tr('low_stock'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
+            label: AppLocale.tr('settings'),
           ),
         ],
       ),
@@ -96,7 +122,11 @@ class _HomePageState extends State<HomePage> {
   Widget _buildBody() {
     switch (_tabIndex) {
       case 0:
-        return _ProductListBody(db: widget.db, query: _query);
+        return _ProductListBody(
+          db: widget.db,
+          query: _query,
+          category: _selectedCategory,
+        );
       case 1:
         return LowStockPage(db: widget.db);
       case 2:
@@ -114,7 +144,7 @@ class _HomePageState extends State<HomePage> {
         // Scanner FAB
         FloatingActionButton.small(
           heroTag: 'scan',
-          tooltip: 'Scan barcode',
+          tooltip: AppLocale.tr('scan_barcode'),
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -127,7 +157,7 @@ class _HomePageState extends State<HomePage> {
         // Add product FAB
         FloatingActionButton(
           heroTag: 'add',
-          tooltip: 'Add product',
+          tooltip: AppLocale.tr('add_product'),
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -141,18 +171,73 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// Product list with reactive stream. Extracted so the list survives
-/// tab switches without losing scroll position needlessly.
+/// Category chip selector under search bar.
+class _CategoryFilterBar extends StatelessWidget {
+  const _CategoryFilterBar({
+    required this.db,
+    required this.selectedCategory,
+    required this.onCategorySelected,
+  });
+
+  final AppDatabase db;
+  final String? selectedCategory;
+  final ValueChanged<String?> onCategorySelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<String>>(
+      stream: db.productDao.watchCategories(),
+      builder: (context, snapshot) {
+        final categories = snapshot.data ?? [];
+        if (categories.isEmpty) return const SizedBox.shrink();
+
+        return SizedBox(
+          height: 38,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text(AppLocale.tr('all_categories')),
+                  selected: selectedCategory == null,
+                  onSelected: (_) => onCategorySelected(null),
+                ),
+              ),
+              for (final cat in categories)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(cat),
+                    selected: selectedCategory == cat,
+                    onSelected: (selected) => onCategorySelected(selected ? cat : null),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Product list with reactive stream supporting search and category filtering.
 class _ProductListBody extends StatelessWidget {
-  const _ProductListBody({required this.db, required this.query});
+  const _ProductListBody({
+    required this.db,
+    required this.query,
+    this.category,
+  });
 
   final AppDatabase db;
   final String query;
+  final String? category;
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Product>>(
-      stream: db.productDao.watchAll(query: query),
+      stream: db.productDao.watchAll(query: query, category: category),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -171,12 +256,12 @@ class _ProductListBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  query.isEmpty
+                  query.isEmpty && category == null
                       ? 'No products yet'
-                      : 'No products match "$query"',
+                      : 'No products match search/filter',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                if (query.isEmpty)
+                if (query.isEmpty && category == null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
@@ -191,20 +276,24 @@ class _ProductListBody extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
+        return ListView.separated(
           itemCount: products.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final p = products[index];
-            final lowStock =
-                p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
+            final lowStock = p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
+            final isZero = p.stockQty <= 0;
+
+            final subtitleParts = [
+              if (p.category != null && p.category!.isNotEmpty) p.category!,
+              if (p.sku != null && p.sku!.isNotEmpty) p.sku!,
+              p.unit,
+              if (p.sellPrice > 0) 'MRP: ₹${p.sellPrice.toStringAsFixed(p.sellPrice == p.sellPrice.roundToDouble() ? 0 : 2)}',
+            ];
+
             return ListTile(
-              title: Text(p.name),
-              subtitle: Text(
-                [
-                  if (p.sku != null && p.sku!.isNotEmpty) p.sku!,
-                  p.unit,
-                ].join(' · '),
-              ),
+              title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(subtitleParts.join(' · ')),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -213,17 +302,29 @@ class _ProductListBody extends StatelessWidget {
                       padding: const EdgeInsets.only(right: 8),
                       child: Icon(
                         Icons.warning_amber,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.error,
+                        size: 20,
+                        color: isZero ? Colors.red : Colors.orange,
                       ),
                     ),
-                  Text(
-                    '${p.stockQty}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: lowStock
-                          ? Theme.of(context).colorScheme.error
-                          : null,
-                      fontWeight: FontWeight.w600,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isZero
+                          ? Colors.red.withValues(alpha: 0.12)
+                          : (lowStock
+                              ? Colors.orange.withValues(alpha: 0.12)
+                              : Colors.green.withValues(alpha: 0.12)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${p.stockQty}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isZero
+                            ? Colors.red
+                            : (lowStock ? Colors.orange[800] : Colors.green[800]),
+                      ),
                     ),
                   ),
                 ],
@@ -231,8 +332,7 @@ class _ProductListBody extends StatelessWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      ProductDetailPage(db: db, productId: p.id),
+                  builder: (_) => ProductDetailPage(db: db, productId: p.id),
                 ),
               ),
               onLongPress: () => _showActions(context, p),
@@ -244,17 +344,16 @@ class _ProductListBody extends StatelessWidget {
   }
 
   void _showActions(BuildContext context, Product p) {
-    showModalBottomSheet<void>(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
           children: [
             ListTile(
-              leading: const Icon(Icons.add_circle_outline),
-              title: const Text('Stock in'),
+              leading: const Icon(Icons.add_circle_outline, color: Colors.green),
+              title: const Text('Stock In'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(ctx);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -268,10 +367,10 @@ class _ProductListBody extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.remove_circle_outline),
-              title: const Text('Stock out'),
+              leading: const Icon(Icons.remove_circle_outline, color: Colors.red),
+              title: const Text('Stock Out'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(ctx);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -285,35 +384,16 @@ class _ProductListBody extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Edit'),
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit Details'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(ctx);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => ProductEditPage(db: db, product: p),
                   ),
                 );
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.delete_outline,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              title: const Text('Delete (recoverable)'),
-              onTap: () async {
-                Navigator.pop(context);
-                await db.productDao.softDelete(p.id);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          'Product moved to trash. Restorable from backup.'),
-                    ),
-                  );
-                }
               },
             ),
           ],

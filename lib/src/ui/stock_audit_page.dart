@@ -1,28 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../data/backup_service.dart';
 import '../data/database.dart';
 
-class AuditRecord {
-  const AuditRecord({
-    required this.product,
-    required this.ledgerStock,
-    required this.physicalCount,
-    required this.difference,
-    required this.auditedAt,
-  });
-
-  final Product product;
-  final int ledgerStock;
-  final int physicalCount;
-  final int difference;
-  final DateTime auditedAt;
-}
-
-/// Intelligent stock-count assistant for continuous shelf auditing.
-/// Shopkeepers scan barcodes one after another, enter physical counts,
-/// and instantly see discrepancies with one-tap reconciliation.
+/// Enterprise Physical Stocktake & Audit Module.
+///
+/// Features:
+/// 1. Persistent Sessions: Resilient against app restart, crash, or phone reboots.
+/// 2. Transparent vs. Blind Audit Modes: Prevent staff confirmation bias during counts.
+/// 3. Variance & Discrepancy Tracking: Real-time calculation of surplus, shortage, and shrinkage value.
+/// 4. Atomic Reconciliation: Generates verified adjustment entries in the movement ledger.
+/// 5. CSV Audit Report Sharing: Full auditable summary exported via Android Share sheet.
 class StockAuditPage extends StatefulWidget {
   const StockAuditPage({super.key, required this.db});
 
@@ -32,14 +24,302 @@ class StockAuditPage extends StatefulWidget {
   State<StockAuditPage> createState() => _StockAuditPageState();
 }
 
-class _StockAuditPageState extends State<StockAuditPage> {
+class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(length: 2, vsync: this);
+  StockAuditSession? _activeSession;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkActiveSession();
+  }
+
+  Future<void> _checkActiveSession() async {
+    final active = await widget.db.auditDao.watchActiveSessions().first;
+
+    if (mounted && active.isNotEmpty) {
+      setState(() => _activeSession = active.first);
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_activeSession != null) {
+      return _ActiveAuditSessionView(
+        db: widget.db,
+        session: _activeSession!,
+        onClose: () {
+          setState(() => _activeSession = null);
+          _checkActiveSession();
+        },
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Stocktake & Audits'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Active Audits', icon: Icon(Icons.pending_actions)),
+            Tab(text: 'Completed History', icon: Icon(Icons.history)),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _ActiveSessionsList(
+            db: widget.db,
+            onSelectSession: (s) => setState(() => _activeSession = s),
+            onCreateNew: _showCreateSessionDialog,
+          ),
+          _CompletedSessionsList(
+            db: widget.db,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add),
+        label: const Text('New Audit Session'),
+        onPressed: _showCreateSessionDialog,
+      ),
+    );
+  }
+
+  void _showCreateSessionDialog() {
+    final nameController = TextEditingController(
+      text: 'Shelf Audit - ${DateFormat('dd MMM yyyy').format(DateTime.now())}',
+    );
+    String mode = 'transparent';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.inventory_outlined, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Start Stocktake Session'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Session Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Icon(
+                  mode == 'transparent' ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: mode == 'transparent' ? Theme.of(context).colorScheme.primary : null,
+                ),
+                title: const Text('Transparent Count'),
+                subtitle: const Text('Shows system expected stock on screen during count.'),
+                onTap: () => setDialogState(() => mode = 'transparent'),
+              ),
+              ListTile(
+                leading: Icon(
+                  mode == 'blind' ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: mode == 'blind' ? Theme.of(context).colorScheme.primary : null,
+                ),
+                title: const Text('Blind Count (Anti-Bias)'),
+                subtitle: const Text('Hides system stock from staff to force exact physical count.'),
+                onTap: () => setDialogState(() => mode = 'blind'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final name = nameController.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(ctx);
+
+                final id = await widget.db.auditDao.createSession(
+                  name: name,
+                  auditMode: mode,
+                );
+                final session = await widget.db.auditDao.getSession(id);
+                if (mounted && session != null) {
+                  setState(() => _activeSession = session);
+                }
+              },
+              child: const Text('Start Audit'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveSessionsList extends StatelessWidget {
+  const _ActiveSessionsList({
+    required this.db,
+    required this.onSelectSession,
+    required this.onCreateNew,
+  });
+
+  final AppDatabase db;
+  final ValueChanged<StockAuditSession> onSelectSession;
+  final VoidCallback onCreateNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<StockAuditSession>>(
+      stream: db.auditDao.watchActiveSessions(),
+      builder: (context, snapshot) {
+        final sessions = snapshot.data ?? [];
+        if (sessions.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_outline, size: 64, color: Colors.grey),
+                const SizedBox(height: 12),
+                const Text('No in-progress stocktake sessions', style: TextStyle(fontSize: 16)),
+                const SizedBox(height: 6),
+                const Text('Tap "New Audit Session" below to begin counting shelf stock.', style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: onCreateNew,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Start New Count'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final dateFmt = DateFormat('dd MMM yyyy, hh:mm a');
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: sessions.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final s = sessions[index];
+            return Card.outlined(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blue.withValues(alpha: 0.15),
+                  child: const Icon(Icons.fact_check_outlined, color: Colors.blue),
+                ),
+                title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Started: ${dateFmt.format(s.startedAt)}\nMode: ${s.auditMode.toUpperCase()} • Items: ${s.totalItemsCounted}'),
+                isThreeLine: true,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => onSelectSession(s),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _CompletedSessionsList extends StatelessWidget {
+  const _CompletedSessionsList({required this.db});
+
+  final AppDatabase db;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<StockAuditSession>>(
+      stream: db.auditDao.watchAllSessions(),
+      builder: (context, snapshot) {
+        final all = snapshot.data ?? [];
+        final completed = all.where((s) => s.status == 'completed').toList();
+
+        if (completed.isEmpty) {
+          return const Center(
+            child: Text('No completed audit history yet.', style: TextStyle(color: Colors.grey)),
+          );
+        }
+
+        final dateFmt = DateFormat('dd MMM yyyy, hh:mm a');
+        return ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: completed.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final s = completed[index];
+            return Card.outlined(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green.withValues(alpha: 0.15),
+                  child: const Icon(Icons.done_all, color: Colors.green),
+                ),
+                title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                  'Completed: ${s.completedAt != null ? dateFmt.format(s.completedAt!) : 'N/A'}\n'
+                  'Counted: ${s.totalItemsCounted} • Discrepancies: ${s.totalDiscrepancies}',
+                ),
+                isThreeLine: true,
+                trailing: IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  tooltip: 'Share Audit CSV Report',
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    try {
+                      final csv = await BackupService(db).exportAuditSessionCsv(s.id);
+                      await Share.share(csv, subject: 'Stocktake Audit Report - ${s.name}');
+                    } catch (e) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Export failed: $e')),
+                      );
+                    }
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// The Active Counting and Reconciliation Workspace.
+class _ActiveAuditSessionView extends StatefulWidget {
+  const _ActiveAuditSessionView({
+    required this.db,
+    required this.session,
+    required this.onClose,
+  });
+
+  final AppDatabase db;
+  final StockAuditSession session;
+  final VoidCallback onClose;
+
+  @override
+  State<_ActiveAuditSessionView> createState() => _ActiveAuditSessionViewState();
+}
+
+class _ActiveAuditSessionViewState extends State<_ActiveAuditSessionView> {
   final MobileScannerController _scannerController = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
   );
-
-  final List<AuditRecord> _auditHistory = [];
-  bool _isProcessing = false;
   bool _cameraActive = true;
+  bool _isProcessing = false;
 
   @override
   void dispose() {
@@ -50,10 +330,24 @@ class _StockAuditPageState extends State<StockAuditPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isBlind = widget.session.auditMode == 'blind';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Stock Count Audit'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.onClose,
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.session.name, style: const TextStyle(fontSize: 16)),
+            Text(
+              'Mode: ${widget.session.auditMode.toUpperCase()} (Saved in SQLite)',
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.green),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: Icon(_cameraActive ? Icons.videocam : Icons.videocam_off),
@@ -69,17 +363,17 @@ class _StockAuditPageState extends State<StockAuditPage> {
           ),
           IconButton(
             icon: const Icon(Icons.keyboard),
-            tooltip: 'Type Barcode Manually',
+            tooltip: 'Enter SKU / Code',
             onPressed: _showManualAuditDialog,
           ),
         ],
       ),
       body: Column(
         children: [
-          // Camera Preview Area
+          // ── Camera Scanner Viewfinder ──────────────────────────
           if (_cameraActive)
             SizedBox(
-              height: 220,
+              height: 200,
               child: Stack(
                 children: [
                   MobileScanner(
@@ -98,9 +392,9 @@ class _StockAuditPageState extends State<StockAuditPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.camera_alt_outlined, color: Colors.grey, size: 40),
-                          const SizedBox(height: 8),
-                          Text('Camera unavailable', style: theme.textTheme.bodyMedium),
+                          const Icon(Icons.camera_alt_outlined, color: Colors.grey, size: 36),
+                          const SizedBox(height: 6),
+                          Text('Camera unavailable', style: theme.textTheme.bodySmall),
                           TextButton(
                             onPressed: _showManualAuditDialog,
                             child: const Text('Enter Code Manually'),
@@ -112,28 +406,10 @@ class _StockAuditPageState extends State<StockAuditPage> {
                   Center(
                     child: Container(
                       width: 240,
-                      height: 120,
+                      height: 100,
                       decoration: BoxDecoration(
-                        border: Border.all(color: theme.colorScheme.primary, width: 2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 8,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Text(
-                          'Scan items sequentially on shelf',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                        ),
+                        border: Border.all(color: Colors.green, width: 2),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
@@ -141,100 +417,161 @@ class _StockAuditPageState extends State<StockAuditPage> {
               ),
             ),
 
-          // Audit Stats Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStat('Audited', '${_auditHistory.length}', theme),
-                _buildStat(
-                  'Matched',
-                  '${_auditHistory.where((a) => a.difference == 0).length}',
-                  theme,
-                  color: Colors.green,
-                ),
-                _buildStat(
-                  'Discrepancies',
-                  '${_auditHistory.where((a) => a.difference != 0).length}',
-                  theme,
-                  color: Colors.orange,
-                ),
-              ],
-            ),
-          ),
-
-          // Audit Log List
+          // ── Real-Time Session Items & Discrepancies ─────────────
           Expanded(
-            child: _auditHistory.isEmpty
-                ? Center(
+            child: StreamBuilder<List<StockAuditItem>>(
+              stream: widget.db.auditDao.watchSessionItems(widget.session.id),
+              builder: (context, snapshot) {
+                final items = snapshot.data ?? [];
+
+                if (items.isEmpty) {
+                  return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.fact_check_outlined, size: 56, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                          Icon(Icons.qr_code_scanner, size: 54, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
                           const SizedBox(height: 12),
-                          Text('No items audited yet', style: theme.textTheme.titleMedium),
+                          const Text('No items scanned in this session yet', style: TextStyle(fontSize: 16)),
                           const SizedBox(height: 6),
-                          Text(
-                            'Scan shelf barcodes to audit inventory against system counts.',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                          ),
+                          const Text('Scan shelf barcodes to verify counts.', style: TextStyle(color: Colors.grey)),
                           const SizedBox(height: 16),
                           FilledButton.icon(
                             icon: const Icon(Icons.search),
-                            label: const Text('Audit by Search / Code'),
+                            label: const Text('Lookup by Name / Barcode'),
                             onPressed: _showManualAuditDialog,
                           ),
                         ],
                       ),
                     ),
-                  )
-                : ListView.separated(
-                    itemCount: _auditHistory.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final item = _auditHistory[index];
-                      final isMatched = item.difference == 0;
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isMatched ? Colors.green.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.15),
-                          child: Icon(
-                            isMatched ? Icons.check : Icons.warning_amber,
-                            color: isMatched ? Colors.green : Colors.orange,
-                          ),
-                        ),
-                        title: Text(item.product.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                          'Ledger: ${item.ledgerStock} • Counted: ${item.physicalCount}',
-                        ),
-                        trailing: Text(
-                          isMatched ? 'MATCHED' : (item.difference > 0 ? '+${item.difference}' : '${item.difference}'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: isMatched ? Colors.green : (item.difference > 0 ? Colors.blue : Colors.red),
-                          ),
-                        ),
-                      );
-                    },
+                  );
+                }
+
+                int matched = 0;
+                int discrepancies = 0;
+                for (final it in items) {
+                  if (it.difference == 0) {
+                    matched++;
+                  } else {
+                    discrepancies++;
+                  }
+                }
+
+                return Column(
+                  children: [
+                    // Stats Bar
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _statTile('Counted', '${items.length}', Colors.blue),
+                          _statTile('Matched', '$matched', Colors.green),
+                          _statTile('Discrepancies', '$discrepancies', discrepancies > 0 ? Colors.red : Colors.grey),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          final isExact = item.difference == 0;
+
+                          return FutureBuilder<Product?>(
+                            future: widget.db.productDao.getById(item.productId),
+                            builder: (context, prodSnap) {
+                              final prod = prodSnap.data;
+                              final name = prod?.name ?? 'Item #${item.productId}';
+                              final unit = prod?.unit ?? 'pcs';
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: isExact ? Colors.green.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.15),
+                                  child: Icon(
+                                    isExact ? Icons.check : Icons.warning_amber_rounded,
+                                    color: isExact ? Colors.green : Colors.orange,
+                                  ),
+                                ),
+                                title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(
+                                  isBlind
+                                      ? 'Physical Count: ${item.countedQty} $unit'
+                                      : 'System: ${item.expectedQty} • Counted: ${item.countedQty} $unit',
+                                ),
+                                trailing: isBlind
+                                    ? Chip(label: Text('${item.countedQty} $unit'))
+                                    : Text(
+                                        isExact ? 'MATCHED' : (item.difference > 0 ? '+${item.difference}' : '${item.difference}'),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: isExact ? Colors.green : (item.difference > 0 ? Colors.blue : Colors.red),
+                                        ),
+                                      ),
+                                onTap: () => prod != null ? _promptCountForItem(prod, existingItem: item) : null,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          // ── Bottom Reconciliation Action Bar ───────────────────
+          SafeArea(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
                   ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.close),
+                      label: const Text('Exit & Save Draft'),
+                      onPressed: widget.onClose,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: Colors.green[800]),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Reconcile & Close'),
+                      onPressed: _confirmReconcileSession,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStat(String label, String value, ThemeData theme, {Color? color}) {
+  Widget _statTile(String label, String value, Color color) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 2),
-        Text(label, style: theme.textTheme.bodySmall),
+        Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }
@@ -244,7 +581,14 @@ class _StockAuditPageState extends State<StockAuditPage> {
     setState(() => _isProcessing = true);
     await HapticFeedback.selectionClick();
 
-    final product = await widget.db.productDao.getByBarcode(code);
+    Product? product = await widget.db.productDao.getByBarcode(code);
+    if (product == null) {
+      final matches = await widget.db.productDao.watchAll(query: code, limit: 1).first;
+      if (matches.isNotEmpty) {
+        product = matches.first;
+      }
+    }
+
     if (!mounted) {
       _isProcessing = false;
       return;
@@ -252,18 +596,20 @@ class _StockAuditPageState extends State<StockAuditPage> {
 
     if (product == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unknown barcode: $code. Add product first.')),
+        SnackBar(content: Text('No product found for barcode "$code"')),
       );
       _isProcessing = false;
       return;
     }
 
-    await _promptPhysicalCount(product);
+    await _promptCountForItem(product);
     _isProcessing = false;
   }
 
-  Future<void> _promptPhysicalCount(Product product) async {
-    final countController = TextEditingController(text: '${product.stockQty}');
+  Future<void> _promptCountForItem(Product product, {StockAuditItem? existingItem}) async {
+    final initialCount = existingItem?.countedQty ?? product.stockQty;
+    final countController = TextEditingController(text: '$initialCount');
+    final isBlind = widget.session.auditMode == 'blind';
 
     final enteredCount = await showDialog<int>(
       context: context,
@@ -274,17 +620,18 @@ class _StockAuditPageState extends State<StockAuditPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ledger stock: ${product.stockQty} ${product.unit}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
+            if (!isBlind)
+              Text('System Ledger Stock: ${product.stockQty} ${product.unit}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
             TextField(
               controller: countController,
               autofocus: true,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Physical Count on Shelf',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.inventory_outlined),
+              decoration: InputDecoration(
+                labelText: 'Physical Shelf Count (${product.unit})',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.inventory_2_outlined),
               ),
             ),
           ],
@@ -299,7 +646,7 @@ class _StockAuditPageState extends State<StockAuditPage> {
               final val = int.tryParse(countController.text.trim());
               Navigator.pop(ctx, val);
             },
-            child: const Text('Confirm Count'),
+            child: const Text('Save Count'),
           ),
         ],
       ),
@@ -307,41 +654,59 @@ class _StockAuditPageState extends State<StockAuditPage> {
 
     if (enteredCount == null || !mounted) return;
 
-    final diff = enteredCount - product.stockQty;
+    // Persist immediately to SQLite
+    await widget.db.auditDao.recordCount(
+      sessionId: widget.session.id,
+      productId: product.id,
+      countedQty: enteredCount,
+      expectedQty: product.stockQty,
+    );
 
-    if (diff != 0) {
-      // Create reconciliation movement in ledger
-      await widget.db.movementDao.recordMovement(
-        productId: product.id,
-        qtyDelta: diff,
-        reason: 'Physical Audit (Ledger: ${product.stockQty}, Counted: $enteredCount)',
+    await HapticFeedback.mediumImpact();
+  }
+
+  Future<void> _confirmReconcileSession() async {
+    final items = await widget.db.auditDao.getSessionItems(widget.session.id);
+    if (!mounted) return;
+    if (items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot reconcile an empty session. Please count at least one item.')),
       );
+      return;
     }
 
-    setState(() {
-      _auditHistory.insert(
-        0,
-        AuditRecord(
-          product: product,
-          ledgerStock: product.stockQty,
-          physicalCount: enteredCount,
-          difference: diff,
-          auditedAt: DateTime.now(),
+    final discrepancies = items.where((i) => i.difference != 0).length;
+
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reconcile & Close Session?'),
+        content: Text(
+          'Total items audited: ${items.length}\n'
+          'Items with discrepancies: $discrepancies\n\n'
+          'Reconciling will write atomic adjustment movements into the immutable ledger and update current stock levels. This action is auditable and permanent.',
         ),
-      );
-    });
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.green[800]),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm Reconciliation'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await widget.db.auditDao.reconcileSession(widget.session.id);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            diff == 0
-                ? '✅ ${product.name} count matched ($enteredCount)'
-                : '⚖️ Reconciled: ${product.name} adjusted by $diff',
-          ),
-          duration: const Duration(seconds: 2),
-        ),
+        const SnackBar(content: Text('✅ Audit reconciled successfully into immutable movement ledger!')),
       );
+      widget.onClose();
     }
   }
 
@@ -351,12 +716,12 @@ class _StockAuditPageState extends State<StockAuditPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Audit Product by Code / SKU'),
+        title: const Text('Audit by Name, Code or SKU'),
         content: TextField(
           controller: textController,
           autofocus: true,
           decoration: const InputDecoration(
-            hintText: 'Enter barcode or SKU',
+            hintText: 'Enter name or barcode',
             prefixIcon: Icon(Icons.search),
             border: OutlineInputBorder(),
           ),
@@ -368,17 +733,12 @@ class _StockAuditPageState extends State<StockAuditPage> {
           },
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               final val = textController.text.trim();
-              if (val.isNotEmpty) {
-                _handleScannedBarcode(val);
-              }
+              if (val.isNotEmpty) _handleScannedBarcode(val);
             },
             child: const Text('Lookup'),
           ),

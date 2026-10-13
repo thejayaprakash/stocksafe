@@ -39,6 +39,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _name = TextEditingController(
     text: widget.product?.name ?? widget.catalogInfo?.displayName ?? '',
   );
+  late final TextEditingController _category = TextEditingController(
+    text: widget.product?.category ?? '',
+  );
   late final TextEditingController _sku = TextEditingController(
     text: widget.product?.sku ?? widget.catalogInfo?.brand ?? '',
   );
@@ -59,6 +62,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   );
 
   bool _isOcrProcessing = false;
+  bool _isCatalogLoading = false;
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
@@ -68,6 +72,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   @override
   void dispose() {
     _name.dispose();
+    _category.dispose();
     _sku.dispose();
     _barcode.dispose();
     _unit.dispose();
@@ -157,6 +162,17 @@ class _ProductEditPageState extends State<ProductEditPage> {
             ),
             const SizedBox(height: 14),
 
+            TextFormField(
+              controller: _category,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Category (e.g. Dairy, Spices, Beverages)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category_outlined),
+              ),
+            ),
+            const SizedBox(height: 14),
+
             Row(
               children: [
                 Expanded(
@@ -186,10 +202,24 @@ class _ProductEditPageState extends State<ProductEditPage> {
             TextFormField(
               controller: _barcode,
               keyboardType: TextInputType.text,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Barcode',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.qr_code),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.qr_code),
+                suffixIcon: _isCatalogLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.cloud_download_outlined, color: Colors.blue),
+                        tooltip: 'Enrich from Online Catalog',
+                        onPressed: _lookupBarcodeOnline,
+                      ),
               ),
             ),
             const SizedBox(height: 14),
@@ -388,8 +418,12 @@ class _ProductEditPageState extends State<ProductEditPage> {
                     if (data.netQuantity != null) {
                       _unit.text = data.netQuantity!;
                     }
-                    if (data.batchNumber != null && _sku.text.isEmpty) {
-                      _sku.text = data.batchNumber!;
+                    final identifiers = [
+                      if (data.batchNumber != null) data.batchNumber!,
+                      if (data.expiryDate != null) 'EXP:${data.expiryDate!}',
+                    ];
+                    if (identifiers.isNotEmpty && _sku.text.isEmpty) {
+                      _sku.text = identifiers.join(' · ');
                     }
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -404,11 +438,53 @@ class _ProductEditPageState extends State<ProductEditPage> {
     );
   }
 
+  Future<void> _lookupBarcodeOnline() async {
+    final code = _barcode.text.trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a barcode to lookup.')),
+      );
+      return;
+    }
+
+    setState(() => _isCatalogLoading = true);
+    final info = await CatalogEnrichmentService().lookupBarcode(code);
+    if (!mounted) return;
+    setState(() => _isCatalogLoading = false);
+
+    if (info == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No online catalog data found for barcode $code.')),
+      );
+      return;
+    }
+
+    setState(() {
+      if (_name.text.isEmpty && info.displayName.isNotEmpty) {
+        _name.text = info.displayName;
+      }
+      if (_sku.text.isEmpty && info.brand != null) {
+        _sku.text = info.brand!;
+      }
+      if ((_unit.text.isEmpty || _unit.text == 'pcs') && info.unit != null) {
+        _unit.text = info.unit!;
+      }
+      if (_category.text.isEmpty && info.category != null) {
+        _category.text = info.category!;
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('✅ Enriched: ${info.displayName}')),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     final now = DateTime.now();
     final name = _name.text.trim();
+    final category = _category.text.trim();
     final sku = _sku.text.trim();
     final barcode = _barcode.text.trim();
     final unit = _unit.text.trim().isEmpty ? 'pcs' : _unit.text.trim();
@@ -416,11 +492,47 @@ class _ProductEditPageState extends State<ProductEditPage> {
     final sellPrice = double.tryParse(_sellPrice.text.trim()) ?? 0;
     final lowStock = int.tryParse(_lowStock.text.trim()) ?? 0;
 
+    // Duplicate barcode detection
+    if (barcode.isNotEmpty) {
+      final existing = await widget.db.productDao.getByBarcode(barcode);
+      if (existing != null && (_isEdit ? existing.id != widget.product!.id : true)) {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Duplicate Barcode'),
+              ],
+            ),
+            content: Text(
+              'Barcode "$barcode" is already assigned to "${existing.name}".\n\n'
+              'Using duplicate barcodes can lead to ambiguity during scanner operations. Do you want to save anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel & Change'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Proceed Anyway'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+    }
+
     if (_isEdit) {
       await widget.db.productDao.updateProduct(
         widget.product!.id,
         ProductsCompanion(
           name: Value(name),
+          category: Value(category.isEmpty ? null : category),
           sku: Value(sku.isEmpty ? null : sku),
           barcode: Value(barcode.isEmpty ? null : barcode),
           unit: Value(unit),
@@ -433,6 +545,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       await widget.db.productDao.insertProduct(
         ProductsCompanion.insert(
           name: name,
+          category: Value(category.isEmpty ? null : category),
           sku: Value(sku.isEmpty ? null : sku),
           barcode: Value(barcode.isEmpty ? null : barcode),
           unit: Value(unit),
