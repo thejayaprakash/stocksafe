@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/app_localization.dart';
 import '../services/license_service.dart';
@@ -52,8 +51,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _checkBackupHygiene() async {
-    final overdue = await BackupService(_db).isBackupOverdue();
-    if (mounted) setState(() => _isBackupOverdue = overdue);
+    // Deferred to after the first frame: taking a snapshot copies the whole
+    // database file, and nothing about it should delay the app opening.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final backup = AppScope.read(context).backup;
+
+      // "On open, if a day has passed" rather than a background scheduler —
+      // a shopkeeper opens this app most days, and it needs no WorkManager
+      // dependency or background-execution permission.
+      await backup.snapshotIfDue();
+
+      if (!mounted) return;
+      final overdue = await backup.isBackupOverdue();
+      if (mounted) setState(() => _isBackupOverdue = overdue);
+    });
   }
 
   @override

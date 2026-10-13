@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -5,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/csv_import_service.dart';
+import '../services/diagnostic_service.dart';
 import '../app_scope.dart';
 
 /// Enterprise Backup & Data Sovereignty Screen.
@@ -125,6 +129,70 @@ class _BackupPageState extends State<BackupPage> {
                   ),
                 ),
             ],
+
+          const Divider(height: 32),
+
+          const Divider(height: 32),
+
+          // ── Portable backup file ───────────────────────────────
+          _SectionHeader(
+            title: 'Backup File (survives losing this phone)',
+            icon: Icons.save_alt_outlined,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Snapshots above live on this phone. If it is lost, broken or reset, '
+              'they go with it. Export a backup file and keep it somewhere else — '
+              'your Drive, WhatsApp, an SD card, a computer. It is an ordinary zip '
+              'you own and can open without StockSafe.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _working ? null : _importArchive,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: const Text('Import backup'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _working ? null : _exportArchive,
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text('Export backup'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<bool>(
+            future: _backup.isAutoSnapshotEnabled(),
+            builder: (context, snap) {
+              final enabled = snap.data ?? true;
+              return SwitchListTile(
+                value: enabled,
+                title: const Text('Automatic daily snapshot'),
+                subtitle: const Text(
+                  'Takes a snapshot when you open the app, if a day has passed.',
+                ),
+                onChanged: _working
+                    ? null
+                    : (value) async {
+                        await _backup.setAutoSnapshotEnabled(value);
+                        if (mounted) setState(() {});
+                      },
+              );
+            },
+          ),
 
           const Divider(height: 32),
 
@@ -308,6 +376,120 @@ class _BackupPageState extends State<BackupPage> {
     } finally {
       if (mounted) setState(() => _working = false);
     }
+  }
+
+  /// Builds the zip and hands it to the system share sheet, so the user picks
+  /// where it goes — their Drive, WhatsApp, a file manager. The point is that
+  /// the file leaves this phone; which app receives it is their call.
+  Future<void> _exportArchive() async {
+    setState(() => _working = true);
+    try {
+      final file = await _backup.exportArchive();
+      final sizeMb = (await file.length()) / (1024 * 1024);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'StockSafe backup',
+        text: 'StockSafe backup — keep this somewhere other than your phone.',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Backup file created (${sizeMb.toStringAsFixed(1)} MB). '
+              'Save it somewhere off this phone.',
+            ),
+          ),
+        );
+        await _loadSnapshots();
+      }
+    } catch (e) {
+      _showError('Could not create the backup file', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _importArchive() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null || !mounted) return;
+
+    setState(() => _working = true);
+    try {
+      // Tell the user what they are about to replace, before replacing it.
+      final inspection = await _backup.inspectArchive(File(path));
+      if (!mounted) return;
+
+      if (!inspection.isValid) {
+        _showError('That file cannot be used', inspection.error);
+        return;
+      }
+
+      final currentProducts = await _db.productDao.countActive();
+      if (!mounted) return;
+
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Replace your data with this backup?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('This backup holds:\n${inspection.describe()}'),
+              const SizedBox(height: 12),
+              Text(
+                'Your current data ($currentProducts products) will be replaced. '
+                'A copy of it is saved first, so this can be undone.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Replace'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+
+      await _backup.importArchive(File(path));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Backup imported. Your data is restored.')),
+        );
+        await _loadSnapshots();
+      }
+    } catch (e) {
+      _showError('Import failed', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  /// Error messages a shopkeeper can act on, with the detail kept for the log
+  /// rather than interpolated raw into the UI.
+  void _showError(String what, Object? detail) {
+    if (!mounted) return;
+    final message = switch (detail) {
+      FormatException(:final message) => message,
+      StateError(:final message) => message,
+      final String s => s,
+      _ => 'Please try again.',
+    };
+    DiagnosticService.instance.log('$what: $detail', level: 'ERROR');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$what. $message')),
+    );
   }
 
   Future<void> _exportCsv() async {

