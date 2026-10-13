@@ -16,8 +16,17 @@ cd "$(dirname "$0")/.."
 
 for f in test/generated_migrations/schema_v*.dart; do
   sed -i 's/late final Batch batch = Batch(this);/late final Batch batchTable = Batch(this);/' "$f"
-  # Update the allSchemaEntities list, both single-line and multi-line forms.
+  # Update references in allSchemaEntities, in every layout drift_dev emits:
+  # inline in a list, or on its own line with or without a trailing comma.
   sed -i 's/stockAuditItem, batch\]/stockAuditItem, batchTable]/' "$f"
-  sed -i 's/^\( *\)batch$/\1batchTable/' "$f"
+  sed -i 's/^\( *\)batch\(,\?\)$/\1batchTable\2/' "$f"
 done
+
+# Fail loudly rather than leaving a file that will not compile.
+if grep -nE '^\s*batch,?$|late final Batch batch = ' test/generated_migrations/schema_v*.dart; then
+  echo "ERROR: an unpatched 'batch' reference remains (see above)." >&2
+  echo "drift_dev changed its output layout; update this script." >&2
+  exit 1
+fi
+
 echo "patched: batch -> batchTable in generated migration schemas"

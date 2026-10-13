@@ -21,9 +21,9 @@ class SupplierDao extends DatabaseAccessor<AppDatabase> with _$SupplierDaoMixin 
         if (query.isNotEmpty) {
           final like = '%${_escapeLike(query)}%';
           predicate = predicate &
-              (s.name.lower().like(like) |
-                  s.phone.lower().like(like) |
-                  s.gstin.lower().like(like));
+              (s.name.lower().like(like, escapeChar: r'\') |
+                  s.phone.lower().like(like, escapeChar: r'\') |
+                  s.gstin.lower().like(like, escapeChar: r'\'));
         }
         return predicate;
       })

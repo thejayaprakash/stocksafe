@@ -28,8 +28,11 @@ class _BackupPageState extends State<BackupPage> {
   /// build instead.
   AppDatabase get _db => AppScope.read(context).db;
 
-  late final BackupService _backup = BackupService(_db);
-  late final CsvImportService _csvImporter = CsvImportService(_db);
+  /// Resolved per use rather than captured: a restore replaces the database
+  /// instance, and a repository holding the old one would write to a closed
+  /// connection.
+  BackupRepository get _backup => AppScope.read(context).backup;
+  CsvImportService get _csvImporter => CsvImportService(_db);
 
   List<SnapshotInfo> _snapshots = [];
   bool _loading = true;
@@ -170,11 +173,24 @@ class _BackupPageState extends State<BackupPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle, color: Colors.green),
+                      // Only claim "verified" when it actually verified.
+                      Icon(
+                        _snapshots.first.isIntegrityVerified
+                            ? Icons.check_circle
+                            : Icons.warning_amber_rounded,
+                        color: _snapshots.first.isIntegrityVerified
+                            ? Colors.green
+                            : Colors.orange,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Latest verified backup: ${_relativeTime(_snapshots.first.modified)}',
+                          _snapshots.first.isIntegrityVerified
+                              ? 'Latest verified backup: '
+                                  '${_relativeTime(_snapshots.first.modified)}'
+                              : 'Latest backup: '
+                                  '${_relativeTime(_snapshots.first.modified)} '
+                                  '— not verified, no checksum recorded',
                           style: theme.textTheme.bodyMedium,
                         ),
                       ),
@@ -270,11 +286,18 @@ class _BackupPageState extends State<BackupPage> {
 
     setState(() => _working = true);
     try {
-      await _backup.restoreFromSnapshot(snap.path);
+      // `force` only when the user has already acknowledged the integrity
+      // warning above. The connection is closed, swapped and reopened inside
+      // the repository, so there is nothing for the user to restart.
+      await _backup.restoreFromSnapshot(
+        snap.path,
+        force: !snap.isIntegrityVerified,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Restored successfully. Please restart the app.')),
+          const SnackBar(content: Text('✅ Restored. Your data is back.')),
         );
+        await _loadSnapshots();
       }
     } catch (e) {
       if (mounted) {

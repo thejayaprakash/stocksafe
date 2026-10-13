@@ -37,21 +37,47 @@ class BackupRepository {
 
   Future<List<File>> exportCsvFiles() => _service.exportCsvFiles();
 
+  /// The manifest recorded with a snapshot, if it has one.
+  Future<SnapshotManifest?> readManifest(String path) =>
+      _service.readManifest(path);
+
   /// Restores a snapshot over the active database.
   ///
-  /// Behaviour is unchanged from the previous implementation — the file is
-  /// still swapped while the connection is open, which is audit finding C-02.
-  /// Routing it through here is the structural half of the fix; roadmap B.1
-  /// replaces this body with:
+  /// The order matters and is the whole point of this method:
   ///
-  /// ```dart
-  /// await _host.withDatabaseClosed(() async {
-  ///   await _service.swapInSnapshot(path);   // + delete stale -wal / -shm
-  /// });
-  /// ```
+  /// 1. **Validate first**, while nothing has been touched — a corrupt or
+  ///    future-schema snapshot must fail before the live database is closed.
+  /// 2. **Archive the current database**, timestamped, so the restore is
+  ///    reversible even if it is the wrong snapshot.
+  /// 3. **Close the connection**, swap the file, delete the stale `-wal` and
+  ///    `-shm`, then reopen. SQLite binds page-cache state and a write-ahead
+  ///    log to the file it opened; replacing that file underneath an open
+  ///    connection lets stale frames be applied over the restored pages,
+  ///    silently reverting the restore or corrupting the database outright.
+  ///    This was audit finding C-02.
   ///
-  /// That change is deliberately held for Phase B, which carries the
-  /// round-trip and kill-mid-restore tests that make it safe to land.
-  Future<void> restoreFromSnapshot(String snapshotPath) =>
-      _service.restoreFromSnapshot(snapshotPath);
+  /// Reopening runs the normal `beforeOpen` path, so an older snapshot is
+  /// migrated forward and the stock cache is rebuilt from the ledger.
+  ///
+  /// Set [force] to restore a snapshot that failed verification — the user has
+  /// to confirm that explicitly, and the safety archive is still written.
+  Future<void> restoreFromSnapshot(
+    String snapshotPath, {
+    bool force = false,
+  }) async {
+    // Captured while the connection is still open: `_service` resolves
+    // `_host.db`, which deliberately throws once the database is closed.
+    // `swapInSnapshot` is pure file work and needs no connection.
+    final service = _service;
+
+    await service.assertRestorable(snapshotPath, force: force);
+    await service.archiveCurrentDatabase();
+
+    await _host.withDatabaseClosed(() async {
+      await service.swapInSnapshot(snapshotPath);
+    });
+  }
+
+  /// Copies the live database aside without restoring anything.
+  Future<File?> archiveCurrentDatabase() => _service.archiveCurrentDatabase();
 }

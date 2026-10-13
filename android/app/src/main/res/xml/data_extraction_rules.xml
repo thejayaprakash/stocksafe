@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  StockSafe keeps everything on the device and owns its own backup story:
+  verified local snapshots the user controls, in the app's Backup screen.
+
+  Android Auto Backup would copy the whole sandbox - stocksafe.sqlite, every
+  snapshot in stocksafe_backups/, and the `setting` table holding the Pro
+  unlock flag - to the user's Google account, with no disclosure in the app
+  and contradicting the "no data collected, all storage local" Data Safety
+  declaration. It would also let a database edited off-device be restored
+  back in.
+
+  android:allowBackup="false" already disables this. These rules exist so the
+  intent is explicit on API 31+, and so that anyone enabling cloud backup
+  later has to consciously remove the exclusions rather than silently
+  inherit them.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

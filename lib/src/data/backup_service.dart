@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -8,21 +9,72 @@ import 'package:path_provider/path_provider.dart';
 
 import 'database.dart';
 
-/// Enterprise Data Sovereignty & Backup Service.
+/// Describes a snapshot: what produced it and what it should contain.
 ///
-/// Features:
-/// 1. **Local Rolling Snapshots** with pre-snapshot WAL flush (`PRAGMA wal_checkpoint(TRUNCATE)`).
-/// 2. **Cryptographic Integrity Verification** using SHA-256 hashes and SQLite magic byte headers.
-/// 3. **Automatic Pre-Restore Safety Archive** (`safety_pre_restore.db`) to prevent catastrophic data loss.
-/// 4. **Comprehensive CSV Exporters** including product catalog, movement ledgers, and audit reports.
+/// Written alongside every snapshot so a restore can answer three questions
+/// the raw file cannot: is it intact, was it made by a build whose schema this
+/// one understands, and does it hold what it claims to.
+class SnapshotManifest {
+  const SnapshotManifest({
+    required this.schemaVersion,
+    required this.createdAt,
+    required this.sha256,
+    required this.rowCounts,
+  });
+
+  final int schemaVersion;
+  final DateTime createdAt;
+  final String sha256;
+  final Map<String, int> rowCounts;
+
+  Map<String, dynamic> toJson() => {
+        'schemaVersion': schemaVersion,
+        'createdAt': createdAt.toIso8601String(),
+        'sha256': sha256,
+        'rowCounts': rowCounts,
+      };
+
+  static SnapshotManifest? tryParse(String raw) {
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final created = DateTime.tryParse(map['createdAt'] as String? ?? '');
+      final version = map['schemaVersion'];
+      final hash = map['sha256'];
+      if (created == null || version is! int || hash is! String) return null;
+      return SnapshotManifest(
+        schemaVersion: version,
+        createdAt: created,
+        sha256: hash,
+        rowCounts: <String, int>{
+          for (final e in (map['rowCounts'] as Map? ?? {}).entries)
+            e.key.toString(): (e.value as num).toInt(),
+        },
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Local backup, verification and restore.
+///
+/// File work only — this class never decides *when* it is safe to swap the
+/// database. [swapInSnapshot] requires the connection to be closed first, which
+/// is `BackupRepository`'s job via `DatabaseHost.withDatabaseClosed`.
 class BackupService {
   BackupService(this._db);
 
   final AppDatabase _db;
 
   static const int maxSnapshots = 7;
+  static const int maxSafetyArchives = 3;
   static const String _snapshotDir = 'stocksafe_backups';
+  static const String _safetyPrefix = 'safety_pre_restore_';
   static final DateFormat _fileDateFmt = DateFormat('yyyy-MM-dd_HHmmss');
+
+  /// Sidecar files SQLite keeps beside the main database. They belong to the
+  /// database that created them, so they must go when that file is replaced.
+  static const List<String> sidecarSuffixes = ['-wal', '-shm', '-journal'];
 
   // SQLite file header magic bytes: "SQLite format 3\x00"
   static const List<int> _sqliteMagicBytes = [
@@ -67,13 +119,60 @@ class BackupService {
     final hashFile = File('${dest.path}.sha256');
     await hashFile.writeAsString(hash);
 
-    // 3. Persist timestamp in settings for hygiene tracking
+    // 3. Write the manifest: the checksum plus what restore needs to know
+    //    before it is willing to swap this file in.
+    final manifest = SnapshotManifest(
+      schemaVersion: _db.schemaVersion,
+      createdAt: DateTime.now(),
+      sha256: hash,
+      rowCounts: await _currentRowCounts(),
+    );
+    await File(manifestPathFor(dest.path))
+        .writeAsString(const JsonEncoder.withIndent('  ').convert(manifest.toJson()));
+
+    // 4. Persist timestamp in settings for hygiene tracking
     await _db.settingDao.set('last_backup_at', DateTime.now().toIso8601String());
 
-    // 4. Prune old snapshots beyond retention ceiling
+    // 5. Prune old snapshots beyond retention ceiling
     await _pruneOldSnapshots(dir);
 
     return dest.path;
+  }
+
+  /// Path of the manifest belonging to [snapshotPath].
+  static String manifestPathFor(String snapshotPath) => '$snapshotPath.json';
+
+  /// Rolling snapshots only. Pre-restore safety archives share the directory
+  /// and the `.db` extension, but they are an escape route rather than a
+  /// backup — listing them would offer the user a confusing extra entry, and
+  /// pruning them would delete the thing that makes restore reversible.
+  static bool _isSnapshotFile(File f) {
+    final name = p.basename(f.path);
+    return name.endsWith('.db') && !name.startsWith(_safetyPrefix);
+  }
+
+  /// Reads the manifest for a snapshot, or null when there is none or it is
+  /// unreadable. Snapshots created before manifests existed return null.
+  Future<SnapshotManifest?> readManifest(String snapshotPath) async {
+    final file = File(manifestPathFor(snapshotPath));
+    if (!await file.exists()) return null;
+    return SnapshotManifest.tryParse(await file.readAsString());
+  }
+
+  Future<Map<String, int>> _currentRowCounts() async {
+    Future<int> countOf(String table) async {
+      final row = await _db
+          .customSelect('SELECT COUNT(*) AS c FROM "$table"')
+          .getSingle();
+      return row.read<int>('c');
+    }
+
+    return {
+      'product': await countOf('product'),
+      'movement': await countOf('movement'),
+      'supplier': await countOf('supplier'),
+      'batch': await countOf('batch'),
+    };
   }
 
   /// Checks if backup is overdue (e.g. > 7 days or never backed up).
@@ -93,7 +192,7 @@ class BackupService {
     final files = dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.db'))
+        .where(_isSnapshotFile)
         .toList()
       ..sort((a, b) => b.path.compareTo(a.path));
 
@@ -134,47 +233,113 @@ class BackupService {
         await raf.close();
       }
 
-      // Check SHA-256 hash if companion file exists
-      final hashFile = File('$snapshotPath.sha256');
-      if (await hashFile.exists()) {
-        final recordedHash = (await hashFile.readAsString()).trim();
-        final bytes = await file.readAsBytes();
-        final actualHash = sha256.convert(bytes).toString();
-        if (recordedHash != actualHash) return false;
-      }
+      // A recorded checksum is required. Previously its absence was treated as
+      // success, so any SQLite file dropped into the folder was reported
+      // "SHA-256 OK" — the UI asserted an integrity check that never ran.
+      final recordedHash = await _recordedHashFor(snapshotPath);
+      if (recordedHash == null) return false;
 
-      return true;
+      final bytes = await file.readAsBytes();
+      final actualHash = sha256.convert(bytes).toString();
+      return recordedHash == actualHash;
     } catch (_) {
       return false;
     }
   }
 
-  /// Restore from a snapshot file, replacing the active database.
-  /// Validates integrity before restoring and creates a safety backup of the active database.
-  Future<void> restoreFromSnapshot(String snapshotPath) async {
-    final isValid = await verifySnapshotIntegrity(snapshotPath);
-    if (!isValid) {
-      throw const FormatException('Snapshot file failed integrity verification or is corrupted.');
-    }
+  /// The checksum recorded for a snapshot, from the manifest or the older
+  /// `.sha256` sidecar. Null when neither exists.
+  Future<String?> _recordedHashFor(String snapshotPath) async {
+    final manifest = await readManifest(snapshotPath);
+    if (manifest != null) return manifest.sha256;
 
-    final target = await _dbFile();
-    if (target == null) {
-      throw StateError('Cannot locate active database file.');
+    final hashFile = File('$snapshotPath.sha256');
+    if (await hashFile.exists()) {
+      return (await hashFile.readAsString()).trim();
     }
+    return null;
+  }
 
+  /// Checks a snapshot is safe to restore, before anything is touched.
+  ///
+  /// Throws rather than returning a bool so the caller cannot ignore it, and
+  /// so the message reaches the user unchanged.
+  Future<void> assertRestorable(String snapshotPath, {bool force = false}) async {
     final source = File(snapshotPath);
     if (!await source.exists()) {
       throw ArgumentError('Snapshot file does not exist: $snapshotPath');
     }
 
-    // Create automatic pre-restore safety archive if target currently exists
-    if (await target.exists()) {
-      final dir = await _backupDir();
-      final safetyBackup = File(p.join(dir.path, 'safety_pre_restore.db'));
-      await target.copy(safetyBackup.path);
+    if (!force && !await verifySnapshotIntegrity(snapshotPath)) {
+      throw const FormatException(
+        'Snapshot failed integrity verification, or has no recorded checksum.',
+      );
     }
 
-    // Replace active database
+    // A snapshot from a newer build carries a schema this one has no migration
+    // for. Drift would open it and find columns its generated code does not
+    // know about; refusing is the only safe answer.
+    final manifest = await readManifest(snapshotPath);
+    if (manifest != null && manifest.schemaVersion > _db.schemaVersion) {
+      throw StateError(
+        'This backup was made by a newer version of StockSafe '
+        '(database v${manifest.schemaVersion}, this build understands '
+        'v${_db.schemaVersion}). Update the app, then restore.',
+      );
+    }
+  }
+
+  /// Copies the live database aside before it is replaced, timestamped so a
+  /// second restore cannot destroy the escape route left by the first.
+  /// Keeps the most recent [maxSafetyArchives].
+  Future<File?> archiveCurrentDatabase() async {
+    final target = await resolveDatabaseFile();
+    if (target == null || !await target.exists()) return null;
+
+    final dir = await _backupDir();
+    final stamp = _fileDateFmt.format(DateTime.now());
+    final archive = File(p.join(dir.path, '$_safetyPrefix$stamp.db'));
+    await target.copy(archive.path);
+
+    final archives = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => p.basename(f.path).startsWith(_safetyPrefix))
+        .toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+    for (final old in archives.skip(maxSafetyArchives)) {
+      await old.delete();
+    }
+
+    return archive;
+  }
+
+  /// Replaces the active database file with [snapshotPath].
+  ///
+  /// **The connection must already be closed.** SQLite keeps page-cache state
+  /// and a write-ahead log bound to the file it opened; replacing that file
+  /// underneath an open connection lets stale WAL frames be applied over the
+  /// restored pages, which either silently reverts the restore or corrupts the
+  /// database. Callers go through [BackupRepository.restoreFromSnapshot],
+  /// which wraps this in `DatabaseHost.withDatabaseClosed`.
+  Future<void> swapInSnapshot(String snapshotPath) async {
+    final source = File(snapshotPath);
+    if (!await source.exists()) {
+      throw ArgumentError('Snapshot file does not exist: $snapshotPath');
+    }
+
+    final target = await resolveDatabaseFile(orExpected: true);
+    if (target == null) {
+      throw StateError('Cannot locate the active database file.');
+    }
+
+    // Sidecars belong to the database being replaced. Leaving them is what
+    // lets a stale WAL overwrite the snapshot after reopen.
+    for (final suffix in sidecarSuffixes) {
+      final sidecar = File('${target.path}$suffix');
+      if (await sidecar.exists()) await sidecar.delete();
+    }
+
     await source.copy(target.path);
   }
 
@@ -183,15 +348,19 @@ class BackupService {
     final files = dir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.db'))
+        .where(_isSnapshotFile)
         .toList()
       ..sort((a, b) => b.path.compareTo(a.path));
 
     if (files.length > maxSnapshots) {
       for (final old in files.sublist(maxSnapshots)) {
         await old.delete();
-        final shaFile = File('${old.path}.sha256');
-        if (await shaFile.exists()) await shaFile.delete();
+        for (final sidecar in [
+          File('${old.path}.sha256'),
+          File(manifestPathFor(old.path)),
+        ]) {
+          if (await sidecar.exists()) await sidecar.delete();
+        }
       }
     }
   }
@@ -277,17 +446,24 @@ class BackupService {
 
   // ─── Database file location ───────────────────────────────────────
 
-  Future<File?> _dbFile() async {
+  Future<File?> _dbFile() => resolveDatabaseFile();
+
+  /// Locates the active database file.
+  ///
+  /// With [orExpected] set, returns the path drift would use even when no file
+  /// is there yet — restoring into a fresh install has nothing to find, but
+  /// still needs somewhere to put the snapshot.
+  Future<File?> resolveDatabaseFile({bool orExpected = false}) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(appDir.path, 'stocksafe.sqlite');
-    final file = File(dbPath);
-    if (await file.exists()) return file;
+    final primary = File(p.join(appDir.path, 'stocksafe.sqlite'));
+    if (await primary.exists()) return primary;
 
     final supportDir = await getApplicationSupportDirectory();
-    final altPath = p.join(supportDir.path, 'stocksafe.sqlite');
-    final altFile = File(altPath);
-    if (await altFile.exists()) return altFile;
-    return null;
+    final alt = File(p.join(supportDir.path, 'stocksafe.sqlite'));
+    if (await alt.exists()) return alt;
+
+    // `driftDatabase(name: 'stocksafe')` resolves to the documents directory.
+    return orExpected ? primary : null;
   }
 }
 

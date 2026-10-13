@@ -33,7 +33,7 @@ class BatchDao extends DatabaseAccessor<AppDatabase> with _$BatchDaoMixin {
   /// Watch all batches for a specific product, ordered by expiry date (FIFO).
   Stream<List<ProductBatch>> watchBatchesForProduct(int productId) {
     return (select(batches)
-          ..where((b) => b.productId.equals(productId))
+          ..where((b) => b.productId.equals(productId) & b.deletedAt.isNull())
           ..orderBy([(b) => OrderingTerm.asc(b.expiryDate)]))
         .watch();
   }
@@ -41,7 +41,7 @@ class BatchDao extends DatabaseAccessor<AppDatabase> with _$BatchDaoMixin {
   /// Get active batches for a product.
   Future<List<ProductBatch>> getBatchesForProduct(int productId) {
     return (select(batches)
-          ..where((b) => b.productId.equals(productId))
+          ..where((b) => b.productId.equals(productId) & b.deletedAt.isNull())
           ..orderBy([(b) => OrderingTerm.asc(b.expiryDate)]))
         .get();
   }
@@ -50,35 +50,68 @@ class BatchDao extends DatabaseAccessor<AppDatabase> with _$BatchDaoMixin {
   Future<List<ProductBatch>> getExpiringBatches({Duration within = const Duration(days: 30)}) {
     final cutoff = DateTime.now().add(within);
     return (select(batches)
-          ..where((b) => b.expiryDate.isNotNull() & b.expiryDate.isSmallerOrEqualValue(cutoff) & b.stockQty.isBiggerThanValue(0))
+          ..where((b) => b.deletedAt.isNull() & b.expiryDate.isNotNull() & b.expiryDate.isSmallerOrEqualValue(cutoff) & b.stockQty.isBiggerThanValue(0))
           ..orderBy([(b) => OrderingTerm.asc(b.expiryDate)]))
         .get();
   }
 
-  /// Adjust stock in a batch by [delta] (positive or negative).
-  Future<void> adjustBatchStock(int batchId, int delta) async {
-    final now = DateTime.now();
-    final batch = await (select(batches)..where((b) => b.id.equals(batchId))).getSingleOrNull();
-    if (batch != null) {
-      final newQty = (batch.stockQty + delta).clamp(0, 999999999);
-      await (update(batches)..where((b) => b.id.equals(batchId))).write(
-        BatchesCompanion(
-          stockQty: Value(newQty),
-          updatedAt: Value(now),
-        ),
-      );
-    }
+  /// Recomputes a batch's cached quantity from the ledger.
+  ///
+  /// Replaces the old `adjustBatchStock`, which added a delta and clamped the
+  /// result at zero. Clamping silently discarded the overflow: deducting 10
+  /// from a batch holding 3 left 0 and erased the fact that 7 units were
+  /// unaccounted for, while the product-level ledger recorded -10 in full. The
+  /// two then disagreed permanently, with nothing able to detect or repair it.
+  ///
+  /// Deriving the value instead means a batch can read negative — which is
+  /// information, not a bug. It says the counted stock and the recorded stock
+  /// disagree, which is exactly what the audit screen exists to surface.
+  Future<void> rebuildBatchStock(int batchId) async {
+    final sum = db.movements.qtyDelta.sum();
+    final q = db.selectOnly(db.movements)
+      ..addColumns([sum])
+      ..where(db.movements.batchId.equals(batchId));
+    final row = await q.getSingle();
+    final total = row.read(sum) ?? 0;
+
+    await (update(batches)..where((b) => b.id.equals(batchId))).write(
+      BatchesCompanion(
+        stockQty: Value(total),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Recomputes every batch's cached quantity from the ledger.
+  ///
+  /// Batches created before this was ledger-derived carry an opening figure
+  /// with no matching movement rows, so [preserveUnledgered] leaves those
+  /// alone rather than zeroing stock the user really has.
+  /// Deliberately does not filter on `deleted_at`: rebuilding a soft-deleted
+  /// batch from its own movements is harmless, and referencing that column
+  /// would couple this repair routine to schema v4+. `beforeOpen` calls it
+  /// during upgrades, when the database may still be at an older version.
+  Future<void> rebuildAllBatchStocks({bool preserveUnledgered = true}) async {
+    final guard = preserveUnledgered
+        ? 'WHERE EXISTS (SELECT 1 FROM movement WHERE movement.batch_id = batch.id)'
+        : '';
+    await db.customStatement('''
+      UPDATE batch SET stock_qty = COALESCE(
+        (SELECT SUM(qty_delta) FROM movement WHERE movement.batch_id = batch.id),
+        0
+      ) $guard
+    ''');
   }
 
   /// Get batch by its primary ID.
   Future<ProductBatch?> getBatchById(int id) {
-    return (select(batches)..where((b) => b.id.equals(id))).getSingleOrNull();
+    return (select(batches)..where((b) => b.id.equals(id) & b.deletedAt.isNull())).getSingleOrNull();
   }
 
   /// Find batch by product and batch number string.
   Future<ProductBatch?> getBatchByNumber(int productId, String batchNumber) {
     return (select(batches)
-          ..where((b) => b.productId.equals(productId) & b.batchNumber.equals(batchNumber))
+          ..where((b) => b.productId.equals(productId) & b.batchNumber.equals(batchNumber) & b.deletedAt.isNull())
           ..limit(1))
         .getSingleOrNull();
   }
@@ -111,8 +144,25 @@ class BatchDao extends DatabaseAccessor<AppDatabase> with _$BatchDaoMixin {
     );
   }
 
-  /// Delete batch record if necessary.
-  Future<int> deleteBatch(int batchId) {
-    return (delete(batches)..where((b) => b.id.equals(batchId))).go();
+  /// Soft-deletes a batch. The ledger keeps `batch_id` references forever, so
+  /// dropping the row would orphan movements that are, by design, never
+  /// deleted. Nothing is removed.
+  Future<void> softDeleteBatch(int batchId) async {
+    await (update(batches)..where((b) => b.id.equals(batchId))).write(
+      BatchesCompanion(
+        deletedAt: Value(DateTime.now()),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Restores a soft-deleted batch.
+  Future<void> restoreBatch(int batchId) async {
+    await (update(batches)..where((b) => b.id.equals(batchId))).write(
+      BatchesCompanion(
+        deletedAt: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 }

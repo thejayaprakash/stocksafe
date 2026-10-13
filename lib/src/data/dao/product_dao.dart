@@ -27,9 +27,9 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
         if (query.isNotEmpty) {
           final like = '%${_escapeLike(query)}%';
           predicate = predicate &
-              (p.name.lower().like(like) |
-                  p.sku.lower().like(like) |
-                  p.barcode.lower().like(like));
+              (p.name.lower().like(like, escapeChar: r'\') |
+                  p.sku.lower().like(like, escapeChar: r'\') |
+                  p.barcode.lower().like(like, escapeChar: r'\'));
         }
         return predicate;
       })
@@ -105,8 +105,12 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   }
 
   Future<void> restore(int id) =>
-      (update(products)..where((p) => p.id.equals(id)))
-          .write(const ProductsCompanion(deletedAt: Value(null)));
+      (update(products)..where((p) => p.id.equals(id))).write(
+        ProductsCompanion(
+          deletedAt: const Value(null),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
 
   Future<int> countActive() async {
     final c = countAll(filter: products.deletedAt.isNull());

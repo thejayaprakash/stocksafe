@@ -333,9 +333,9 @@ Sugar 1kg,Groceries,,42,48,200,kg
       final isCorruptValid = await backup.verifySnapshotIntegrity(badFile.path);
       expect(isCorruptValid, isFalse);
 
-      // Attempting to restore a corrupt file throws FormatException
-      expect(
-        backup.restoreFromSnapshot(badFile.path),
+      // A corrupt file is refused before anything is touched.
+      await expectLater(
+        backup.assertRestorable(badFile.path),
         throwsA(isA<FormatException>()),
       );
 
