@@ -20,6 +20,8 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
     required int qtyDelta,
     required String reason,
     String? note,
+    int? batchId,
+    int? auditSessionId,
     DateTime? createdAt,
   }) async {
     if (qtyDelta == 0) {
@@ -32,6 +34,8 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
           qtyDelta: qtyDelta,
           reason: reason,
           note: Value(note),
+          batchId: Value(batchId),
+          auditSessionId: Value(auditSessionId),
           createdAt: createdAt ?? DateTime.now(),
         ),
       );
@@ -46,6 +50,10 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
       await (update(products)..where((p) => p.id.equals(productId))).write(
         ProductsCompanion(stockQty: Value(total), updatedAt: Value(DateTime.now())),
       );
+
+      if (batchId != null) {
+        await db.batchDao.adjustBatchStock(batchId, qtyDelta);
+      }
     });
   }
 

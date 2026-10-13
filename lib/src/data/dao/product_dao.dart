@@ -11,27 +11,68 @@ part 'product_dao.g.dart';
 class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   ProductDao(super.db);
 
-  /// Paged, indexed product list. Never loads the full table.
-  Stream<List<Product>> watchAll({String query = '', int limit = 50, int offset = 0}) {
-    var q = select(products)
-      ..where((p) => p.deletedAt.isNull())
+  /// Paged, indexed product list with optional category and search query.
+  Stream<List<Product>> watchAll({
+    String query = '',
+    String? category,
+    int limit = 100,
+    int offset = 0,
+  }) {
+    final q = select(products)
+      ..where((p) {
+        var predicate = p.deletedAt.isNull();
+        if (category != null && category.isNotEmpty) {
+          predicate = predicate & p.category.equals(category);
+        }
+        if (query.isNotEmpty) {
+          final like = '%${_escapeLike(query)}%';
+          predicate = predicate &
+              (p.name.lower().like(like) |
+                  p.sku.lower().like(like) |
+                  p.barcode.lower().like(like));
+        }
+        return predicate;
+      })
       ..orderBy([(p) => OrderingTerm.asc(p.name)])
       ..limit(limit, offset: offset);
 
-    if (query.isNotEmpty) {
-      final like = '%${_escapeLike(query)}%';
-      q = select(products)
-        ..where(
-          (p) =>
-              p.deletedAt.isNull() &
-              (p.name.lower().like(like) |
-                  p.sku.lower().like(like) |
-                  p.barcode.lower().like(like)),
-        )
-        ..orderBy([(p) => OrderingTerm.asc(p.name)])
-        ..limit(limit, offset: offset);
-    }
     return q.watch();
+  }
+
+  /// Get distinct non-empty categories from active products.
+  Future<List<String>> getCategories() async {
+    final catCol = products.category;
+    final q = selectOnly(products, distinct: true)
+      ..addColumns([catCol])
+      ..where(products.deletedAt.isNull() & catCol.isNotNull());
+    final rows = await q.get();
+    return rows
+        .map((r) => r.read(catCol))
+        .whereType<String>()
+        .where((c) => c.trim().isNotEmpty)
+        .toList()
+      ..sort();
+  }
+
+  /// Stream distinct categories.
+  Stream<List<String>> watchCategories() {
+    final catCol = products.category;
+    final q = selectOnly(products, distinct: true)
+      ..addColumns([catCol])
+      ..where(products.deletedAt.isNull() & catCol.isNotNull());
+    return q.watch().map((rows) => rows
+        .map((r) => r.read(catCol))
+        .whereType<String>()
+        .where((c) => c.trim().isNotEmpty)
+        .toList()
+      ..sort());
+  }
+
+  /// Insert multiple products in a batch (used by CSV importer).
+  Future<void> batchInsert(List<ProductsCompanion> entries) async {
+    await batch((b) {
+      b.insertAll(products, entries);
+    });
   }
 
   Future<Product?> getById(int id) =>
@@ -107,6 +148,64 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
             ..orderBy([(p) => OrderingTerm.asc(p.name)]))
           .get();
 
+  /// Calculate live total inventory valuation (cost price, retail price, margin, units).
+  Future<InventoryValuationSummary> getInventoryValuation() async {
+    final active = await (select(products)..where((p) => p.deletedAt.isNull())).get();
+    return _computeValuation(active);
+  }
+
+  /// Watch live inventory valuation reactively.
+  Stream<InventoryValuationSummary> watchInventoryValuation() {
+    return (select(products)..where((p) => p.deletedAt.isNull()))
+        .watch()
+        .map(_computeValuation);
+  }
+
+  static InventoryValuationSummary _computeValuation(List<Product> prods) {
+    double totalCost = 0.0;
+    double totalRetail = 0.0;
+    int totalUnits = 0;
+
+    for (final p in prods) {
+      if (p.stockQty > 0) {
+        totalCost += p.stockQty * p.buyPrice;
+        totalRetail += p.stockQty * p.sellPrice;
+        totalUnits += p.stockQty;
+      }
+    }
+
+    final potentialProfit = totalRetail - totalCost;
+    final marginPercent = totalCost > 0 ? ((potentialProfit / totalCost) * 100) : 0.0;
+
+    return InventoryValuationSummary(
+      totalProducts: prods.length,
+      totalUnits: totalUnits,
+      totalCostValue: totalCost,
+      totalRetailValue: totalRetail,
+      potentialProfit: potentialProfit,
+      marginPercent: marginPercent,
+    );
+  }
+
   static String _escapeLike(String input) =>
       input.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
+}
+
+/// Snapshot of inventory valuation for small retailers.
+class InventoryValuationSummary {
+  final int totalProducts;
+  final int totalUnits;
+  final double totalCostValue;
+  final double totalRetailValue;
+  final double potentialProfit;
+  final double marginPercent;
+
+  const InventoryValuationSummary({
+    required this.totalProducts,
+    required this.totalUnits,
+    required this.totalCostValue,
+    required this.totalRetailValue,
+    required this.potentialProfit,
+    required this.marginPercent,
+  });
 }

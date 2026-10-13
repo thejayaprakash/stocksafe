@@ -13,11 +13,13 @@ class StockMovementPage extends StatefulWidget {
     required this.db,
     required this.productId,
     this.initialDirection = StockDirection.inward,
+    this.initialQty,
   });
 
   final AppDatabase db;
   final int productId;
   final StockDirection initialDirection;
+  final int? initialQty;
 
   @override
   State<StockMovementPage> createState() => _StockMovementPageState();
@@ -25,7 +27,9 @@ class StockMovementPage extends StatefulWidget {
 
 class _StockMovementPageState extends State<StockMovementPage> {
   late StockDirection _direction = widget.initialDirection;
-  final _qtyController = TextEditingController();
+  late final _qtyController = TextEditingController(
+    text: widget.initialQty != null ? '${widget.initialQty}' : '',
+  );
   final _noteController = TextEditingController();
   bool _saving = false;
 

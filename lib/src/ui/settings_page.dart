@@ -1,33 +1,69 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../services/app_localization.dart';
 import 'backup_page.dart';
 
-/// App settings: cache rebuild, backup, about.
-class SettingsPage extends StatelessWidget {
+/// App settings: language selection, cache rebuild, backup, about.
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.db});
 
   final AppDatabase db;
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  @override
+  void initState() {
+    super.initState();
+    AppLocale.instance.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    AppLocale.instance.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final currentLang = AppLocale.instance.current;
+
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
+        // ── Language / Localization ──────────────────────────
+        _SectionHeader(title: 'Language / மொழி', icon: Icons.translate),
+        ListTile(
+          leading: const Icon(Icons.language),
+          title: const Text('App Language (மொழி)'),
+          subtitle: Text(currentLang.label),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showLanguageSelector(context),
+        ),
+
+        const Divider(height: 32),
+
         // ── Data ─────────────────────────────────────────────
-        _SectionHeader(title: 'Data', icon: Icons.storage_outlined),
+        _SectionHeader(title: 'Data & Sovereignty', icon: Icons.storage_outlined),
         ListTile(
           leading: const Icon(Icons.backup_outlined),
-          title: const Text('Backup & Export'),
-          subtitle: const Text('Snapshots, CSV export'),
+          title: Text(AppLocale.tr('backup_export')),
+          subtitle: const Text('Verified snapshots, CSV export & import'),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => BackupPage(db: db)),
+            MaterialPageRoute(builder: (_) => BackupPage(db: widget.db)),
           ),
         ),
         ListTile(
           leading: const Icon(Icons.refresh),
-          title: const Text('Rebuild stock cache'),
+          title: Text(AppLocale.tr('rebuild_cache')),
           subtitle: const Text(
             'Recalculates all stock quantities from the movement ledger. '
             'Use if numbers look wrong.',
@@ -40,25 +76,61 @@ class SettingsPage extends StatelessWidget {
         // ── About ────────────────────────────────────────────
         _SectionHeader(title: 'About', icon: Icons.info_outline),
         FutureBuilder<int>(
-          future: db.productDao.countActive(),
+          future: widget.db.productDao.countActive(),
           builder: (_, snap) {
             final count = snap.data ?? 0;
             return ListTile(
               leading: const Icon(Icons.inventory_2_outlined),
-              title: Text('$count active products'),
+              title: Text('$count ${AppLocale.tr('active_products')}'),
               subtitle: const Text('Deleted products are soft-deleted, never dropped'),
             );
           },
         ),
-        const ListTile(
-          leading: Icon(Icons.shield_outlined),
-          title: Text('StockSafe v0.1.0'),
+        ListTile(
+          leading: const Icon(Icons.shield_outlined),
+          title: const Text('StockSafe Enterprise v0.2.0'),
           subtitle: Text(
             'Offline stock manager for small shops.\n'
-            'One promise: it never loses your data.',
+            '${AppLocale.tr("offline_tag")}',
           ),
         ),
       ],
+    );
+  }
+
+  void _showLanguageSelector(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Select Language / மொழியைத் தேர்ந்தெடுக்கவும்',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            for (final lang in AppLanguage.values)
+              ListTile(
+                leading: Icon(
+                  AppLocale.instance.current == lang
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: AppLocale.instance.current == lang
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                title: Text(lang.label),
+                subtitle: Text(lang == AppLanguage.english ? 'Default' : 'தமிழ் உரை'),
+                onTap: () {
+                  AppLocale.instance.setLanguage(lang);
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -87,7 +159,7 @@ class SettingsPage extends StatelessWidget {
 
     if (confirmed != true) return;
 
-    await db.rebuildAllStockCaches();
+    await widget.db.rebuildAllStockCaches();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Stock cache rebuilt from ledger.')),

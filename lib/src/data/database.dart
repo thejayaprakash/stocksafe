@@ -1,37 +1,35 @@
 import 'package:drift/drift.dart';
 
+import 'dao/audit_dao.dart';
+import 'dao/batch_dao.dart';
 import 'dao/movement_dao.dart';
 import 'dao/product_dao.dart';
 import 'dao/setting_dao.dart';
 import 'tables.dart';
 
+export 'dao/audit_dao.dart';
+export 'dao/batch_dao.dart';
 export 'dao/movement_dao.dart';
 export 'dao/product_dao.dart';
 export 'dao/setting_dao.dart';
 
 part 'database.g.dart';
 
-/// Known schema versions. Add a new `TableMigration` whenever tables
+/// Known schema versions. Add a new migration whenever tables
 /// change and bump [AppDatabase.schemaVersion] — never destructive.
 class DatabaseMigrations {
   DatabaseMigrations._();
 
   // Version history:
   // 1 — initial schema (products, movements, settings)
-  static const int currentVersion = 1;
-
-  /// Every migration ever shipped, keyed by the version it upgrades FROM.
-  /// When you add version 2, append its migration here and add a schema
-  /// JSON via `dart run drift_dev schema dump`.
-  static final List<Migration> all = [
-    // Future: Migration(
-    //   from: 1, to: 2,
-    //   onCreate: (m) async { await m.addColumn(products, products.foo); },
-    // ),
-  ];
+  // 2 — enterprise schema (category, stockAuditSessions, stockAuditItems, batches)
+  static const int currentVersion = 2;
 }
 
-@DriftDatabase(tables: [Products, Movements, Settings], daos: [ProductDao, MovementDao, SettingDao])
+@DriftDatabase(
+  tables: [Products, Movements, Settings, StockAuditSessions, StockAuditItems, Batches],
+  daos: [ProductDao, MovementDao, SettingDao, AuditDao, BatchDao],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
@@ -44,10 +42,13 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async => m.createAll(),
     onUpgrade: (m, from, to) async {
-      for (final step in DatabaseMigrations.all) {
-        if (step.from >= from && step.to <= to) {
-          await step.onCreate(m);
-        }
+      if (from < 2) {
+        await m.addColumn(products, products.category);
+        await m.addColumn(movements, movements.auditSessionId);
+        await m.addColumn(movements, movements.batchId);
+        await m.createTable(stockAuditSessions);
+        await m.createTable(stockAuditItems);
+        await m.createTable(batches);
       }
     },
     beforeOpen: (details) async {
@@ -69,12 +70,4 @@ class AppDatabase extends _$AppDatabase {
       ) WHERE deleted_at IS NULL
     ''');
   }
-}
-
-class Migration {
-  const Migration({required this.from, required this.to, required this.onCreate});
-
-  final int from;
-  final int to;
-  final Future<void> Function(Migrator m) onCreate;
 }
