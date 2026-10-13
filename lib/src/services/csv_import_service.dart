@@ -2,6 +2,7 @@ import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
 
 import '../data/database.dart';
+import 'license_service.dart';
 
 /// Result summary of an import operation.
 class CsvImportResult {
@@ -81,12 +82,27 @@ class CsvImportService {
     int imported = 0;
     int skipped = 0;
 
+    final license = LicenseService(_db);
+    final isPro = await license.isProUnlocked();
+    final currentCount = await _db.productDao.countActive();
+    final freeLimit = await license.getFreeLimit();
+    final availableQuota = isPro ? 999999 : (freeLimit - currentCount).clamp(0, freeLimit);
+
     await _db.transaction(() async {
       final now = DateTime.now();
 
       for (int i = 0; i < dataRows.length; i++) {
         final row = dataRows[i];
         final rowNum = i + 2; // 1-indexed, accounting for header
+
+        if (!isPro && imported >= availableQuota) {
+          errors.add(
+            'Free tier limit reached ($freeLimit products). '
+            'Remaining ${dataRows.length - i} rows skipped. Upgrade to StockSafe Pro for unlimited imports.',
+          );
+          skipped += dataRows.length - i;
+          break;
+        }
 
         if (row.isEmpty || row.every((c) => c.toString().trim().isEmpty)) {
           skipped++;

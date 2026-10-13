@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import '../data/database.dart';
 import '../services/catalog_enrichment_service.dart';
 import '../services/label_ocr_service.dart';
+import '../services/license_service.dart';
+import 'widgets/paywall_sheet.dart';
 
 /// Add or edit a product. Soft fields only — stock changes go through
 /// the movement ledger, never this screen.
@@ -580,6 +582,14 @@ class _ProductEditPageState extends State<ProductEditPage> {
         ),
       );
     } else {
+      final canAdd = await LicenseService(widget.db).canAddProduct();
+      if (!mounted) return;
+      if (!canAdd) {
+        final unlocked = await PaywallSheet.show(context, widget.db);
+        if (unlocked != true) return;
+      }
+      if (!mounted) return;
+
       await widget.db.productDao.insertProduct(
         ProductsCompanion.insert(
           name: name,

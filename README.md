@@ -71,7 +71,7 @@ test/
 - [x] Phase 2 core: data model, product list, stock in/out, detail, search
 - [x] Phase 3: barcode scanning (mobile_scanner, bundled model), low-stock screen
 - [x] Phase 4: backup — local rolling snapshots (7-copy rotation), CSV/zip export
-- [ ] Phase 5: paywall (free ≤ 50 products), one-time unlock via Play Billing / RevenueCat
+- [x] Phase 5: paywall (free ≤ 50 products), one-time unlock via Play Billing / RevenueCat / offline voucher
 - [ ] Phase 6: closed testing (12 testers × 14 days if Personal account)
 - [ ] Phase 7: store listing and launch
 
