@@ -4,6 +4,9 @@ import 'package:drift/drift.dart';
 /// the row is never dropped. Cached `stockQty` is a speed convenience;
 /// the movement ledger is the source of truth and it is rebuildable.
 class Products extends Table {
+  @override
+  String get tableName => 'product';
+
   IntColumn get id => integer().autoIncrement()();
 
   TextColumn get name => text().withLength(min: 1, max: 200)();
@@ -27,6 +30,9 @@ class Products extends Table {
 /// Append-only stock movement ledger. Rows are inserted, never updated
 /// or deleted. `qtyDelta` is signed: +10 in, -10 out.
 class Movements extends Table {
+  @override
+  String get tableName => 'movement';
+
   IntColumn get id => integer().autoIncrement()();
 
   IntColumn get productId =>
@@ -40,6 +46,9 @@ class Movements extends Table {
 
 /// Small key/value store: schema metadata, backup timestamps, unlock state.
 class Settings extends Table {
+  @override
+  String get tableName => 'setting';
+
   TextColumn get key => text()();
   TextColumn get value => text()();
 
