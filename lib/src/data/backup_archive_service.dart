@@ -94,6 +94,19 @@ unavailable to you, any SQLite tool can open it and read your data. That is
 deliberate — your records should not depend on this app continuing to exist.
 
 Keep this file somewhere that is not only on your phone.
+
+THIS FILE IS NOT PASSWORD PROTECTED
+-----------------------------------
+Anyone who opens it can read your full stock list, your buying and selling
+prices, your profit margins, and your suppliers' names, phone numbers and
+GSTINs.
+
+That is on purpose: a password you forget would lock you out of your own
+backup for good, which is the opposite of what a backup is for. The trade is
+that you have to store the file somewhere only you can reach.
+
+  Good:  your own cloud drive, your own computer, a USB stick you keep
+  Risky: a shared computer, a group chat, a shared folder at work
 ''';
 
   // ─── Inspect ──────────────────────────────────────────────────────

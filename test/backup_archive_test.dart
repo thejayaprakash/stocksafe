@@ -103,6 +103,23 @@ void main() {
       expect(readme, contains('not only on your phone'));
     });
 
+    test('the readme warns that the archive is not password protected',
+        () async {
+      // Approved for beta on condition the user is warned: the zip holds the
+      // full stock list, margins and supplier contacts in readable form.
+      final zip = await export();
+      final archive = ZipDecoder().decodeBytes(await zip.readAsBytes());
+      final readme = utf8.decode(
+        archive.findFile(BackupArchiveService.readmeEntry)!.readBytes()!,
+      );
+
+      expect(readme, contains('NOT PASSWORD PROTECTED'));
+      expect(readme, contains('prices'));
+      expect(readme, contains('suppliers'));
+      // And it explains the trade rather than just stating the risk.
+      expect(readme, contains('password you forget'));
+    });
+
     test('the embedded database is a usable SQLite file on its own', () async {
       final zip = await export();
       final inspection = await archives.inspect(zip);

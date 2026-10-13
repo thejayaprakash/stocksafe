@@ -144,8 +144,10 @@ class _BackupPageState extends State<BackupPage> {
             child: Text(
               'Snapshots above live on this phone. If it is lost, broken or reset, '
               'they go with it. Export a backup file and keep it somewhere else — '
-              'your Drive, WhatsApp, an SD card, a computer. It is an ordinary zip '
-              'you own and can open without StockSafe.',
+              'your Drive, an SD card, a computer. It is an ordinary zip you own '
+              'and can open without StockSafe.\n\n'
+              'The file is not password protected, so store it somewhere only you '
+              'can reach.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -382,6 +384,51 @@ class _BackupPageState extends State<BackupPage> {
   /// where it goes — their Drive, WhatsApp, a file manager. The point is that
   /// the file leaves this phone; which app receives it is their call.
   Future<void> _exportArchive() async {
+    // Shown before the file exists, not after it has been shared. The archive
+    // is deliberately not password-protected — a forgotten password would lock
+    // the user out of their own backup — so the honest trade is that they must
+    // choose where it goes. Saying so afterwards would be too late.
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_open_outlined),
+        title: const Text('This backup is not password protected'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Anyone who opens the file can read your stock list, your buying '
+              'and selling prices, your margins, and your suppliers\' contact '
+              'details.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'There is no password because a forgotten one would lock you out '
+              'of your own backup for good.',
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Send it somewhere only you can reach — your own cloud drive, '
+              'your computer, a USB stick. Not a group chat or a shared folder.',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('I understand, export'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+
     setState(() => _working = true);
     try {
       final file = await _backup.exportArchive();
