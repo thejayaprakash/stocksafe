@@ -7,6 +7,7 @@ import '../services/app_localization.dart';
 import '../services/esc_pos_service.dart';
 import 'barcode_label_print_page.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
+import '../app_scope.dart';
 
 enum StockDirection { inward, outward }
 
@@ -17,14 +18,11 @@ enum StockDirection { inward, outward }
 class StockMovementPage extends StatefulWidget {
   const StockMovementPage({
     super.key,
-    required this.db,
     required this.productId,
     this.initialDirection = StockDirection.inward,
     this.initialQty,
     this.initialBatchId,
   });
-
-  final AppDatabase db;
   final int productId;
   final StockDirection initialDirection;
   final int? initialQty;
@@ -35,6 +33,12 @@ class StockMovementPage extends StatefulWidget {
 }
 
 class _StockMovementPageState extends State<StockMovementPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   late StockDirection _direction = widget.initialDirection;
   late final _qtyController = TextEditingController(
     text: widget.initialQty != null ? '${widget.initialQty}' : '',
@@ -56,14 +60,14 @@ class _StockMovementPageState extends State<StockMovementPage> {
   }
 
   Future<void> _loadDefaultSupplier() async {
-    final prod = await widget.db.productDao.getById(widget.productId);
+    final prod = await _db.productDao.getById(widget.productId);
     if (mounted && prod?.supplierId != null && _selectedSupplierId == null) {
       setState(() => _selectedSupplierId = prod!.supplierId);
     }
   }
 
   Future<void> _loadBatches() async {
-    final batches = await widget.db.batchDao.getBatchesForProduct(widget.productId);
+    final batches = await _db.batchDao.getBatchesForProduct(widget.productId);
     if (mounted) {
       setState(() {
         _availableBatches = batches;
@@ -107,7 +111,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
     return Scaffold(
       appBar: AppBar(title: Text(AppLocale.tr('stock_movement') == 'stock_movement' ? 'Stock Movement' : AppLocale.tr('stock_movement'))),
       body: FutureBuilder<Product?>(
-        future: widget.db.productDao.getById(widget.productId),
+        future: _db.productDao.getById(widget.productId),
         builder: (context, snapshot) {
           final product = snapshot.data;
           return ListView(
@@ -224,7 +228,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
                 ),
                 const SizedBox(height: 12),
                 StreamBuilder<List<Supplier>>(
-                  stream: widget.db.supplierDao.watchAll(),
+                  stream: _db.supplierDao.watchAll(),
                   builder: (context, snapshot) {
                     final suppliers = snapshot.data ?? [];
                     if (suppliers.isEmpty) return const SizedBox.shrink();
@@ -363,14 +367,14 @@ class _StockMovementPageState extends State<StockMovementPage> {
     // If stock-in has a batch number provided, link or create it
     final batchNum = _batchNumberController.text.trim();
     if (_direction == StockDirection.inward && batchNum.isNotEmpty) {
-      batchIdToRecord = await widget.db.batchDao.getOrCreateBatch(
+      batchIdToRecord = await _db.batchDao.getOrCreateBatch(
         productId: widget.productId,
         batchNumber: batchNum,
         expiryDate: _expiryDate,
       );
     }
 
-    await widget.db.movementDao.recordMovement(
+    await _db.movementDao.recordMovement(
       productId: widget.productId,
       qtyDelta: signedQty,
       reason: reason,
@@ -382,10 +386,10 @@ class _StockMovementPageState extends State<StockMovementPage> {
     if (!mounted) return;
 
     if (_direction == StockDirection.inward) {
-      final product = await widget.db.productDao.getById(widget.productId);
+      final product = await _db.productDao.getById(widget.productId);
       Supplier? supplier;
       if (_selectedSupplierId != null) {
-        supplier = await widget.db.supplierDao.getById(_selectedSupplierId!);
+        supplier = await _db.supplierDao.getById(_selectedSupplierId!);
       }
 
       setState(() => _saving = false);
@@ -437,7 +441,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
       if (!mounted) return;
 
       if (action == 'print_slip' && product != null) {
-        final shopName = await widget.db.settingDao.get('shop_name') ?? 'STOCKSAFE';
+        final shopName = await _db.settingDao.get('shop_name') ?? 'STOCKSAFE';
         final b58 = EscPosService.buildDeliverySlipBytes(
           product: product,
           quantity: qty,
@@ -500,7 +504,6 @@ class _StockMovementPageState extends State<StockMovementPage> {
             context,
             MaterialPageRoute(
               builder: (_) => BarcodeLabelPrintPage(
-                db: widget.db,
                 initialProduct: product,
                 initialCount: qty,
                 batchNumber: batchNum.isEmpty ? null : batchNum,

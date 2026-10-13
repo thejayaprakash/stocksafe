@@ -35,6 +35,26 @@ jobs:
       - name: Static code analysis
         run: flutter analyze
 
+      # Rule 2: every schema change ships with a tested migration. Dumping the
+      # current schema must produce no diff — if it does, someone changed the
+      # tables without regenerating drift_schemas/ and test/generated_migrations/,
+      # so migration_test.dart is validating a stale shape.
+      - name: Verify migration fixtures are current
+        run: |
+          dart run drift_dev schema dump lib/src/data/database.dart drift_schemas/
+          dart run drift_dev schema steps drift_schemas/ lib/src/data/schema_versions.dart
+          if [ -n "$(git status --porcelain drift_schemas/ lib/src/data/schema_versions.dart)" ]; then
+            echo "::error::Schema changed but the migration fixtures were not regenerated."
+            echo "Run: dart run drift_dev schema dump lib/src/data/database.dart drift_schemas/"
+            echo "Then: dart run drift_dev schema steps drift_schemas/ lib/src/data/schema_versions.dart"
+            echo "Then: dart run drift_dev schema generate --data-classes --companions drift_schemas/ test/generated_migrations/"
+            echo "Then: bash tool/fix_generated_migrations.sh"
+            echo "Finally: add the new fromNToN+1 step to AppDatabase.migration and a test for it."
+            git status --porcelain drift_schemas/ lib/src/data/schema_versions.dart
+            git diff -- drift_schemas/ lib/src/data/schema_versions.dart
+            exit 1
+          fi
+
       - name: Run unit & widget tests
         run: flutter test
 

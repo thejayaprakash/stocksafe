@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/csv_import_service.dart';
+import '../app_scope.dart';
 
 /// Enterprise Backup & Data Sovereignty Screen.
 ///
@@ -14,17 +15,21 @@ import '../services/csv_import_service.dart';
 /// 3. CSV catalog import with flexible header mapping and error validation.
 /// 4. CSV catalog and movement history export.
 class BackupPage extends StatefulWidget {
-  const BackupPage({super.key, required this.db});
-
-  final AppDatabase db;
+  const BackupPage({super.key});
 
   @override
   State<BackupPage> createState() => _BackupPageState();
 }
 
 class _BackupPageState extends State<BackupPage> {
-  late final BackupService _backup = BackupService(widget.db);
-  late final CsvImportService _csvImporter = CsvImportService(widget.db);
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
+  late final BackupService _backup = BackupService(_db);
+  late final CsvImportService _csvImporter = CsvImportService(_db);
 
   List<SnapshotInfo> _snapshots = [];
   bool _loading = true;

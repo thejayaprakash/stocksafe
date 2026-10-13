@@ -8,6 +8,7 @@ import '../services/catalog_enrichment_service.dart';
 import '../services/label_ocr_service.dart';
 import '../services/license_service.dart';
 import 'widgets/paywall_sheet.dart';
+import '../app_scope.dart';
 
 /// Add or edit a product. Soft fields only — stock changes go through
 /// the movement ledger, never this screen.
@@ -18,13 +19,10 @@ import 'widgets/paywall_sheet.dart';
 class ProductEditPage extends StatefulWidget {
   const ProductEditPage({
     super.key,
-    required this.db,
     this.product,
     this.prefillBarcode,
     this.catalogInfo,
   });
-
-  final AppDatabase db;
   final Product? product;
   final String? prefillBarcode;
   final CatalogProductInfo? catalogInfo;
@@ -34,6 +32,12 @@ class ProductEditPage extends StatefulWidget {
 }
 
 class _ProductEditPageState extends State<ProductEditPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   final _formKey = GlobalKey<FormState>();
   final _ocrService = LabelOcrService();
   final _picker = ImagePicker();
@@ -276,7 +280,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
             // Preferred Supplier Dropdown
             StreamBuilder<List<Supplier>>(
-              stream: widget.db.supplierDao.watchAll(),
+              stream: _db.supplierDao.watchAll(),
               builder: (context, snapshot) {
                 final suppliers = snapshot.data ?? [];
                 return DropdownButtonFormField<int?>(
@@ -533,7 +537,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
     // Duplicate barcode detection
     if (barcode.isNotEmpty) {
-      final existing = await widget.db.productDao.getByBarcode(barcode);
+      final existing = await _db.productDao.getByBarcode(barcode);
       if (existing != null && (_isEdit ? existing.id != widget.product!.id : true)) {
         if (!mounted) return;
         final proceed = await showDialog<bool>(
@@ -567,7 +571,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
     }
 
     if (_isEdit) {
-      await widget.db.productDao.updateProduct(
+      await _db.productDao.updateProduct(
         widget.product!.id,
         ProductsCompanion(
           name: Value(name),
@@ -582,15 +586,15 @@ class _ProductEditPageState extends State<ProductEditPage> {
         ),
       );
     } else {
-      final canAdd = await LicenseService(widget.db).canAddProduct();
+      final canAdd = await LicenseService(_db).canAddProduct();
       if (!mounted) return;
       if (!canAdd) {
-        final unlocked = await PaywallSheet.show(context, widget.db);
+        final unlocked = await PaywallSheet.show(context);
         if (unlocked != true) return;
       }
       if (!mounted) return;
 
-      await widget.db.productDao.insertProduct(
+      await _db.productDao.insertProduct(
         ProductsCompanion.insert(
           name: name,
           category: Value(category.isEmpty ? null : category),

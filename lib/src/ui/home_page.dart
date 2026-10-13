@@ -18,20 +18,25 @@ import 'stock_movement_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
+import '../app_scope.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
 /// scanner FAB. Supports real-time category filtering, dual-language localization,
 /// voice search & commands, and backup hygiene reminders.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.db});
-
-  final AppDatabase db;
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   int _tabIndex = 0;
   String _query = '';
   String? _selectedCategory;
@@ -47,7 +52,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _checkBackupHygiene() async {
-    final overdue = await BackupService(widget.db).isBackupOverdue();
+    final overdue = await BackupService(_db).isBackupOverdue();
     if (mounted) setState(() => _isBackupOverdue = overdue);
   }
 
@@ -74,23 +79,22 @@ class _HomePageState extends State<HomePage> {
         setState(() => _tabIndex = 1);
         break;
       case VoiceIntentType.navigateAudit:
-        Navigator.push(context, MaterialPageRoute(builder: (_) => StockAuditPage(db: widget.db)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => StockAuditPage()));
         break;
       case VoiceIntentType.navigateBackup:
-        Navigator.push(context, MaterialPageRoute(builder: (_) => BackupPage(db: widget.db)));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => BackupPage()));
         break;
       case VoiceIntentType.navigateValuation:
         setState(() => _tabIndex = 0);
         break;
       case VoiceIntentType.quickStockMovement:
         if (result.productName != null) {
-          final prods = await widget.db.productDao.watchAll(query: result.productName!).first;
+          final prods = await _db.productDao.watchAll(query: result.productName!).first;
           if (prods.isNotEmpty && mounted) {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => StockMovementPage(
-                  db: widget.db,
                   productId: prods.first.id,
                   initialDirection: result.isStockIn == true ? StockDirection.inward : StockDirection.outward,
                   initialQty: result.quantity,
@@ -125,7 +129,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => AskStockSafePage(db: widget.db),
+                builder: (_) => AskStockSafePage(),
               ),
             ),
           ),
@@ -135,7 +139,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => StockAuditPage(db: widget.db),
+                builder: (_) => StockAuditPage(),
               ),
             ),
           ),
@@ -146,12 +150,12 @@ class _HomePageState extends State<HomePage> {
               if (val == 'suppliers') {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => SuppliersPage(db: widget.db)),
+                  MaterialPageRoute(builder: (_) => SuppliersPage()),
                 );
               } else if (val == 'labels') {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage(db: widget.db)),
+                  MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
                 );
               }
             },
@@ -201,7 +205,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     _CategoryFilterBar(
-                      db: widget.db,
+                      db: _db,
                       selectedCategory: _selectedCategory,
                       onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
                     ),
@@ -240,16 +244,16 @@ class _HomePageState extends State<HomePage> {
     switch (_tabIndex) {
       case 0:
         return _ProductListBody(
-          db: widget.db,
+          db: _db,
           query: _query,
           category: _selectedCategory,
           showBackupReminder: _isBackupOverdue && !_backupBannerDismissed,
           onDismissBackupBanner: () => setState(() => _backupBannerDismissed = true),
         );
       case 1:
-        return LowStockPage(db: widget.db);
+        return LowStockPage();
       case 2:
-        return SettingsPage(db: widget.db);
+        return SettingsPage();
       default:
         return const SizedBox.shrink();
     }
@@ -267,7 +271,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ScannerPage(db: widget.db),
+              builder: (_) => ScannerPage(),
             ),
           ),
           child: const Icon(Icons.qr_code_scanner),
@@ -278,17 +282,17 @@ class _HomePageState extends State<HomePage> {
           heroTag: 'add',
           tooltip: AppLocale.tr('add_product'),
           onPressed: () async {
-            final canAdd = await LicenseService(widget.db).canAddProduct();
+            final canAdd = await LicenseService(_db).canAddProduct();
             if (!context.mounted) return;
             if (!canAdd) {
-              final unlocked = await PaywallSheet.show(context, widget.db);
+              final unlocked = await PaywallSheet.show(context);
               if (unlocked != true) return;
             }
             if (!context.mounted) return;
             await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ProductEditPage(db: widget.db),
+                builder: (_) => ProductEditPage(),
               ),
             );
           },
@@ -474,7 +478,7 @@ class _ProductListBody extends StatelessWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ProductDetailPage(db: db, productId: p.id),
+                  builder: (_) => ProductDetailPage(productId: p.id),
                 ),
               ),
               onLongPress: () => _showActions(context, p),
@@ -503,7 +507,6 @@ class _ProductListBody extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => StockMovementPage(
-                      db: db,
                       productId: p.id,
                       initialDirection: StockDirection.inward,
                     ),
@@ -520,7 +523,6 @@ class _ProductListBody extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => StockMovementPage(
-                      db: db,
                       productId: p.id,
                       initialDirection: StockDirection.outward,
                     ),
@@ -536,7 +538,7 @@ class _ProductListBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ProductEditPage(db: db, product: p),
+                    builder: (_) => ProductEditPage(product: p),
                   ),
                 );
               },
@@ -665,7 +667,7 @@ class _BackupReminderBanner extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => BackupPage(db: db)),
+              MaterialPageRoute(builder: (_) => BackupPage()),
             ),
             child: const Text('Backup'),
           ),

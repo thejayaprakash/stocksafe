@@ -12,24 +12,29 @@ import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
+import '../app_scope.dart';
 
 /// App settings: language, appearance/theming, Pro licensing, operations, diagnostics, cache rebuild, backup, about.
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, required this.db});
-
-  final AppDatabase db;
+  const SettingsPage({super.key});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   late final LicenseService _licenseService;
 
   @override
   void initState() {
     super.initState();
-    _licenseService = LicenseService(widget.db);
+    _licenseService = LicenseService(_db);
     AppLocale.instance.addListener(_refresh);
     ThemeService.instance.addListener(_refresh);
   }
@@ -66,7 +71,7 @@ class _SettingsPageState extends State<SettingsPage> {
           builder: (context, snapshot) {
             final isPro = snapshot.data ?? false;
             return FutureBuilder<int>(
-              future: widget.db.productDao.countActive(),
+              future: _db.productDao.countActive(),
               builder: (context, countSnap) {
                 final active = countSnap.data ?? 0;
                 return Container(
@@ -117,7 +122,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                               ),
                               onPressed: () async {
-                                final unlocked = await PaywallSheet.show(context, widget.db);
+                                final unlocked = await PaywallSheet.show(context);
                                 if (unlocked == true && mounted) setState(() {});
                               },
                               child: const Text('Upgrade'),
@@ -176,7 +181,7 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => SuppliersPage(db: widget.db)),
+            MaterialPageRoute(builder: (_) => SuppliersPage()),
           ),
         ),
         ListTile(
@@ -186,14 +191,14 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage(db: widget.db)),
+            MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
           ),
         ),
         ListTile(
           leading: const Icon(Icons.storefront_outlined),
           title: const Text('Store Name (Receipts & Labels)'),
           subtitle: FutureBuilder<String?>(
-            future: widget.db.settingDao.get('shop_name'),
+            future: _db.settingDao.get('shop_name'),
             builder: (_, s) => Text(s.data ?? 'STOCKSAFE KIRANA'),
           ),
           trailing: const Icon(Icons.chevron_right),
@@ -211,7 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => BackupPage(db: widget.db)),
+            MaterialPageRoute(builder: (_) => BackupPage()),
           ),
         ),
         ListTile(
@@ -266,7 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // ── About ────────────────────────────────────────────
         _SectionHeader(title: 'About', icon: Icons.info_outline),
         FutureBuilder<int>(
-          future: widget.db.productDao.countActive(),
+          future: _db.productDao.countActive(),
           builder: (_, snap) {
             final count = snap.data ?? 0;
             return ListTile(
@@ -368,7 +373,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
 
-    final mismatches = await DiagnosticService.instance.auditLedgerIntegrity(widget.db);
+    final mismatches = await DiagnosticService.instance.auditLedgerIntegrity(_db);
     if (!context.mounted) return;
     Navigator.pop(context); // close loader
 
@@ -410,7 +415,7 @@ class _SettingsPageState extends State<SettingsPage> {
             FilledButton(
               onPressed: () async {
                 Navigator.pop(ctx);
-                await widget.db.rebuildAllStockCaches();
+                await _db.rebuildAllStockCaches();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('✅ Cache rebuilt from ledger.')),
@@ -426,7 +431,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _runDatabaseIntegrityCheck(BuildContext context) async {
-    final ok = await DiagnosticService.instance.verifyDatabaseIntegrity(widget.db);
+    final ok = await DiagnosticService.instance.verifyDatabaseIntegrity(_db);
     if (!context.mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -464,7 +469,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (confirmed != true) return;
 
-    await widget.db.rebuildAllStockCaches();
+    await _db.rebuildAllStockCaches();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Stock cache rebuilt from ledger.')),
@@ -473,7 +478,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editStoreName(BuildContext context) async {
-    final current = await widget.db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+    final current = await _db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
     if (!context.mounted) return;
     final controller = TextEditingController(text: current);
 
@@ -502,7 +507,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     if (updated != null && updated.isNotEmpty) {
-      await widget.db.settingDao.set('shop_name', updated);
+      await _db.settingDao.set('shop_name', updated);
       if (mounted) setState(() {});
     }
   }

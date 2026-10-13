@@ -8,6 +8,7 @@ import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/esc_pos_service.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
+import '../app_scope.dart';
 
 /// Enterprise Physical Stocktake & Audit Module.
 ///
@@ -18,15 +19,19 @@ import 'widgets/thermal_slip_preview_sheet.dart';
 /// 4. Atomic Reconciliation: Generates verified adjustment entries in the movement ledger.
 /// 5. CSV Audit Report Sharing: Full auditable summary exported via Android Share sheet.
 class StockAuditPage extends StatefulWidget {
-  const StockAuditPage({super.key, required this.db});
-
-  final AppDatabase db;
+  const StockAuditPage({super.key});
 
   @override
   State<StockAuditPage> createState() => _StockAuditPageState();
 }
 
 class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProviderStateMixin {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   late final TabController _tabController = TabController(length: 2, vsync: this);
   StockAuditSession? _activeSession;
 
@@ -37,7 +42,7 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
   }
 
   Future<void> _checkActiveSession() async {
-    final active = await widget.db.auditDao.watchActiveSessions().first;
+    final active = await _db.auditDao.watchActiveSessions().first;
 
     if (mounted && active.isNotEmpty) {
       setState(() => _activeSession = active.first);
@@ -54,7 +59,7 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
   Widget build(BuildContext context) {
     if (_activeSession != null) {
       return _ActiveAuditSessionView(
-        db: widget.db,
+        db: _db,
         session: _activeSession!,
         onClose: () {
           setState(() => _activeSession = null);
@@ -78,12 +83,12 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
         controller: _tabController,
         children: [
           _ActiveSessionsList(
-            db: widget.db,
+            db: _db,
             onSelectSession: (s) => setState(() => _activeSession = s),
             onCreateNew: _showCreateSessionDialog,
           ),
           _CompletedSessionsList(
-            db: widget.db,
+            db: _db,
           ),
         ],
       ),
@@ -155,11 +160,11 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
                 if (name.isEmpty) return;
                 Navigator.pop(ctx);
 
-                final id = await widget.db.auditDao.createSession(
+                final id = await _db.auditDao.createSession(
                   name: name,
                   auditMode: mode,
                 );
-                final session = await widget.db.auditDao.getSession(id);
+                final session = await _db.auditDao.getSession(id);
                 if (mounted && session != null) {
                   setState(() => _activeSession = session);
                 }

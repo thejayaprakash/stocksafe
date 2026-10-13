@@ -7,16 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 import 'barcode_label_print_page.dart';
 import 'product_edit_page.dart';
 import 'stock_movement_page.dart';
+import '../app_scope.dart';
 
 /// Product detail: current stock (derived) plus full movement history.
 class ProductDetailPage extends StatelessWidget {
-  const ProductDetailPage({super.key, required this.db, required this.productId});
+  const ProductDetailPage({super.key, required this.productId});
 
-  final AppDatabase db;
   final int productId;
 
   @override
   Widget build(BuildContext context) {
+    final db = AppScope.of(context).db;
     final fmt = DateFormat.yMMMd().add_jm();
 
     return StreamBuilder<Product?>(
@@ -42,7 +43,6 @@ class ProductDetailPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => BarcodeLabelPrintPage(
-                      db: db,
                       initialProduct: product,
                     ),
                   ),
@@ -55,7 +55,7 @@ class ProductDetailPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        ProductEditPage(db: db, product: product),
+                        ProductEditPage(product: product),
                   ),
                 ),
               ),
@@ -162,7 +162,6 @@ class ProductDetailPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => StockMovementPage(
-                            db: db,
                             productId: productId,
                             initialDirection: StockDirection.inward,
                           ),
@@ -252,7 +251,6 @@ class ProductDetailPage extends StatelessWidget {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => StockMovementPage(
-                                    db: db,
                                     productId: productId,
                                     initialDirection: StockDirection.outward,
                                     initialBatchId: b.id,
@@ -357,7 +355,6 @@ class ProductDetailPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => StockMovementPage(
-                      db: db,
                       productId: productId,
                       initialDirection: StockDirection.inward,
                     ),
@@ -373,7 +370,6 @@ class ProductDetailPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => StockMovementPage(
-                      db: db,
                       productId: productId,
                       initialDirection: StockDirection.outward,
                     ),
