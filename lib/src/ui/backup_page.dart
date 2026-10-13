@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -451,10 +451,12 @@ class _BackupPageState extends State<BackupPage> {
     try {
       final file = await _backup.exportArchive();
       final sizeMb = (await file.length()) / (1024 * 1024);
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'StockSafe backup',
-        text: 'StockSafe backup — keep this somewhere other than your phone.',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          subject: 'StockSafe backup',
+          text: 'StockSafe backup — keep this somewhere other than your phone.',
+        ),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -475,12 +477,18 @@ class _BackupPageState extends State<BackupPage> {
   }
 
   Future<void> _importArchive() async {
-    final picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['zip'],
-      withData: false,
+    // file_selector rather than file_picker: on AGP 9, file_picker 11 skips
+    // applying the Kotlin Gradle plugin and relies on built-in Kotlin, which
+    // conflicts with the rest of this app's plugin set. file_selector is
+    // maintained by the Flutter team and uses the Storage Access Framework,
+    // so it still needs no storage permission.
+    const zipGroup = XTypeGroup(
+      label: 'StockSafe backup',
+      extensions: <String>['zip'],
+      mimeTypes: <String>['application/zip'],
     );
-    final path = picked?.files.single.path;
+    final picked = await openFile(acceptedTypeGroups: const [zipGroup]);
+    final path = picked?.path;
     if (path == null || !mounted) return;
 
     setState(() => _working = true);
@@ -562,9 +570,8 @@ class _BackupPageState extends State<BackupPage> {
     try {
       final files = await _backup.exportCsvFiles();
       final xFiles = files.map((f) => XFile(f.path)).toList();
-      await Share.shareXFiles(
-        xFiles,
-        subject: 'StockSafe Full CSV Export',
+      await SharePlus.instance.share(
+        ShareParams(files: xFiles, subject: 'StockSafe Full CSV Export'),
       );
     } catch (e) {
       if (mounted) {

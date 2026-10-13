@@ -34,6 +34,23 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // proguardFiles was declared but isMinifyEnabled was never set, so
+            // R8 never ran and the rules below had no effect: release builds
+            // shipped with full class and method names, and nothing was
+            // shrunk.
+            //
+            // What this does NOT do: protect the offline-voucher HMAC secret.
+            // R8 obfuscates Java and Kotlin bytecode. Dart is compiled ahead
+            // of time into libapp.so, and its string literals survive intact —
+            // verified by byte-searching a release APK, where the secret is
+            // found in plain UTF-8. `--obfuscate` would rename Dart symbols
+            // but not literals either. The voucher scheme is honest about
+            // this (see LicenseKey): it deters sharing and guessing, and Play
+            // Billing is the answer to anything stronger.
+            isMinifyEnabled = true
+            isShrinkResources = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

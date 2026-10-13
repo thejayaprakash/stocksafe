@@ -286,12 +286,14 @@ class _ThermalSlipPreviewSheetState extends State<ThermalSlipPreviewSheet> {
       if (!mounted) return;
       setState(() => _isExporting = false);
 
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/octet-stream')],
-        subject: '${widget.title} - ESC/POS Raw Binary',
-        text: 'Open this with your thermal printer app — RawBT, ESC POS '
-            'Bluetooth Print or POS-Printer. That app connects to the printer; '
-            'StockSafe only prepares the receipt.',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/octet-stream')],
+          subject: '${widget.title} - ESC/POS Raw Binary',
+          text: 'Open this with your thermal printer app — RawBT, ESC POS '
+              'Bluetooth Print or POS-Printer. That app connects to the '
+              'printer; StockSafe only prepares the receipt.',
+        ),
       );
     } catch (e) {
       if (!mounted) return;
