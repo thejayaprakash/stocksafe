@@ -354,7 +354,8 @@ class ProductDetailPage extends StatelessWidget {
                           title: Row(
                             children: [
                               Text(
-                                '${m.qtyDelta > 0 ? '+' : ''}${m.qtyDelta} · ${m.reason}',
+                                '${m.qtyDelta > 0 ? '+' : ''}${m.qtyDelta} · '
+                                '${_readableReason(m.reason)}',
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                               if (m.auditSessionId != null) ...[
@@ -437,6 +438,30 @@ class ProductDetailPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Turns a stored reason into something a shopkeeper reads.
+  ///
+  /// Reasons are machine identifiers in the ledger — they are filtered on and
+  /// exported — but `transfer_in` was reaching the screen verbatim while
+  /// hand-entered movements showed "Stock in". Mapping here keeps the stored
+  /// value stable and the displayed one human.
+  static String _readableReason(String reason) {
+    const labels = {
+      'transfer_in': 'Moved in',
+      'transfer_out': 'Moved out',
+      'opening_stock': 'Opening stock',
+      'stocktake_adjustment': 'Stocktake adjustment',
+      'purchase': 'Purchase',
+      'sale': 'Sale',
+      'damage': 'Damage',
+      'return': 'Return',
+    };
+    final mapped = labels[reason];
+    if (mapped != null) return mapped;
+    // Anything unmapped (including free-text reasons already in users'
+    // ledgers) is shown as-is rather than mangled.
+    return reason;
   }
 
   /// Moves stock from one location to another.
