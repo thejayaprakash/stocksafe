@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -233,9 +235,9 @@ class _BackupPageState extends State<BackupPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _working ? null : _showCsvImportDialog,
+                    onPressed: _working ? null : _importCsvFromFile,
                     icon: const Icon(Icons.file_upload_outlined),
-                    label: const Text('Import CSV'),
+                    label: const Text('Import CSV file'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -247,6 +249,17 @@ class _BackupPageState extends State<BackupPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: TextButton.icon(
+                onPressed: _working ? null : _showCsvImportDialog,
+                icon: const Icon(Icons.content_paste, size: 18),
+                label: const Text('or paste a few rows instead'),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -582,6 +595,54 @@ class _BackupPageState extends State<BackupPage> {
     }
   }
 
+  /// Picks a `.csv` from the device and imports it.
+  ///
+  /// Pasting was the only way in, which is unusable for the case this feature
+  /// advertises: a supplier's price list is a file, often thousands of rows,
+  /// and nobody is copying that into a text box on a phone. Pasting is kept as
+  /// a secondary path for a handful of rows typed by hand.
+  Future<void> _importCsvFromFile() async {
+    const csvGroup = XTypeGroup(
+      label: 'CSV spreadsheet',
+      extensions: <String>['csv', 'txt'],
+      mimeTypes: <String>['text/csv', 'text/comma-separated-values', 'text/plain'],
+    );
+    final picked = await openFile(acceptedTypeGroups: const [csvGroup]);
+    if (picked == null || !mounted) return;
+
+    setState(() => _working = true);
+    try {
+      // Read as bytes and decode leniently: supplier exports are frequently
+      // Windows-1252 or carry a UTF-8 BOM, and a strict decode would reject
+      // the whole file over one accented character in one product name.
+      final bytes = await picked.readAsBytes();
+      final text = _decodeCsvBytes(bytes);
+      if (!mounted) return;
+      setState(() => _working = false);
+      await _executeCsvImport(text, sourceName: picked.name);
+    } catch (e) {
+      if (mounted) setState(() => _working = false);
+      _showError('Could not read that file', e);
+    }
+  }
+
+  /// Decodes CSV bytes, tolerating a BOM and non-UTF-8 input.
+  static String _decodeCsvBytes(Uint8List bytes) {
+    var data = bytes;
+    // Strip a UTF-8 BOM; Excel writes one and the parser would otherwise read
+    // it as part of the first header name, so "Name" would not match.
+    if (data.length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+      data = data.sublist(3);
+    }
+    try {
+      return utf8.decode(data);
+    } on FormatException {
+      // Latin-1 maps every byte to a character, so this cannot fail. Any
+      // mangled accents are preferable to refusing the import outright.
+      return latin1.decode(data);
+    }
+  }
+
   void _showCsvImportDialog() {
     final textController = TextEditingController();
 
@@ -590,9 +651,9 @@ class _BackupPageState extends State<BackupPage> {
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.upload_file, color: Colors.blue),
+            Icon(Icons.content_paste, color: Colors.blue),
             SizedBox(width: 8),
-            Text('Import Catalog CSV'),
+            Text('Paste CSV text'),
           ],
         ),
         content: SizedBox(
@@ -602,8 +663,9 @@ class _BackupPageState extends State<BackupPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Paste CSV text from your supplier or spreadsheet. Headers supported: '
-                'Name, Category, SKU, Barcode, Unit, Buy Price, Sell Price, Low Stock, Initial Stock.',
+                'For a supplier file, use "Import CSV file" instead. Headers '
+                'supported: Name, Category, SKU, Barcode, Unit, Buy Price, '
+                'Sell Price, Low Stock, Initial Stock.',
                 style: TextStyle(fontSize: 13, color: Colors.grey),
               ),
               const SizedBox(height: 12),
@@ -640,7 +702,7 @@ class _BackupPageState extends State<BackupPage> {
     );
   }
 
-  Future<void> _executeCsvImport(String csvContent) async {
+  Future<void> _executeCsvImport(String csvContent, {String? sourceName}) async {
     setState(() => _working = true);
     try {
       final result = await _csvImporter.importFromCsvString(csvContent);
@@ -654,6 +716,14 @@ class _BackupPageState extends State<BackupPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (sourceName != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    sourceName,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
               Text('Total rows processed: ${result.totalRows}'),
               Text('✅ Successfully imported: ${result.importedCount} products'),
               if (result.skippedCount > 0)
