@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
+import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
 import '../services/voice_assistant_service.dart';
 import 'ask_stocksafe_page.dart';
@@ -56,6 +57,20 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final backup = AppScope.read(context).backup;
+
+      // Replaces the unconditional cache rebuild that used to block startup:
+      // one grouped query, and a repair only if it finds something wrong.
+      final mismatches =
+          await DiagnosticService.instance.auditLedgerIntegrity(_db);
+      if (mismatches.isNotEmpty) {
+        DiagnosticService.instance.log(
+          'Repairing ${mismatches.length} stock cache mismatches on launch',
+          level: 'WARN',
+        );
+        await _db.rebuildAllStockCaches();
+      }
+
+      if (!mounted) return;
 
       // "On open, if a day has passed" rather than a background scheduler —
       // a shopkeeper opens this app most days, and it needs no WorkManager
@@ -367,7 +382,7 @@ class _CategoryFilterBar extends StatelessWidget {
 }
 
 /// Product list with reactive stream supporting search and category filtering.
-class _ProductListBody extends StatelessWidget {
+class _ProductListBody extends StatefulWidget {
   const _ProductListBody({
     required this.db,
     required this.query,
@@ -383,14 +398,79 @@ class _ProductListBody extends StatelessWidget {
   final VoidCallback? onDismissBackupBanner;
 
   @override
+  State<_ProductListBody> createState() => _ProductListBodyState();
+}
+
+class _ProductListBodyState extends State<_ProductListBody> {
+  /// Rows fetched per step. The list used to call watchAll() with its default
+  /// limit of 100 and never advance, so a shop with 400 products saw 100 of
+  /// them, alphabetically, with no indication the rest existed — they were in
+  /// the database, counted in the valuation, and invisible. For someone who
+  /// paid for "unlimited products" that is indistinguishable from the data
+  /// loss this app is sold against.
+  static const int _pageSize = 60;
+
+  /// A growing window rather than an offset.
+  ///
+  /// The list is backed by a live query: rows can be inserted or soft-deleted
+  /// while the user scrolls, and offset paging over a shifting result set
+  /// silently skips and repeats items. Re-querying `0..limit` is always
+  /// self-consistent, and with the index on product.name it stays cheap.
+  int _limit = _pageSize;
+
+  final ScrollController _scrollController = ScrollController();
+  bool _mayHaveMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductListBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new search or filter is a new result set; start the window again.
+    if (oldWidget.query != widget.query ||
+        oldWidget.category != widget.category) {
+      _limit = _pageSize;
+      _mayHaveMore = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_mayHaveMore || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 400) {
+      setState(() => _limit += _pageSize);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final db = widget.db;
+    final query = widget.query;
+    final category = widget.category;
+    final showBackupReminder = widget.showBackupReminder;
+    final onDismissBackupBanner = widget.onDismissBackupBanner;
+
     return StreamBuilder<List<Product>>(
-      stream: db.productDao.watchAll(query: query, category: category),
+      stream: db.productDao
+          .watchAll(query: query, category: category, limit: _limit),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         final products = snapshot.data ?? const <Product>[];
+        // Fewer rows than asked for means the end has been reached.
+        _mayHaveMore = products.length >= _limit;
 
         if (products.isEmpty) {
           return Center(
@@ -435,9 +515,23 @@ class _ProductListBody extends StatelessWidget {
               _InventoryValuationCard(db: db),
             Expanded(
               child: ListView.separated(
-                itemCount: products.length,
+                controller: _scrollController,
+                // One extra row for the "loading more" footer.
+                itemCount: products.length + (_mayHaveMore ? 1 : 0),
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, index) {
+                  if (index >= products.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  }
                   final p = products[index];
                   final lowStock = p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
                   final isZero = p.stockQty <= 0;

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:drift/drift.dart';
 import '../data/database.dart';
 
 /// Diagnostic error and system health audit record.
@@ -92,33 +91,42 @@ class DiagnosticService {
   /// Audits the entire movement ledger against cached product stock.
   /// Guarantees that every product's `stock_qty` strictly matches `SELECT SUM(qty_delta)`.
   Future<List<LedgerMismatch>> auditLedgerIntegrity(AppDatabase db) async {
-    final prods = await db.productDao.getAllForExport();
-    final mismatches = <LedgerMismatch>[];
+    // One grouped join rather than a SUM query per product. The previous
+    // version ran 5,000 queries against a 50,000-row ledger at the dev plan's
+    // own target scale — ten seconds behind a modal spinner the user cannot
+    // dismiss. The database can do this in a single pass.
+    final rows = await db.customSelect(
+      '''
+      SELECT p.id          AS product_id,
+             p.name        AS product_name,
+             p.stock_qty   AS cached_stock,
+             COALESCE(SUM(m.qty_delta), 0) AS ledger_stock
+      FROM product p
+      LEFT JOIN movement m ON m.product_id = p.id
+      WHERE p.deleted_at IS NULL
+      GROUP BY p.id, p.name, p.stock_qty
+      HAVING p.stock_qty != COALESCE(SUM(m.qty_delta), 0)
+      ORDER BY p.name
+      ''',
+      readsFrom: {db.products, db.movements},
+    ).get();
 
-    for (final p in prods) {
-      final sum = db.movements.qtyDelta.sum();
-      final q = db.selectOnly(db.movements)
-        ..addColumns([sum])
-        ..where(db.movements.productId.equals(p.id));
-      final row = await q.getSingle();
-      final ledgerTotal = row.read(sum) ?? 0;
+    final mismatches = [
+      for (final row in rows)
+        LedgerMismatch(
+          productId: row.read<int>('product_id'),
+          productName: row.read<String>('product_name'),
+          cachedStock: row.read<int>('cached_stock'),
+          ledgerStock: row.read<int>('ledger_stock'),
+        ),
+    ];
 
-      if (p.stockQty != ledgerTotal) {
-        mismatches.add(
-          LedgerMismatch(
-            productId: p.id,
-            productName: p.name,
-            cachedStock: p.stockQty,
-            ledgerStock: ledgerTotal,
-          ),
-        );
-      }
-    }
+    final prodCount = await db.productDao.countActive();
 
     if (mismatches.isNotEmpty) {
       log('Ledger audit found ${mismatches.length} mismatches', level: 'WARN');
     } else {
-      log('Ledger audit passed: 100% consistent across ${prods.length} products');
+      log('Ledger audit passed: 100% consistent across $prodCount products');
     }
 
     return mismatches;

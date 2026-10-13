@@ -113,14 +113,31 @@ class _BackupPageState extends State<BackupPage> {
             ...[
               for (final snap in _snapshots)
                 ListTile(
+                  // Three states, not two: not yet checked, checked and sound,
+                  // checked and damaged. Hashing every snapshot on open read
+                  // hundreds of megabytes on the UI isolate, so it is deferred
+                  // to restore time — but "not checked" must not be dressed up
+                  // as either answer.
                   leading: Icon(
-                    snap.isIntegrityVerified ? Icons.verified : Icons.warning_amber_rounded,
-                    color: snap.isIntegrityVerified ? Colors.green : Colors.red,
+                    switch (snap.isIntegrityVerified) {
+                      true => Icons.verified,
+                      false => Icons.error_outline,
+                      null => Icons.inventory_2_outlined,
+                    },
+                    color: switch (snap.isIntegrityVerified) {
+                      true => Colors.green,
+                      false => Colors.red,
+                      null => Theme.of(context).colorScheme.onSurfaceVariant,
+                    },
                   ),
                   title: Text(snap.fileName),
                   subtitle: Text(
                     '${dateFmt.format(snap.modified)}  ·  ${_formatSize(snap.sizeBytes)}'
-                    '${snap.isIntegrityVerified ? '  ·  SHA-256 OK' : '  ·  Unverified'}',
+                    '${switch (snap.isIntegrityVerified) {
+                      true => '  ·  SHA-256 OK',
+                      false => '  ·  Damaged',
+                      null => '',
+                    }}',
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.restore),
@@ -243,24 +260,24 @@ class _BackupPageState extends State<BackupPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      // Only claim "verified" when it actually verified.
+                      // Never claim "verified" for something not checked.
                       Icon(
-                        _snapshots.first.isIntegrityVerified
-                            ? Icons.check_circle
-                            : Icons.warning_amber_rounded,
-                        color: _snapshots.first.isIntegrityVerified
-                            ? Colors.green
-                            : Colors.orange,
+                        _snapshots.first.isIntegrityVerified == false
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_circle,
+                        color: _snapshots.first.isIntegrityVerified == false
+                            ? Colors.orange
+                            : Colors.green,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          _snapshots.first.isIntegrityVerified
-                              ? 'Latest verified backup: '
-                                  '${_relativeTime(_snapshots.first.modified)}'
-                              : 'Latest backup: '
+                          _snapshots.first.isIntegrityVerified == false
+                              ? 'Latest backup: '
                                   '${_relativeTime(_snapshots.first.modified)} '
-                                  '— not verified, no checksum recorded',
+                                  '— damaged, do not rely on it'
+                              : 'Latest backup: '
+                                  '${_relativeTime(_snapshots.first.modified)}',
                           style: theme.textTheme.bodyMedium,
                         ),
                       ),
@@ -303,7 +320,15 @@ class _BackupPageState extends State<BackupPage> {
   }
 
   Future<void> _confirmRestore(SnapshotInfo snap) async {
-    if (!snap.isIntegrityVerified) {
+    // Verify here rather than when the list is built. Hashing every snapshot
+    // on open read hundreds of megabytes on the UI isolate; this is the one
+    // moment the answer actually changes what happens.
+    setState(() => _working = true);
+    final verified = await _backup.verifySnapshotIntegrity(snap.path);
+    if (!mounted) return;
+    setState(() => _working = false);
+
+    if (!verified) {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -359,10 +384,7 @@ class _BackupPageState extends State<BackupPage> {
       // `force` only when the user has already acknowledged the integrity
       // warning above. The connection is closed, swapped and reopened inside
       // the repository, so there is nothing for the user to restart.
-      await _backup.restoreFromSnapshot(
-        snap.path,
-        force: !snap.isIntegrityVerified,
-      );
+      await _backup.restoreFromSnapshot(snap.path, force: !verified);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Restored. Your data is back.')),

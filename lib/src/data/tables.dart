@@ -33,6 +33,12 @@ class Suppliers extends Table {
   'CREATE UNIQUE INDEX idx_product_barcode_live ON product (barcode) '
   'WHERE barcode IS NOT NULL AND deleted_at IS NULL;',
 )
+// The product list is ordered by name and filtered to live rows; without this
+// every page is a full scan plus a sort.
+@TableIndex.sql(
+  'CREATE INDEX idx_product_name_live ON product (name) '
+  'WHERE deleted_at IS NULL;',
+)
 class Products extends Table {
   @override
   String get tableName => 'product';
@@ -64,6 +70,14 @@ class Products extends Table {
 
 /// Append-only stock movement ledger. Rows are inserted, never updated
 /// or deleted. `qtyDelta` is signed: +10 in, -10 out.
+///
+/// This table only grows, so every unindexed lookup against it gets slower
+/// for the life of the shop. `product_id` carries the heaviest load: every
+/// single stock movement recomputes SUM(qty_delta) for its product, which
+/// without an index means scanning the whole ledger on every write.
+@TableIndex(name: 'idx_movement_product', columns: {#productId})
+@TableIndex(name: 'idx_movement_created', columns: {#createdAt})
+@TableIndex(name: 'idx_movement_batch', columns: {#batchId})
 class Movements extends Table {
   @override
   String get tableName => 'movement';
@@ -101,6 +115,7 @@ class StockAuditSessions extends Table {
 }
 
 /// Individual item audit records linked to a persistent audit session.
+@TableIndex(name: 'idx_audit_item_session', columns: {#sessionId})
 class StockAuditItems extends Table {
   @override
   String get tableName => 'stock_audit_item';

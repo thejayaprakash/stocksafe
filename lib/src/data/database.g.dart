@@ -3237,6 +3237,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BatchesTable batches = $BatchesTable(this);
   late final Index idxProductBarcodeLive = Index('idx_product_barcode_live',
       'CREATE UNIQUE INDEX idx_product_barcode_live ON product (barcode) WHERE barcode IS NOT NULL AND deleted_at IS NULL');
+  late final Index idxProductNameLive = Index('idx_product_name_live',
+      'CREATE INDEX idx_product_name_live ON product (name) WHERE deleted_at IS NULL');
+  late final Index idxMovementProduct = Index('idx_movement_product',
+      'CREATE INDEX idx_movement_product ON movement (product_id)');
+  late final Index idxMovementCreated = Index('idx_movement_created',
+      'CREATE INDEX idx_movement_created ON movement (created_at)');
+  late final Index idxMovementBatch = Index('idx_movement_batch',
+      'CREATE INDEX idx_movement_batch ON movement (batch_id)');
+  late final Index idxAuditItemSession = Index('idx_audit_item_session',
+      'CREATE INDEX idx_audit_item_session ON stock_audit_item (session_id)');
   late final ProductDao productDao = ProductDao(this as AppDatabase);
   late final MovementDao movementDao = MovementDao(this as AppDatabase);
   late final SettingDao settingDao = SettingDao(this as AppDatabase);
@@ -3255,7 +3265,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         stockAuditSessions,
         stockAuditItems,
         batches,
-        idxProductBarcodeLive
+        idxProductBarcodeLive,
+        idxProductNameLive,
+        idxMovementProduct,
+        idxMovementCreated,
+        idxMovementBatch,
+        idxAuditItemSession
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(

@@ -7,21 +7,20 @@
 //
 // The budgets below are the Phase D acceptance criteria.
 //
-// Measured baseline, 13 Oct 2026, pre-index, in-memory SQLite on a desktop
-// (seeding took 8s):
+// Measured baselines, in-memory SQLite on a desktop, 5,000 products and
+// 50,000 movements. Lower bound: no disk I/O, which dominates on a phone.
 //
-//   barcode lookup .......... within budget
-//   single movement write ... within budget
-//   first list page ......... within budget
-//   paging to 5,000 ......... reaches every row
-//   ledger integrity audit .. 7.4s against a 3s budget   <-- FAILS
+//                            pre-index (Phase A)   post-index (Phase D)
+//   seeding ................ 8-10s                 1s
+//   barcode lookup ......... within budget         4ms   (budget 200ms)
+//   stock movement write ... within budget         11ms  (budget 100ms)
+//   first list page ........ within budget         7ms   (budget 300ms)
+//   ledger integrity audit . 10,138ms  FAILED      29ms  (budget 3000ms)
 //
-// So the unindexed full scans are survivable for one-off operations on fast
-// hardware, and only the audit — 5,000 sequential SUM queries — actually blows
-// its budget today. These numbers are a lower bound: an in-memory database on
-// a desktop has no disk I/O, which is the dominant cost on a phone. Re-measure
-// on a physical mid-range device with a file-backed database before treating
-// the passing rows as settled.
+// The audit went from 5,000 SUM queries against a 50,000-row ledger to one
+// grouped join over indexed columns: roughly 350x. Re-measure on a physical
+// mid-range device with a file-backed database before treating these as
+// settled.
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stocksafe/src/data/database.dart';
@@ -38,6 +37,15 @@ const _barcodeLookupBudget = Duration(milliseconds: 200);
 const _movementWriteBudget = Duration(milliseconds: 100);
 const _listPageBudget = Duration(milliseconds: 300);
 const _integrityAuditBudget = Duration(seconds: 3);
+
+/// Prints the measurement alongside its budget. A test that only says "passed"
+/// hides a change from 50ms to 2.9s, which is the regression worth catching.
+void _report(String label, Duration measured, Duration budget) {
+  final pct = (measured.inMicroseconds / budget.inMicroseconds * 100).round();
+  // ignore: avoid_print
+  print('  $label: ${measured.inMilliseconds}ms '
+      '(budget ${budget.inMilliseconds}ms, $pct%)');
+}
 
 void main() {
   group('Performance at plan scale', () {
@@ -74,6 +82,7 @@ void main() {
       final found = await db.productDao.getByBarcode(barcode);
       sw.stop();
 
+      _report('barcode lookup', sw.elapsed, _barcodeLookupBudget);
       expect(found, isNotNull, reason: 'fixture barcode should resolve');
       expect(sw.elapsed, lessThan(_barcodeLookupBudget),
           reason: 'needs an index on product.barcode — see roadmap D.1');
@@ -90,6 +99,7 @@ void main() {
       );
       sw.stop();
 
+      _report('stock movement write', sw.elapsed, _movementWriteBudget);
       expect(sw.elapsed, lessThan(_movementWriteBudget),
           reason: 'needs an index on movement.product_id — see roadmap D.1');
     }, skip: _runPerf ? null : _skipReason);
@@ -99,6 +109,7 @@ void main() {
       final page = await db.productDao.watchAll(limit: 50).first;
       sw.stop();
 
+      _report('first list page', sw.elapsed, _listPageBudget);
       expect(page, hasLength(50));
       expect(sw.elapsed, lessThan(_listPageBudget),
           reason: 'needs an index on product.name — see roadmap D.1');
@@ -123,6 +134,7 @@ void main() {
       final mismatches = await DiagnosticService.instance.auditLedgerIntegrity(db);
       sw.stop();
 
+      _report('ledger integrity audit', sw.elapsed, _integrityAuditBudget);
       expect(mismatches, isEmpty,
           reason: 'cache was rebuilt during seeding, so it must agree with the ledger');
       expect(sw.elapsed, lessThan(_integrityAuditBudget),

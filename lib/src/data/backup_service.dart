@@ -2,12 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'database.dart';
+
+/// Reads a file and returns its SHA-256. Top-level so it can be sent to an
+/// isolate by [compute].
+String _hashFile(String path) =>
+    sha256.convert(File(path).readAsBytesSync()).toString();
 
 /// Describes a snapshot: what produced it and what it should contain.
 ///
@@ -184,14 +190,23 @@ class BackupService {
     return DateTime.now().difference(lastDate).inDays >= thresholdDays;
   }
 
-  /// Lists existing snapshots with verified integrity status, newest first.
-  Future<List<SnapshotInfo>> listSnapshots() async {
+  /// Lists existing snapshots, newest first.
+  ///
+  /// [verify] re-hashes every snapshot, which means reading each one in full.
+  /// With seven copies of a 40 MB database that is 280 MB of I/O and SHA-256,
+  /// and it used to happen on the UI isolate every time the Backup screen
+  /// opened — a multi-second freeze, or an OOM kill on a low-end device, on
+  /// the one screen whose job is reassuring the user their data is safe.
+  ///
+  /// The list now shows size and date immediately from `stat()`, and
+  /// verification is deferred to the moment it matters: [verifySnapshotIntegrity]
+  /// before a restore, or an explicit check from the UI.
+  Future<List<SnapshotInfo>> listSnapshots({bool verify = false}) async {
     final dir = await _backupDir();
     if (!await dir.exists()) return [];
 
-    final files = dir
-        .listSync()
-        .whereType<File>()
+    // `list()` rather than `listSync()`: this runs on the UI isolate.
+    final files = (await dir.list().where((e) => e is File).cast<File>().toList())
         .where(_isSnapshotFile)
         .toList()
       ..sort((a, b) => b.path.compareTo(a.path));
@@ -199,13 +214,13 @@ class BackupService {
     final results = <SnapshotInfo>[];
     for (final f in files) {
       final stat = await f.stat();
-      final isVerified = await verifySnapshotIntegrity(f.path);
       results.add(SnapshotInfo(
         path: f.path,
         fileName: p.basename(f.path),
         sizeBytes: stat.size,
         modified: stat.modified,
-        isIntegrityVerified: isVerified,
+        isIntegrityVerified:
+            verify ? await verifySnapshotIntegrity(f.path) : null,
       ));
     }
     return results;
@@ -239,8 +254,9 @@ class BackupService {
       final recordedHash = await _recordedHashFor(snapshotPath);
       if (recordedHash == null) return false;
 
-      final bytes = await file.readAsBytes();
-      final actualHash = sha256.convert(bytes).toString();
+      // compute() runs the read and the hash on a background isolate, so a
+      // 40 MB database does not block the frame.
+      final actualHash = await compute(_hashFile, snapshotPath);
       return recordedHash == actualHash;
     } catch (_) {
       return false;
@@ -508,5 +524,8 @@ class SnapshotInfo {
   final String fileName;
   final int sizeBytes;
   final DateTime modified;
-  final bool isIntegrityVerified;
+  /// Null when the snapshot has not been verified yet — distinct from false,
+  /// which means it was checked and failed. The UI must not report an
+  /// unchecked snapshot as either sound or damaged.
+  final bool? isIntegrityVerified;
 }
