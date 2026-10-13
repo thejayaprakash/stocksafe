@@ -77,8 +77,12 @@ void main() {
     });
 
     test('no keystore is inside the working tree', () {
+      // All four extensions keytool can produce, not just the two most
+      // common ones. The project's own documented procedure creates a .p12,
+      // which this test did not look for.
+      const keystoreExtensions = ['.jks', '.keystore', '.p12', '.pfx'];
       final strays = _projectFiles()
-          .where((p) => p.endsWith('.jks') || p.endsWith('.keystore'))
+          .where((p) => keystoreExtensions.any(p.endsWith))
           .toList();
 
       expect(

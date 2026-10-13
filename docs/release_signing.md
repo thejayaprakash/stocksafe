@@ -27,9 +27,10 @@ PKCS12 rather than JKS: `keytool` warns that JKS is a proprietary format and
 tells you to migrate. Gradle accepts either, so there is no reason to start on
 the one that prints a warning.
 
-**Store it outside the repository.** `android/.gitignore` already excludes
-`key.properties`, `*.jks` and `*.keystore`, but a path outside the working tree
-removes the question entirely.
+**Store it outside the repository.** `key.properties` and every keystore
+extension (`.jks`, `.keystore`, `.p12`, `.pfx`) are gitignored repository-wide,
+but a path outside the working tree removes the question entirely — a file that
+is not there cannot be committed by any mistake.
 
 ### 2. Point Gradle at it
 
@@ -38,6 +39,16 @@ cp android/key.properties.example android/key.properties
 ```
 
 Fill in `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
+
+Two things that cost an afternoon if you get them wrong:
+
+- **`keyPassword` must equal `storePassword`.** A PKCS12 keystore has no
+  separate key password — `keytool` forces them to match — but Gradle still
+  reads both fields. Different values fail at signing with an error that does
+  not explain itself.
+- **Use forward slashes in `storeFile`, including on Windows.** Gradle reads
+  this as a Java properties file, where a backslash escapes the next
+  character, so `C:\keys\x.p12` silently becomes `C:keysx.p12`.
 
 ### 3. Check it worked
 

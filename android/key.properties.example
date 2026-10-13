@@ -4,16 +4,27 @@
 # so none of this reaches the repository. Keep a backup of the .jks somewhere
 # that is not only your laptop.
 #
-# Create the keystore once:
+# Create the keystore once. See docs/release_signing.md for the full
+# procedure, including why 10,000 days and what happens if you lose the key.
 #
-#   keytool -genkey -v -keystore ~/keystores/stocksafe-upload.jks \
-#     -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 \
+#   keytool -genkeypair -v -keystore ~/keystores/stocksafe-upload.p12 \
+#     -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 \
 #     -alias stocksafe
 #
-# storeFile is resolved relative to the android/ directory, so an absolute
-# path outside the repo is the safest choice.
+# PKCS12, not JKS: keytool warns that JKS is a proprietary format and tells you
+# to migrate, so there is no reason to start on the one that prints a warning.
+#
+# storeFile is resolved relative to the android/ directory, so an absolute path
+# outside the repo is the safest choice. Use forward slashes, including on
+# Windows — Gradle reads this as a properties file, where a backslash escapes
+# the character after it.
+#
+# keyPassword must be IDENTICAL to storePassword. A PKCS12 keystore has no
+# separate key password; keytool forces the two to match, but Gradle still
+# reads both fields, so leaving them different fails at signing time with an
+# error that does not say why.
 
-storeFile=C:/path/to/stocksafe-upload.p12
+storeFile=C:/keys/stocksafe-upload.p12
 storePassword=
 keyAlias=stocksafe
 keyPassword=
