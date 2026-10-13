@@ -1,4 +1,4 @@
-package com.example.stocksafe
+package app.stocksafe.inventory
 
 import io.flutter.embedding.android.FlutterActivity
 

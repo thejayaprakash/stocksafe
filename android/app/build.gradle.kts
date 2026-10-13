@@ -1,11 +1,24 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Release signing credentials, kept out of the repository.
+// Copy android/key.properties.example to android/key.properties and fill it in;
+// android/.gitignore already excludes key.properties, *.jks and *.keystore.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
+
 android {
-    namespace = "com.example.stocksafe"
+    namespace = "app.stocksafe.inventory"
     compileSdk = 36
     // ndkVersion = flutter.ndkVersion
 
@@ -15,8 +28,10 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.stocksafe"
+        // Permanent. Google Play ties the listing, the signing key, every
+        // install and every review to this string, and it can never be changed
+        // after the first upload. Reverse-DNS of stocksafe.app.
+        applicationId = "app.stocksafe.inventory"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24
@@ -29,11 +44,38 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the real key when android/key.properties exists,
+            // otherwise with the debug key so `flutter run --release` still
+            // works on a fresh clone.
+            //
+            // The debug keystore ships with the Android SDK: same file, same
+            // password ("android"), on every machine in the world. A build
+            // signed with it cannot be uploaded to Play, and if it ever
+            // reached users anyone could sign a malicious update that Android
+            // would accept in its place. Never publish one.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "WARNING: no android/key.properties found - signing the " +
+                    "release build with the PUBLIC DEBUG KEY. This build must " +
+                    "not be published or distributed."
+                )
+                signingConfigs.getByName("debug")
+            }
 
             // proguardFiles was declared but isMinifyEnabled was never set, so
             // R8 never ran and the rules below had no effect: release builds
