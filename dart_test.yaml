@@ -1,11 +1,12 @@
-# `release` marks the launch gate in test/release_readiness_test.dart: checks on
-# decisions that are permanent once the app is on Play, or that silently yield a
-# build nobody should publish.
+# No tag exclusions.
 #
-# It is excluded from the ordinary run so that an unfinished release decision
-# does not turn main red on every push. Run it deliberately before an upload:
+# test/release_readiness_test.dart used to be tagged `release` and intended to
+# be excluded from ordinary runs. The exclusion was never actually configured,
+# so the gate ran on every push and failed on the one check that needs a
+# secret - turning main red for the exact reason the exclusion existed.
 #
-#     flutter test --tags release \
-#       --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET"
-tags:
-  release:
+# Excluding the whole file was the wrong fix anyway: checks like "the
+# application ID is not com.example" and "a release build cannot silently fall
+# back to the debug key" are most useful the moment someone changes them. Only
+# the voucher-secret check needs `--dart-define`, and that single test skips
+# itself without it.

@@ -1,4 +1,3 @@
-@Tags(['release'])
 library;
 
 import 'dart:io';
@@ -111,7 +110,11 @@ void main() {
         reason: 'Build and test with '
             '--dart-define=STOCKSAFE_VOUCHER_SECRET=<the real secret>.',
       );
-    });
+    },
+        skip: LicenseKey.usesDevelopmentSecret
+            ? 'Pass --dart-define=STOCKSAFE_VOUCHER_SECRET=<real secret> to '
+                'run this check.'
+            : null);
   });
 
   group('store metadata', () {
