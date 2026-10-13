@@ -1,5 +1,32 @@
 import 'package:drift/drift.dart';
 
+/// Physical places stock is held: the shop, the godown, a second branch.
+///
+/// Enterprise systems (Odoo, NetSuite, Zoho Inventory) all model stock as
+/// held *at* a location rather than as a single global number, because
+/// "how many do I have" has a different answer in the shop and in the
+/// godown, and restocking is a per-place decision.
+///
+/// Every install gets a default location so single-shop users never have to
+/// think about this — the feature is invisible until a second one is added.
+class Locations extends Table {
+  @override
+  String get tableName => 'location';
+
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get name => text().withLength(min: 1, max: 100)();
+  TextColumn get note => text().nullable()();
+
+  /// Pre-selected for new movements. Exactly one row has this set; the
+  /// migration gives it to the location holding the existing stock.
+  BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
+
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+}
+
 /// Supplier / Vendor Contacts Directory.
 /// Lightweight directory allowing retailers to record contact details,
 /// call suppliers directly for restocks, and link inward movements.
@@ -78,6 +105,9 @@ class Products extends Table {
 @TableIndex(name: 'idx_movement_product', columns: {#productId})
 @TableIndex(name: 'idx_movement_created', columns: {#createdAt})
 @TableIndex(name: 'idx_movement_batch', columns: {#batchId})
+// Per-location stock is SUM(qty_delta) filtered by product and location, so
+// this is the composite the feature leans on for every balance it shows.
+@TableIndex(name: 'idx_movement_location', columns: {#locationId, #productId})
 class Movements extends Table {
   @override
   String get tableName => 'movement';
@@ -92,6 +122,24 @@ class Movements extends Table {
   TextColumn get note => text().nullable()();
   IntColumn get auditSessionId => integer().nullable()();
   IntColumn get batchId => integer().nullable()();
+
+  /// Where this movement happened.
+  ///
+  /// Nullable only so the v6 migration can add the column before backfilling
+  /// it; every row written by the app carries one. Stock at a location is
+  /// SUM(qty_delta) filtered by it, exactly as product stock is SUM over all
+  /// locations — so the existing invariant is unchanged, just partitioned.
+  IntColumn get locationId =>
+      integer().nullable().references(Locations, #id, onDelete: KeyAction.setNull)();
+
+  /// Links the two halves of a transfer.
+  ///
+  /// A transfer is -n at the source and +n at the destination, written in one
+  /// transaction. Odoo models this as a single move with a source and a
+  /// destination; with a signed-delta ledger the equivalent is a matched
+  /// pair, and this reference is what makes the pair recognisable — so a
+  /// transfer can be shown as one event and never half-applied.
+  TextColumn get transferRef => text().nullable()();
   IntColumn get supplierId =>
       integer().nullable().references(Suppliers, #id, onDelete: KeyAction.setNull)();
   DateTimeColumn get createdAt => dateTime()();

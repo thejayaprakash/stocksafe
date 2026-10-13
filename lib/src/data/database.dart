@@ -5,6 +5,7 @@ import 'dao/batch_dao.dart';
 import 'dao/movement_dao.dart';
 import 'dao/product_dao.dart';
 import 'dao/setting_dao.dart';
+import 'dao/location_dao.dart';
 import 'dao/supplier_dao.dart';
 import 'schema_versions.dart';
 import 'tables.dart';
@@ -14,6 +15,7 @@ export 'dao/batch_dao.dart';
 export 'dao/movement_dao.dart';
 export 'dao/product_dao.dart';
 export 'dao/setting_dao.dart';
+export 'dao/location_dao.dart';
 export 'dao/supplier_dao.dart';
 
 part 'database.g.dart';
@@ -35,7 +37,11 @@ class DatabaseMigrations {
   // 4 — batch.deletedAt (soft delete) + unique index on live product barcodes
   // 5 — indexes on the hot paths: movement.product_id / created_at / batch_id,
   //     product.name (live rows), stock_audit_item.session_id
-  static const int currentVersion = 5;
+  // 6 — locations: location table, movement.location_id, movement.transfer_ref
+  static const int currentVersion = 6;
+
+  /// Name given to the location that inherits all pre-existing stock.
+  static const String defaultLocationName = 'Main';
 
   /// Tables renamed in 35073b4, oldest name first. Order matters: renaming
   /// `products` first lets SQLite rewrite the foreign key in `movements`
@@ -48,8 +54,8 @@ class DatabaseMigrations {
 }
 
 @DriftDatabase(
-  tables: [Products, Movements, Settings, StockAuditSessions, StockAuditItems, Batches, Suppliers],
-  daos: [ProductDao, MovementDao, SettingDao, AuditDao, BatchDao, SupplierDao],
+  tables: [Products, Movements, Settings, StockAuditSessions, StockAuditItems, Batches, Suppliers, Locations],
+  daos: [ProductDao, MovementDao, SettingDao, AuditDao, BatchDao, SupplierDao, LocationDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
@@ -97,6 +103,35 @@ class AppDatabase extends _$AppDatabase {
         await _clearDuplicateBarcodes();
 
         await m.create(schema.idxProductBarcodeLive);
+      },
+      from5To6: (m, schema) async {
+        await m.createTable(schema.location);
+        await m.addColumn(schema.movement, schema.movement.locationId);
+        await m.addColumn(schema.movement, schema.movement.transferRef);
+        await m.create(schema.idxMovementLocation);
+
+        // Every existing movement happened somewhere. Backfilling them all to
+        // one default location keeps every total identical before and after:
+        // stock at Main == the old global stock, and the sum across locations
+        // is unchanged. Nothing is recalculated and no row is rewritten
+        // beyond gaining the column it was always implicitly part of.
+        final now = DateTime.now();
+        await into(locations).insert(
+          LocationsCompanion.insert(
+            name: DatabaseMigrations.defaultLocationName,
+            isDefault: const Value(true),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+        final defaultId = await customSelect(
+          'SELECT id FROM location WHERE is_default = 1 LIMIT 1',
+        ).getSingle().then((r) => r.read<int>('id'));
+
+        await customStatement(
+          'UPDATE movement SET location_id = ? WHERE location_id IS NULL',
+          [defaultId],
+        );
       },
       from4To5: (m, schema) async {
         // Indexes only — no column or table changes, so nothing can be lost.

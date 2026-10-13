@@ -26,6 +26,7 @@ import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v1.dart' as v1;
 import 'generated_migrations/schema_v2.dart' as v2;
 import 'generated_migrations/schema_v3.dart' as v3;
+import 'generated_migrations/schema_v5.dart' as v5;
 
 /// Drift stores `DateTimeColumn` as unix seconds; the generated historical
 /// schemas expose those columns as plain ints.
@@ -222,6 +223,63 @@ void main() {
         throwsA(anything),
         reason: 'the unique index must be enforced after the migration',
       );
+
+      await db.close();
+    });
+
+    test('step 5 to 6 backfills every movement to one default location',
+        () async {
+      // The riskiest part of adding locations: existing stock has no location,
+      // and if the backfill misses a row that row's quantity disappears from
+      // every per-location view while still counting towards the product
+      // total. Totals must be identical before and after.
+      final schema = await verifier.schemaAt(5);
+      final ts = DateTime.utc(2026, 8, 1, 9, 0);
+
+      final oldDb = v5.DatabaseAtV5(schema.newConnection());
+      await oldDb.into(oldDb.product).insert(
+            v5.ProductCompanion.insert(
+              name: 'Rice 5kg',
+              createdAt: _secs(ts),
+              updatedAt: _secs(ts),
+            ),
+          );
+      for (final delta in [100, -30, -5]) {
+        await oldDb.into(oldDb.movement).insert(
+              v5.MovementCompanion.insert(
+                productId: 1,
+                qtyDelta: delta,
+                reason: delta > 0 ? 'purchase' : 'sale',
+                createdAt: _secs(ts),
+              ),
+            );
+      }
+      await oldDb.close();
+
+      final db = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
+
+      expect(await _tableExists(db, 'location'), isTrue);
+      expect(await _columnExists(db, 'movement', 'location_id'), isTrue);
+      expect(await _columnExists(db, 'movement', 'transfer_ref'), isTrue);
+
+      // Exactly one location, and it is the default.
+      final locations = await db.locationDao.getAll();
+      expect(locations, hasLength(1));
+      expect(locations.single.name, DatabaseMigrations.defaultLocationName);
+      expect(locations.single.isDefault, isTrue);
+
+      // No movement left without a home.
+      final orphans = await db
+          .customSelect('SELECT COUNT(*) AS c FROM movement WHERE location_id IS NULL')
+          .getSingle();
+      expect(orphans.read<int>('c'), 0,
+          reason: 'an unbackfilled row would vanish from per-location views');
+
+      // And the numbers are unchanged: 100 - 30 - 5 = 65, all at Main.
+      expect((await db.productDao.getById(1))!.stockQty, 65);
+      expect(await db.locationDao.stockOf(1, locations.single.id), 65);
+      expect(await db.movementDao.getAllForExport(), hasLength(3));
 
       await db.close();
     });

@@ -9,6 +9,7 @@ mixin _$AuditDaoMixin on DatabaseAccessor<AppDatabase> {
   $SuppliersTable get suppliers => attachedDatabase.suppliers;
   $ProductsTable get products => attachedDatabase.products;
   $StockAuditItemsTable get stockAuditItems => attachedDatabase.stockAuditItems;
+  $LocationsTable get locations => attachedDatabase.locations;
   $MovementsTable get movements => attachedDatabase.movements;
   AuditDaoManager get managers => AuditDaoManager(this);
 }
@@ -26,6 +27,8 @@ class AuditDaoManager {
   $$StockAuditItemsTableTableManager get stockAuditItems =>
       $$StockAuditItemsTableTableManager(
           _db.attachedDatabase, _db.stockAuditItems);
+  $$LocationsTableTableManager get locations =>
+      $$LocationsTableTableManager(_db.attachedDatabase, _db.locations);
   $$MovementsTableTableManager get movements =>
       $$MovementsTableTableManager(_db.attachedDatabase, _db.movements);
 }

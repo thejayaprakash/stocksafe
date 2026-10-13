@@ -48,6 +48,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
   DateTime? _expiryDate;
   int? _selectedBatchId;
   int? _selectedSupplierId;
+  int? _selectedLocationId;
   List<ProductBatch> _availableBatches = [];
   bool _saving = false;
 
@@ -227,6 +228,45 @@ class _StockMovementPageState extends State<StockMovementPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // Only shown once there is more than one place to choose
+                // between. A shop with a single location should never be
+                // asked a question with one possible answer.
+                StreamBuilder<List<Location>>(
+                  stream: _db.locationDao.watchAll(),
+                  builder: (context, snapshot) {
+                    final locations = snapshot.data ?? const <Location>[];
+                    if (locations.length < 2) return const SizedBox.shrink();
+
+                    final selected = _selectedLocationId ??
+                        locations
+                            .firstWhere(
+                              (l) => l.isDefault,
+                              orElse: () => locations.first,
+                            )
+                            .id;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<int>(
+                        initialValue: selected,
+                        decoration: const InputDecoration(
+                          labelText: 'Location',
+                          prefixIcon: Icon(Icons.warehouse_outlined),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: [
+                          for (final l in locations)
+                            DropdownMenuItem<int>(
+                              value: l.id,
+                              child: Text(l.name),
+                            ),
+                        ],
+                        onChanged: (value) =>
+                            setState(() => _selectedLocationId = value),
+                      ),
+                    );
+                  },
+                ),
                 StreamBuilder<List<Supplier>>(
                   stream: _db.supplierDao.watchAll(),
                   builder: (context, snapshot) {
@@ -381,6 +421,9 @@ class _StockMovementPageState extends State<StockMovementPage> {
       note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       batchId: batchIdToRecord,
       supplierId: _direction == StockDirection.inward ? _selectedSupplierId : null,
+      // Null falls back to the default location, so a single-shop user never
+      // has to pick one.
+      locationId: _selectedLocationId,
     );
 
     if (!mounted) return;

@@ -23,6 +23,8 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
     int? batchId,
     int? auditSessionId,
     int? supplierId,
+    int? locationId,
+    String? transferRef,
     DateTime? createdAt,
   }) async {
     if (qtyDelta == 0) {
@@ -38,6 +40,10 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
           batchId: Value(batchId),
           auditSessionId: Value(auditSessionId),
           supplierId: Value(supplierId),
+          locationId: Value(
+            locationId ?? (await db.locationDao.getOrCreateDefault()).id,
+          ),
+          transferRef: Value(transferRef),
           createdAt: createdAt ?? DateTime.now(),
         ),
       );
@@ -59,6 +65,60 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
         await db.batchDao.rebuildBatchStock(batchId);
       }
     });
+  }
+
+  /// Moves stock between two locations.
+  ///
+  /// Written as a matched pair in one transaction: `-qty` at the source and
+  /// `+qty` at the destination, sharing a reference. Odoo models a transfer
+  /// as a single move with a source and a destination, which makes quantity
+  /// conservation structural; with a signed-delta ledger the equivalent is
+  /// this pair, and the transaction is what guarantees you can never end up
+  /// with the deduction but not the addition.
+  ///
+  /// The product's total is deliberately unchanged — nothing entered or left
+  /// the business, it only moved — so the pair sums to zero and the cached
+  /// `stock_qty` lands back where it started.
+  Future<String> transferStock({
+    required int productId,
+    required int fromLocationId,
+    required int toLocationId,
+    required int quantity,
+    String? note,
+    DateTime? createdAt,
+  }) async {
+    if (quantity <= 0) {
+      throw ArgumentError.value(quantity, 'quantity', 'must be positive');
+    }
+    if (fromLocationId == toLocationId) {
+      throw ArgumentError('Source and destination must be different.');
+    }
+
+    final ref = 'TRF-${DateTime.now().microsecondsSinceEpoch}';
+    final at = createdAt ?? DateTime.now();
+
+    await transaction(() async {
+      await recordMovement(
+        productId: productId,
+        qtyDelta: -quantity,
+        reason: 'transfer_out',
+        note: note,
+        locationId: fromLocationId,
+        transferRef: ref,
+        createdAt: at,
+      );
+      await recordMovement(
+        productId: productId,
+        qtyDelta: quantity,
+        reason: 'transfer_in',
+        note: note,
+        locationId: toLocationId,
+        transferRef: ref,
+        createdAt: at,
+      );
+    });
+
+    return ref;
   }
 
   Stream<List<Movement>> watchForProduct(int productId, {int limit = 100}) {

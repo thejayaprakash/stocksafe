@@ -6,6 +6,7 @@ part of 'supplier_dao.dart';
 mixin _$SupplierDaoMixin on DatabaseAccessor<AppDatabase> {
   $SuppliersTable get suppliers => attachedDatabase.suppliers;
   $ProductsTable get products => attachedDatabase.products;
+  $LocationsTable get locations => attachedDatabase.locations;
   $MovementsTable get movements => attachedDatabase.movements;
   SupplierDaoManager get managers => SupplierDaoManager(this);
 }
@@ -17,6 +18,8 @@ class SupplierDaoManager {
       $$SuppliersTableTableManager(_db.attachedDatabase, _db.suppliers);
   $$ProductsTableTableManager get products =>
       $$ProductsTableTableManager(_db.attachedDatabase, _db.products);
+  $$LocationsTableTableManager get locations =>
+      $$LocationsTableTableManager(_db.attachedDatabase, _db.locations);
   $$MovementsTableTableManager get movements =>
       $$MovementsTableTableManager(_db.attachedDatabase, _db.movements);
 }

@@ -265,6 +265,61 @@ class ProductDetailPage extends StatelessWidget {
                   );
                 },
               ),
+              // Where the stock actually is. Hidden entirely when there is
+              // only one place for it to be, so a single-shop user is not
+              // shown a breakdown of one row against their own total.
+              StreamBuilder<List<LocationStock>>(
+                stream: db.locationDao.watchBreakdownFor(productId),
+                builder: (context, snap) {
+                  final rows = snap.data ?? const <LocationStock>[];
+                  if (rows.length < 2) return const SizedBox.shrink();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Where it is',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            TextButton.icon(
+                              onPressed: () => _showTransferSheet(
+                                context, db, product, rows),
+                              icon: const Icon(Icons.swap_horiz, size: 18),
+                              label: const Text('Move stock'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      for (final row in rows)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(
+                            row.isDefault
+                                ? Icons.store
+                                : Icons.warehouse_outlined,
+                            size: 20,
+                          ),
+                          title: Text(row.locationName),
+                          trailing: Text(
+                            '${row.quantity} ${product.unit}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: row.quantity < 0
+                                  ? Colors.red
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
               const Divider(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -383,4 +438,128 @@ class ProductDetailPage extends StatelessWidget {
       },
     );
   }
+
+  /// Moves stock from one location to another.
+  ///
+  /// The product total does not change — nothing entered or left the
+  /// business, it only moved — so this deliberately reads as "move", never
+  /// as stock in or out.
+  Future<void> _showTransferSheet(
+    BuildContext context,
+    AppDatabase db,
+    Product product,
+    List<LocationStock> holdings,
+  ) async {
+    final all = await db.locationDao.getAll();
+    if (all.length < 2 || !context.mounted) return;
+
+    var fromId = holdings.first.locationId;
+    var toId = all.firstWhere((l) => l.id != fromId).id;
+    final qtyController = TextEditingController();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final available = holdings
+                .firstWhere(
+                  (h) => h.locationId == fromId,
+                  orElse: () => LocationStock(
+                    locationId: fromId,
+                    locationName: '',
+                    isDefault: false,
+                    quantity: 0,
+                  ),
+                )
+                .quantity;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Move ${product.name}',
+                    style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  initialValue: fromId,
+                  decoration: const InputDecoration(
+                    labelText: 'From', border: OutlineInputBorder()),
+                  items: [
+                    for (final l in all)
+                      DropdownMenuItem(value: l.id, child: Text(l.name)),
+                  ],
+                  onChanged: (v) => setSheetState(() {
+                    fromId = v!;
+                    if (toId == fromId) {
+                      toId = all.firstWhere((l) => l.id != fromId).id;
+                    }
+                  }),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: toId,
+                  decoration: const InputDecoration(
+                    labelText: 'To', border: OutlineInputBorder()),
+                  items: [
+                    for (final l in all.where((l) => l.id != fromId))
+                      DropdownMenuItem(value: l.id, child: Text(l.name)),
+                  ],
+                  onChanged: (v) => setSheetState(() => toId = v!),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: qtyController,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    helperText: '$available ${product.unit} here now',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      final qty = int.tryParse(qtyController.text.trim());
+                      if (qty == null || qty <= 0) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('Enter a quantity above zero')),
+                        );
+                        return;
+                      }
+                      final navigator = Navigator.of(ctx);
+                      final messenger = ScaffoldMessenger.of(ctx);
+                      await db.movementDao.transferStock(
+                        productId: product.id,
+                        fromLocationId: fromId,
+                        toLocationId: toId,
+                        quantity: qty,
+                      );
+                      navigator.pop();
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Moved $qty ${product.unit}')),
+                      );
+                    },
+                    child: const Text('Move stock'),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
 }

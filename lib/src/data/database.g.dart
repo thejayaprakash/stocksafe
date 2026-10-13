@@ -1088,6 +1088,385 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   }
 }
 
+class $LocationsTable extends Locations
+    with TableInfo<$LocationsTable, Location> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 1, maxTextLength: 100),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+      'note', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isDefaultMeta =
+      const VerificationMeta('isDefault');
+  @override
+  late final GeneratedColumn<bool> isDefault = GeneratedColumn<bool>(
+      'is_default', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_default" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, name, note, isDefault, createdAt, updatedAt, deletedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'location';
+  @override
+  VerificationContext validateIntegrity(Insertable<Location> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+          _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
+    }
+    if (data.containsKey('is_default')) {
+      context.handle(_isDefaultMeta,
+          isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Location map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Location(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      note: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}note']),
+      isDefault: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_default'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
+    );
+  }
+
+  @override
+  $LocationsTable createAlias(String alias) {
+    return $LocationsTable(attachedDatabase, alias);
+  }
+}
+
+class Location extends DataClass implements Insertable<Location> {
+  final int id;
+  final String name;
+  final String? note;
+
+  /// Pre-selected for new movements. Exactly one row has this set; the
+  /// migration gives it to the location holding the existing stock.
+  final bool isDefault;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const Location(
+      {required this.id,
+      required this.name,
+      this.note,
+      required this.isDefault,
+      required this.createdAt,
+      required this.updatedAt,
+      this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['is_default'] = Variable<bool>(isDefault);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  LocationsCompanion toCompanion(bool nullToAbsent) {
+    return LocationsCompanion(
+      id: Value(id),
+      name: Value(name),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      isDefault: Value(isDefault),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory Location.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Location(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      note: serializer.fromJson<String?>(json['note']),
+      isDefault: serializer.fromJson<bool>(json['isDefault']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'note': serializer.toJson<String?>(note),
+      'isDefault': serializer.toJson<bool>(isDefault),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  Location copyWith(
+          {int? id,
+          String? name,
+          Value<String?> note = const Value.absent(),
+          bool? isDefault,
+          DateTime? createdAt,
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
+      Location(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        note: note.present ? note.value : this.note,
+        isDefault: isDefault ?? this.isDefault,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+      );
+  Location copyWithCompanion(LocationsCompanion data) {
+    return Location(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      note: data.note.present ? data.note.value : this.note,
+      isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Location(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('note: $note, ')
+          ..write('isDefault: $isDefault, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, note, isDefault, createdAt, updatedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Location &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.note == this.note &&
+          other.isDefault == this.isDefault &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class LocationsCompanion extends UpdateCompanion<Location> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> note;
+  final Value<bool> isDefault;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  const LocationsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.note = const Value.absent(),
+    this.isDefault = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  LocationsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.note = const Value.absent(),
+    this.isDefault = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+  })  : name = Value(name),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<Location> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? note,
+    Expression<bool>? isDefault,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (note != null) 'note': note,
+      if (isDefault != null) 'is_default': isDefault,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  LocationsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? name,
+      Value<String?>? note,
+      Value<bool>? isDefault,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt}) {
+    return LocationsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      note: note ?? this.note,
+      isDefault: isDefault ?? this.isDefault,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (isDefault.present) {
+      map['is_default'] = Variable<bool>(isDefault.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocationsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('note: $note, ')
+          ..write('isDefault: $isDefault, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MovementsTable extends Movements
     with TableInfo<$MovementsTable, Movement> {
   @override
@@ -1140,6 +1519,21 @@ class $MovementsTable extends Movements
   late final GeneratedColumn<int> batchId = GeneratedColumn<int>(
       'batch_id', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _locationIdMeta =
+      const VerificationMeta('locationId');
+  @override
+  late final GeneratedColumn<int> locationId = GeneratedColumn<int>(
+      'location_id', aliasedName, true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'REFERENCES location (id) ON DELETE SET NULL'));
+  static const VerificationMeta _transferRefMeta =
+      const VerificationMeta('transferRef');
+  @override
+  late final GeneratedColumn<String> transferRef = GeneratedColumn<String>(
+      'transfer_ref', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _supplierIdMeta =
       const VerificationMeta('supplierId');
   @override
@@ -1164,6 +1558,8 @@ class $MovementsTable extends Movements
         note,
         auditSessionId,
         batchId,
+        locationId,
+        transferRef,
         supplierId,
         createdAt
       ];
@@ -1212,6 +1608,18 @@ class $MovementsTable extends Movements
       context.handle(_batchIdMeta,
           batchId.isAcceptableOrUnknown(data['batch_id']!, _batchIdMeta));
     }
+    if (data.containsKey('location_id')) {
+      context.handle(
+          _locationIdMeta,
+          locationId.isAcceptableOrUnknown(
+              data['location_id']!, _locationIdMeta));
+    }
+    if (data.containsKey('transfer_ref')) {
+      context.handle(
+          _transferRefMeta,
+          transferRef.isAcceptableOrUnknown(
+              data['transfer_ref']!, _transferRefMeta));
+    }
     if (data.containsKey('supplier_id')) {
       context.handle(
           _supplierIdMeta,
@@ -1247,6 +1655,10 @@ class $MovementsTable extends Movements
           .read(DriftSqlType.int, data['${effectivePrefix}audit_session_id']),
       batchId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}batch_id']),
+      locationId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}location_id']),
+      transferRef: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}transfer_ref']),
       supplierId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}supplier_id']),
       createdAt: attachedDatabase.typeMapping
@@ -1268,6 +1680,23 @@ class Movement extends DataClass implements Insertable<Movement> {
   final String? note;
   final int? auditSessionId;
   final int? batchId;
+
+  /// Where this movement happened.
+  ///
+  /// Nullable only so the v6 migration can add the column before backfilling
+  /// it; every row written by the app carries one. Stock at a location is
+  /// SUM(qty_delta) filtered by it, exactly as product stock is SUM over all
+  /// locations — so the existing invariant is unchanged, just partitioned.
+  final int? locationId;
+
+  /// Links the two halves of a transfer.
+  ///
+  /// A transfer is -n at the source and +n at the destination, written in one
+  /// transaction. Odoo models this as a single move with a source and a
+  /// destination; with a signed-delta ledger the equivalent is a matched
+  /// pair, and this reference is what makes the pair recognisable — so a
+  /// transfer can be shown as one event and never half-applied.
+  final String? transferRef;
   final int? supplierId;
   final DateTime createdAt;
   const Movement(
@@ -1278,6 +1707,8 @@ class Movement extends DataClass implements Insertable<Movement> {
       this.note,
       this.auditSessionId,
       this.batchId,
+      this.locationId,
+      this.transferRef,
       this.supplierId,
       required this.createdAt});
   @override
@@ -1295,6 +1726,12 @@ class Movement extends DataClass implements Insertable<Movement> {
     }
     if (!nullToAbsent || batchId != null) {
       map['batch_id'] = Variable<int>(batchId);
+    }
+    if (!nullToAbsent || locationId != null) {
+      map['location_id'] = Variable<int>(locationId);
+    }
+    if (!nullToAbsent || transferRef != null) {
+      map['transfer_ref'] = Variable<String>(transferRef);
     }
     if (!nullToAbsent || supplierId != null) {
       map['supplier_id'] = Variable<int>(supplierId);
@@ -1316,6 +1753,12 @@ class Movement extends DataClass implements Insertable<Movement> {
       batchId: batchId == null && nullToAbsent
           ? const Value.absent()
           : Value(batchId),
+      locationId: locationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(locationId),
+      transferRef: transferRef == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transferRef),
       supplierId: supplierId == null && nullToAbsent
           ? const Value.absent()
           : Value(supplierId),
@@ -1334,6 +1777,8 @@ class Movement extends DataClass implements Insertable<Movement> {
       note: serializer.fromJson<String?>(json['note']),
       auditSessionId: serializer.fromJson<int?>(json['auditSessionId']),
       batchId: serializer.fromJson<int?>(json['batchId']),
+      locationId: serializer.fromJson<int?>(json['locationId']),
+      transferRef: serializer.fromJson<String?>(json['transferRef']),
       supplierId: serializer.fromJson<int?>(json['supplierId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -1349,6 +1794,8 @@ class Movement extends DataClass implements Insertable<Movement> {
       'note': serializer.toJson<String?>(note),
       'auditSessionId': serializer.toJson<int?>(auditSessionId),
       'batchId': serializer.toJson<int?>(batchId),
+      'locationId': serializer.toJson<int?>(locationId),
+      'transferRef': serializer.toJson<String?>(transferRef),
       'supplierId': serializer.toJson<int?>(supplierId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -1362,6 +1809,8 @@ class Movement extends DataClass implements Insertable<Movement> {
           Value<String?> note = const Value.absent(),
           Value<int?> auditSessionId = const Value.absent(),
           Value<int?> batchId = const Value.absent(),
+          Value<int?> locationId = const Value.absent(),
+          Value<String?> transferRef = const Value.absent(),
           Value<int?> supplierId = const Value.absent(),
           DateTime? createdAt}) =>
       Movement(
@@ -1373,6 +1822,8 @@ class Movement extends DataClass implements Insertable<Movement> {
         auditSessionId:
             auditSessionId.present ? auditSessionId.value : this.auditSessionId,
         batchId: batchId.present ? batchId.value : this.batchId,
+        locationId: locationId.present ? locationId.value : this.locationId,
+        transferRef: transferRef.present ? transferRef.value : this.transferRef,
         supplierId: supplierId.present ? supplierId.value : this.supplierId,
         createdAt: createdAt ?? this.createdAt,
       );
@@ -1387,6 +1838,10 @@ class Movement extends DataClass implements Insertable<Movement> {
           ? data.auditSessionId.value
           : this.auditSessionId,
       batchId: data.batchId.present ? data.batchId.value : this.batchId,
+      locationId:
+          data.locationId.present ? data.locationId.value : this.locationId,
+      transferRef:
+          data.transferRef.present ? data.transferRef.value : this.transferRef,
       supplierId:
           data.supplierId.present ? data.supplierId.value : this.supplierId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1403,6 +1858,8 @@ class Movement extends DataClass implements Insertable<Movement> {
           ..write('note: $note, ')
           ..write('auditSessionId: $auditSessionId, ')
           ..write('batchId: $batchId, ')
+          ..write('locationId: $locationId, ')
+          ..write('transferRef: $transferRef, ')
           ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -1411,7 +1868,7 @@ class Movement extends DataClass implements Insertable<Movement> {
 
   @override
   int get hashCode => Object.hash(id, productId, qtyDelta, reason, note,
-      auditSessionId, batchId, supplierId, createdAt);
+      auditSessionId, batchId, locationId, transferRef, supplierId, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1423,6 +1880,8 @@ class Movement extends DataClass implements Insertable<Movement> {
           other.note == this.note &&
           other.auditSessionId == this.auditSessionId &&
           other.batchId == this.batchId &&
+          other.locationId == this.locationId &&
+          other.transferRef == this.transferRef &&
           other.supplierId == this.supplierId &&
           other.createdAt == this.createdAt);
 }
@@ -1435,6 +1894,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
   final Value<String?> note;
   final Value<int?> auditSessionId;
   final Value<int?> batchId;
+  final Value<int?> locationId;
+  final Value<String?> transferRef;
   final Value<int?> supplierId;
   final Value<DateTime> createdAt;
   const MovementsCompanion({
@@ -1445,6 +1906,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
     this.note = const Value.absent(),
     this.auditSessionId = const Value.absent(),
     this.batchId = const Value.absent(),
+    this.locationId = const Value.absent(),
+    this.transferRef = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -1456,6 +1919,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
     this.note = const Value.absent(),
     this.auditSessionId = const Value.absent(),
     this.batchId = const Value.absent(),
+    this.locationId = const Value.absent(),
+    this.transferRef = const Value.absent(),
     this.supplierId = const Value.absent(),
     required DateTime createdAt,
   })  : productId = Value(productId),
@@ -1470,6 +1935,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
     Expression<String>? note,
     Expression<int>? auditSessionId,
     Expression<int>? batchId,
+    Expression<int>? locationId,
+    Expression<String>? transferRef,
     Expression<int>? supplierId,
     Expression<DateTime>? createdAt,
   }) {
@@ -1481,6 +1948,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
       if (note != null) 'note': note,
       if (auditSessionId != null) 'audit_session_id': auditSessionId,
       if (batchId != null) 'batch_id': batchId,
+      if (locationId != null) 'location_id': locationId,
+      if (transferRef != null) 'transfer_ref': transferRef,
       if (supplierId != null) 'supplier_id': supplierId,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -1494,6 +1963,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
       Value<String?>? note,
       Value<int?>? auditSessionId,
       Value<int?>? batchId,
+      Value<int?>? locationId,
+      Value<String?>? transferRef,
       Value<int?>? supplierId,
       Value<DateTime>? createdAt}) {
     return MovementsCompanion(
@@ -1504,6 +1975,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
       note: note ?? this.note,
       auditSessionId: auditSessionId ?? this.auditSessionId,
       batchId: batchId ?? this.batchId,
+      locationId: locationId ?? this.locationId,
+      transferRef: transferRef ?? this.transferRef,
       supplierId: supplierId ?? this.supplierId,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -1533,6 +2006,12 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
     if (batchId.present) {
       map['batch_id'] = Variable<int>(batchId.value);
     }
+    if (locationId.present) {
+      map['location_id'] = Variable<int>(locationId.value);
+    }
+    if (transferRef.present) {
+      map['transfer_ref'] = Variable<String>(transferRef.value);
+    }
     if (supplierId.present) {
       map['supplier_id'] = Variable<int>(supplierId.value);
     }
@@ -1552,6 +2031,8 @@ class MovementsCompanion extends UpdateCompanion<Movement> {
           ..write('note: $note, ')
           ..write('auditSessionId: $auditSessionId, ')
           ..write('batchId: $batchId, ')
+          ..write('locationId: $locationId, ')
+          ..write('transferRef: $transferRef, ')
           ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -3228,6 +3709,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $SuppliersTable suppliers = $SuppliersTable(this);
   late final $ProductsTable products = $ProductsTable(this);
+  late final $LocationsTable locations = $LocationsTable(this);
   late final $MovementsTable movements = $MovementsTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $StockAuditSessionsTable stockAuditSessions =
@@ -3245,6 +3727,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       'CREATE INDEX idx_movement_created ON movement (created_at)');
   late final Index idxMovementBatch = Index('idx_movement_batch',
       'CREATE INDEX idx_movement_batch ON movement (batch_id)');
+  late final Index idxMovementLocation = Index('idx_movement_location',
+      'CREATE INDEX idx_movement_location ON movement (location_id, product_id)');
   late final Index idxAuditItemSession = Index('idx_audit_item_session',
       'CREATE INDEX idx_audit_item_session ON stock_audit_item (session_id)');
   late final ProductDao productDao = ProductDao(this as AppDatabase);
@@ -3253,6 +3737,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final AuditDao auditDao = AuditDao(this as AppDatabase);
   late final BatchDao batchDao = BatchDao(this as AppDatabase);
   late final SupplierDao supplierDao = SupplierDao(this as AppDatabase);
+  late final LocationDao locationDao = LocationDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3260,6 +3745,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         suppliers,
         products,
+        locations,
         movements,
         settings,
         stockAuditSessions,
@@ -3270,6 +3756,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         idxMovementProduct,
         idxMovementCreated,
         idxMovementBatch,
+        idxMovementLocation,
         idxAuditItemSession
       ];
   @override
@@ -3287,6 +3774,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
                 limitUpdateKind: UpdateKind.delete),
             result: [
               TableUpdate('movement', kind: UpdateKind.delete),
+            ],
+          ),
+          WritePropagation(
+            on: TableUpdateQuery.onTableName('location',
+                limitUpdateKind: UpdateKind.delete),
+            result: [
+              TableUpdate('movement', kind: UpdateKind.update),
             ],
           ),
           WritePropagation(
@@ -4313,6 +4807,282 @@ typedef $$ProductsTableProcessedTableManager = ProcessedTableManager<
         bool movementsRefs,
         bool stockAuditItemsRefs,
         bool batchesRefs})>;
+typedef $$LocationsTableCreateCompanionBuilder = LocationsCompanion Function({
+  Value<int> id,
+  required String name,
+  Value<String?> note,
+  Value<bool> isDefault,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
+});
+typedef $$LocationsTableUpdateCompanionBuilder = LocationsCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<String?> note,
+  Value<bool> isDefault,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
+});
+
+final class $$LocationsTableReferences
+    extends BaseReferences<_$AppDatabase, $LocationsTable, Location> {
+  $$LocationsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$MovementsTable, List<Movement>>
+      _movementsRefsTable(_$AppDatabase db) =>
+          MultiTypedResultKey.fromTable(db.movements,
+              aliasName: 'location__id__movement__location_id');
+
+  $$MovementsTableProcessedTableManager get movementsRefs {
+    final manager = $$MovementsTableTableManager($_db, $_db.movements)
+        .filter((f) => f.locationId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_movementsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+}
+
+class $$LocationsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocationsTable> {
+  $$LocationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isDefault => $composableBuilder(
+      column: $table.isDefault, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+
+  Expression<bool> movementsRefs(
+      Expression<bool> Function($$MovementsTableFilterComposer f) f) {
+    final $$MovementsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.movements,
+        getReferencedColumn: (t) => t.locationId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$MovementsTableFilterComposer(
+              $db: $db,
+              $table: $db.movements,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$LocationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocationsTable> {
+  $$LocationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isDefault => $composableBuilder(
+      column: $table.isDefault, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocationsTable> {
+  $$LocationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDefault =>
+      $composableBuilder(column: $table.isDefault, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  Expression<T> movementsRefs<T extends Object>(
+      Expression<T> Function($$MovementsTableAnnotationComposer a) f) {
+    final $$MovementsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.movements,
+        getReferencedColumn: (t) => t.locationId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$MovementsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.movements,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+}
+
+class $$LocationsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LocationsTable,
+    Location,
+    $$LocationsTableFilterComposer,
+    $$LocationsTableOrderingComposer,
+    $$LocationsTableAnnotationComposer,
+    $$LocationsTableCreateCompanionBuilder,
+    $$LocationsTableUpdateCompanionBuilder,
+    (Location, $$LocationsTableReferences),
+    Location,
+    PrefetchHooks Function({bool movementsRefs})> {
+  $$LocationsTableTableManager(_$AppDatabase db, $LocationsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocationsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String?> note = const Value.absent(),
+            Value<bool> isDefault = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
+          }) =>
+              LocationsCompanion(
+            id: id,
+            name: name,
+            note: note,
+            isDefault: isDefault,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String name,
+            Value<String?> note = const Value.absent(),
+            Value<bool> isDefault = const Value.absent(),
+            required DateTime createdAt,
+            required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
+          }) =>
+              LocationsCompanion.insert(
+            id: id,
+            name: name,
+            note: note,
+            isDefault: isDefault,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            deletedAt: deletedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable<$LocationsTable, Location>(table),
+                    $$LocationsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({movementsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (movementsRefs) db.movements],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (movementsRefs)
+                    await $_getPrefetchedData<Location, $LocationsTable,
+                            Movement>(
+                        currentTable: table,
+                        referencedTable:
+                            $$LocationsTableReferences._movementsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$LocationsTableReferences(db, table, p0)
+                                .movementsRefs,
+                        referencedItemsForCurrentItem:
+                            (item, referencedItems) => referencedItems
+                                .where((e) => e.locationId == item.id),
+                        typedResults: items)
+                ];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$LocationsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LocationsTable,
+    Location,
+    $$LocationsTableFilterComposer,
+    $$LocationsTableOrderingComposer,
+    $$LocationsTableAnnotationComposer,
+    $$LocationsTableCreateCompanionBuilder,
+    $$LocationsTableUpdateCompanionBuilder,
+    (Location, $$LocationsTableReferences),
+    Location,
+    PrefetchHooks Function({bool movementsRefs})>;
 typedef $$MovementsTableCreateCompanionBuilder = MovementsCompanion Function({
   Value<int> id,
   required int productId,
@@ -4321,6 +5091,8 @@ typedef $$MovementsTableCreateCompanionBuilder = MovementsCompanion Function({
   Value<String?> note,
   Value<int?> auditSessionId,
   Value<int?> batchId,
+  Value<int?> locationId,
+  Value<String?> transferRef,
   Value<int?> supplierId,
   required DateTime createdAt,
 });
@@ -4332,6 +5104,8 @@ typedef $$MovementsTableUpdateCompanionBuilder = MovementsCompanion Function({
   Value<String?> note,
   Value<int?> auditSessionId,
   Value<int?> batchId,
+  Value<int?> locationId,
+  Value<String?> transferRef,
   Value<int?> supplierId,
   Value<DateTime> createdAt,
 });
@@ -4349,6 +5123,20 @@ final class $$MovementsTableReferences
     final manager = $$ProductsTableTableManager($_db, $_db.products)
         .filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_productIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+
+  static $LocationsTable _locationIdTable(_$AppDatabase db) =>
+      db.locations.createAlias('movement__location_id__location__id');
+
+  $$LocationsTableProcessedTableManager? get locationId {
+    final $_column = $_itemColumn<int>('location_id');
+    if ($_column == null) return null;
+    final manager = $$LocationsTableTableManager($_db, $_db.locations)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_locationIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: [item]));
@@ -4397,6 +5185,9 @@ class $$MovementsTableFilterComposer
   ColumnFilters<int> get batchId => $composableBuilder(
       column: $table.batchId, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get transferRef => $composableBuilder(
+      column: $table.transferRef, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
 
@@ -4412,6 +5203,26 @@ class $$MovementsTableFilterComposer
             $$ProductsTableFilterComposer(
               $db: $db,
               $table: $db.products,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+
+  $$LocationsTableFilterComposer get locationId {
+    final $$LocationsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.locationId,
+        referencedTable: $db.locations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LocationsTableFilterComposer(
+              $db: $db,
+              $table: $db.locations,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -4469,6 +5280,9 @@ class $$MovementsTableOrderingComposer
   ColumnOrderings<int> get batchId => $composableBuilder(
       column: $table.batchId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get transferRef => $composableBuilder(
+      column: $table.transferRef, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -4484,6 +5298,26 @@ class $$MovementsTableOrderingComposer
             $$ProductsTableOrderingComposer(
               $db: $db,
               $table: $db.products,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+
+  $$LocationsTableOrderingComposer get locationId {
+    final $$LocationsTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.locationId,
+        referencedTable: $db.locations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LocationsTableOrderingComposer(
+              $db: $db,
+              $table: $db.locations,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -4540,6 +5374,9 @@ class $$MovementsTableAnnotationComposer
   GeneratedColumn<int> get batchId =>
       $composableBuilder(column: $table.batchId, builder: (column) => column);
 
+  GeneratedColumn<String> get transferRef => $composableBuilder(
+      column: $table.transferRef, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -4555,6 +5392,26 @@ class $$MovementsTableAnnotationComposer
             $$ProductsTableAnnotationComposer(
               $db: $db,
               $table: $db.products,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+
+  $$LocationsTableAnnotationComposer get locationId {
+    final $$LocationsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.locationId,
+        referencedTable: $db.locations,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LocationsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.locations,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -4595,7 +5452,8 @@ class $$MovementsTableTableManager extends RootTableManager<
     $$MovementsTableUpdateCompanionBuilder,
     (Movement, $$MovementsTableReferences),
     Movement,
-    PrefetchHooks Function({bool productId, bool supplierId})> {
+    PrefetchHooks Function(
+        {bool productId, bool locationId, bool supplierId})> {
   $$MovementsTableTableManager(_$AppDatabase db, $MovementsTable table)
       : super(TableManagerState(
           db: db,
@@ -4614,6 +5472,8 @@ class $$MovementsTableTableManager extends RootTableManager<
             Value<String?> note = const Value.absent(),
             Value<int?> auditSessionId = const Value.absent(),
             Value<int?> batchId = const Value.absent(),
+            Value<int?> locationId = const Value.absent(),
+            Value<String?> transferRef = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
           }) =>
@@ -4625,6 +5485,8 @@ class $$MovementsTableTableManager extends RootTableManager<
             note: note,
             auditSessionId: auditSessionId,
             batchId: batchId,
+            locationId: locationId,
+            transferRef: transferRef,
             supplierId: supplierId,
             createdAt: createdAt,
           ),
@@ -4636,6 +5498,8 @@ class $$MovementsTableTableManager extends RootTableManager<
             Value<String?> note = const Value.absent(),
             Value<int?> auditSessionId = const Value.absent(),
             Value<int?> batchId = const Value.absent(),
+            Value<int?> locationId = const Value.absent(),
+            Value<String?> transferRef = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
             required DateTime createdAt,
           }) =>
@@ -4647,6 +5511,8 @@ class $$MovementsTableTableManager extends RootTableManager<
             note: note,
             auditSessionId: auditSessionId,
             batchId: batchId,
+            locationId: locationId,
+            transferRef: transferRef,
             supplierId: supplierId,
             createdAt: createdAt,
           ),
@@ -4656,7 +5522,8 @@ class $$MovementsTableTableManager extends RootTableManager<
                     $$MovementsTableReferences(db, table, e)
                   ))
               .toList(),
-          prefetchHooksCallback: ({productId = false, supplierId = false}) {
+          prefetchHooksCallback: (
+              {productId = false, locationId = false, supplierId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -4681,6 +5548,16 @@ class $$MovementsTableTableManager extends RootTableManager<
                         $$MovementsTableReferences._productIdTable(db),
                     referencedColumn:
                         $$MovementsTableReferences._productIdTable(db).id,
+                  ) as T;
+                }
+                if (locationId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.locationId,
+                    referencedTable:
+                        $$MovementsTableReferences._locationIdTable(db),
+                    referencedColumn:
+                        $$MovementsTableReferences._locationIdTable(db).id,
                   ) as T;
                 }
                 if (supplierId) {
@@ -4715,7 +5592,7 @@ typedef $$MovementsTableProcessedTableManager = ProcessedTableManager<
     $$MovementsTableUpdateCompanionBuilder,
     (Movement, $$MovementsTableReferences),
     Movement,
-    PrefetchHooks Function({bool productId, bool supplierId})>;
+    PrefetchHooks Function({bool productId, bool locationId, bool supplierId})>;
 typedef $$SettingsTableCreateCompanionBuilder = SettingsCompanion Function({
   required String key,
   required String value,
@@ -5922,6 +6799,8 @@ class $AppDatabaseManager {
       $$SuppliersTableTableManager(_db, _db.suppliers);
   $$ProductsTableTableManager get products =>
       $$ProductsTableTableManager(_db, _db.products);
+  $$LocationsTableTableManager get locations =>
+      $$LocationsTableTableManager(_db, _db.locations);
   $$MovementsTableTableManager get movements =>
       $$MovementsTableTableManager(_db, _db.movements);
   $$SettingsTableTableManager get settings =>

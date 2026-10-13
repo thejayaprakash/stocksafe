@@ -11,6 +11,7 @@ import '../services/license_service.dart';
 import '../services/theme_service.dart';
 import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
+import 'locations_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
 import '../app_scope.dart';
@@ -193,6 +194,18 @@ class _SettingsPageState extends State<SettingsPage> {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => SuppliersPage()),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.warehouse_outlined),
+          title: const Text('Locations'),
+          subtitle: const Text(
+            'Track stock separately in your shop, godown or second branch',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LocationsPage()),
           ),
         ),
         ListTile(
