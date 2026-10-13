@@ -17,6 +17,12 @@ val keystoreProperties = Properties().apply {
 }
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
+// Opt-in escape hatch for building a release APK with no signing material,
+// which testers need for the release-build scenarios in
+// docs/closed_testing_guide.md. Asked for by name so it cannot happen by
+// accident:  flutter build apk --release -PallowDebugSigning=true
+val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) == "true"
+
 android {
     namespace = "app.stocksafe.inventory"
     compileSdk = 36
@@ -66,14 +72,20 @@ android {
             // signed with it cannot be uploaded to Play, and if it ever
             // reached users anyone could sign a malicious update that Android
             // would accept in its place. Never publish one.
+            //
+            // A warning is not enough. Gradle prints hundreds of lines and CI
+            // scrolls past all of them, so "must not be published" sat in the
+            // log while the workflow uploaded the artifact under the name
+            // StockSafe-release-aab. The fallback is still available — testers
+            // need it — but it now has to be asked for by name:
+            //
+            //     flutter build apk --release -PallowDebugSigning=true
+            //
+            // Without the flag, a release build with no keystore fails. See
+            // the task-graph check below.
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
             } else {
-                logger.warn(
-                    "WARNING: no android/key.properties found - signing the " +
-                    "release build with the PUBLIC DEBUG KEY. This build must " +
-                    "not be published or distributed."
-                )
                 signingConfigs.getByName("debug")
             }
 
@@ -98,6 +110,40 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+}
+
+// Fails a release build that would be signed with the debug key, at the point
+// one is actually requested.
+//
+// The check lives here rather than in the `release { }` block because that
+// block is configured for every build, including debug ones — throwing inside
+// it would break `flutter run`. Keyed on the task graph, it is inert until
+// something actually asks for a release artifact.
+gradle.taskGraph.whenReady {
+    val buildingRelease = allTasks.any { task ->
+        task.name.contains("Release") && (
+            task.name.startsWith("assemble") ||
+                task.name.startsWith("bundle") ||
+                task.name.startsWith("package")
+            )
+    }
+    if (buildingRelease && !hasReleaseKeystore && !allowDebugSigning) {
+        throw GradleException(
+            """
+            |
+            |Refusing to build a release artifact with the debug signing key.
+            |
+            |android/key.properties was not found. The debug keystore ships with
+            |the Android SDK — same file, same password, on every machine — so
+            |Play rejects anything signed with it, and if such a build reached
+            |users, anyone could sign an update Android would accept over it.
+            |
+            |To build a real release:  see docs/release_signing.md
+            |To test a release build:  flutter build apk --release -PallowDebugSigning=true
+            |                          (never publish or distribute the result)
+            """.trimMargin()
+        )
     }
 }
 

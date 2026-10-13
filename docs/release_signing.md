@@ -47,8 +47,30 @@ apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk
 ```
 
 The certificate DN must show **your** details. If it says
-`C=US, O=Android, CN=Android Debug`, `key.properties` was not picked up — the
-build also prints a warning in that case.
+`C=US, O=Android, CN=Android Debug`, `key.properties` was not picked up.
+
+### Building a release without a keystore
+
+With no `android/key.properties`, a release build now **fails**:
+
+```
+Refusing to build a release artifact with the debug signing key.
+```
+
+Testers still need release builds on machines with no signing material, so the
+fallback is available — by name:
+
+```bash
+flutter build apk --release -PallowDebugSigning=true
+```
+
+Never publish or distribute the result. It is signed with the public Android
+debug key: the same file, with the same password, on every machine in the world.
+
+This used to be the default behaviour with only a `logger.warn()` to mark it.
+Gradle prints hundreds of lines, CI scrolled past the warning, and the workflow
+then uploaded the artifact under the name `StockSafe-release-apk` — which read
+like something you could ship.
 
 ## Losing the key
 
@@ -75,7 +97,39 @@ signing key, every install and every review to it. It was previously
 
 ## CI
 
-The `release` job builds unsigned-for-publication artifacts, because
-`key.properties` is not in the repository. To produce a publishable AAB in CI,
-add the keystore as a base64 GitHub secret, decode it during the job, and write
-`key.properties` from secrets. Do not commit either.
+The `release` job builds artifacts that are **not publishable**, because
+`key.properties` is not in the repository. It passes `-PallowDebugSigning=true`
+explicitly and names its outputs `StockSafe-TESTING-ONLY-debug-signed-*`, so
+nobody downloads one expecting to upload it.
+
+To produce a publishable AAB in CI, add the keystore as a base64 GitHub secret,
+decode it during the job, and write `key.properties` from secrets. Do not commit
+either.
+
+## The launch gate
+
+`test/release_readiness_test.dart` asserts the things that are permanent once
+the app is on Play, or that silently yield a build nobody should publish: the
+application ID, that the namespace matches it, that a release cannot fall back
+to the debug key unasked, that no keystore is in the working tree, and that the
+voucher secret is not the development placeholder.
+
+It is tagged `release` and excluded from the ordinary suite, because the
+voucher-secret check only passes when given the real secret. Run it before an
+upload:
+
+```bash
+flutter test --tags release \
+  --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET"
+```
+
+Or run the **Launch Gate** job from the Actions tab, which needs
+`STOCKSAFE_VOUCHER_SECRET` set as a repository secret.
+
+### Before the first upload
+
+- [ ] Keystore created, backed up in two places, passwords in a password manager
+- [ ] `android/key.properties` filled in locally and **not** committed
+- [ ] Play App Signing enrolment accepted on the first upload
+- [ ] `flutter test --tags release` passes with the real voucher secret
+- [ ] Release APK installed on a physical device and smoke-tested
