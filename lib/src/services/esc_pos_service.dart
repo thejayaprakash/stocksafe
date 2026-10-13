@@ -24,6 +24,41 @@ enum ThermalPaperWidth {
 /// Also provides formatted plain-text receipts for visual preview
 /// and WhatsApp/SMS transmission.
 class EscPosService {
+  // ─── Vendor branding ──────────────────────────────────────────────
+  //
+  // The lines that mark a slip as produced by StockSafe. Removing them is
+  // what the paid tier buys - see [brandingLines] and the `proUnlocked`
+  // parameter on each build method.
+  //
+  // Deliberately not gated behind the shop name: a receipt headed with the
+  // shop's own name is what makes it a receipt, and a free tier that prints
+  // "STOCKSAFE" where the shop's name belongs is not reduced, it is broken.
+  // A shopkeeper would simply stop printing. The vendor mark is the thing
+  // worth paying to remove, and while it is there it is also the only
+  // distribution this app has.
+
+  /// Footer on the audit discrepancy slip.
+  static const String brandingAudit = 'Powered by StockSafe Enterprise';
+
+  /// Footer on the delivery / stock inward slip.
+  ///
+  /// Was 'StockSafe · Offline Inventory Management' - 40 characters, which
+  /// [_center] clips to the paper width. On 58mm rolls, the default and the
+  /// common one for a kirana, it printed as 'StockSafe · Offline Inventory Ma'
+  /// on a slip handed to a supplier. Every mark now fits the narrowest paper,
+  /// which `a vendor mark fits the narrowest paper` pins.
+  static const String brandingDelivery = 'StockSafe · Offline Inventory';
+
+  /// Footer on the low-stock reorder slip.
+  static const String brandingReorder = 'StockSafe Enterprise';
+
+  /// Every vendor mark, for tests that assert a Pro slip carries none of them.
+  static const List<String> brandingLines = [
+    brandingAudit,
+    brandingDelivery,
+    brandingReorder,
+  ];
+
   // ESC/POS Command Constants
   static const int _esc = 0x1B;
   static const int _gs = 0x1D;
@@ -51,6 +86,7 @@ class EscPosService {
 
   /// Generates ESC/POS bytecode for physical stock audit discrepancy sheets.
   static Uint8List buildAuditDiscrepancySlipBytes({
+    bool proUnlocked = false,
     required StockAuditSession session,
     required List<StockAuditItemWithProduct> items,
     required String shopName,
@@ -206,8 +242,10 @@ class EscPosService {
     // 6. Footer
     builder.add(cmdAlignCenter);
     builder.add([0x0A]);
-    builder.add(_encode('Powered by StockSafe Enterprise'));
-    builder.add([0x0A]);
+    if (!proUnlocked) {
+      builder.add(_encode(brandingAudit));
+      builder.add([0x0A]);
+    }
     builder.add(_encode('Data Sovereignty & Ledger Verified'));
     builder.add([0x0A]);
 
@@ -220,6 +258,7 @@ class EscPosService {
 
   /// Formatted plain text for on-screen preview or WhatsApp text sharing.
   static String buildAuditDiscrepancyText({
+    bool proUnlocked = false,
     required StockAuditSession session,
     required List<StockAuditItemWithProduct> items,
     required String shopName,
@@ -299,7 +338,7 @@ class EscPosService {
     buffer.writeln();
     buffer.writeln(_twoCols('_______________', '_______________', width));
     buffer.writeln();
-    buffer.writeln(_center('Powered by StockSafe Enterprise', width));
+    if (!proUnlocked) buffer.writeln(_center(brandingAudit, width));
 
     return buffer.toString();
   }
@@ -310,6 +349,7 @@ class EscPosService {
 
   /// Generates ESC/POS bytecode for Delivery Slips (Stock In / Inward).
   static Uint8List buildDeliverySlipBytes({
+    bool proUnlocked = false,
     required Product product,
     required int quantity,
     required String reason,
@@ -425,8 +465,10 @@ class EscPosService {
     // Footer
     builder.add(cmdAlignCenter);
     builder.add([0x0A]);
-    builder.add(_encode('StockSafe · Offline Inventory Management'));
-    builder.add([0x0A]);
+    if (!proUnlocked) {
+      builder.add(_encode(brandingDelivery));
+      builder.add([0x0A]);
+    }
 
     builder.add(cmdFeed(4));
     builder.add(cmdCut);
@@ -436,6 +478,7 @@ class EscPosService {
 
   /// Formatted plain text for Delivery Slip.
   static String buildDeliverySlipText({
+    bool proUnlocked = false,
     required Product product,
     required int quantity,
     required String reason,
@@ -497,7 +540,7 @@ class EscPosService {
     buffer.writeln();
     buffer.writeln(_twoCols('_______________', '_______________', width));
     buffer.writeln();
-    buffer.writeln(_center('StockSafe · Offline Inventory Management', width));
+    if (!proUnlocked) buffer.writeln(_center(brandingDelivery, width));
 
     return buffer.toString();
   }
@@ -508,6 +551,7 @@ class EscPosService {
 
   /// Generates ESC/POS bytecode for Low-Stock Reorder Slips.
   static Uint8List buildLowStockReorderSlipBytes({
+    bool proUnlocked = false,
     required List<LowStockSlipEntry> entries,
     required String shopName,
     ThermalPaperWidth paperWidth = ThermalPaperWidth.mm58,
@@ -568,8 +612,10 @@ class EscPosService {
     builder.add(cmdAlignCenter);
     builder.add(_encode('Take to wholesale market / Hand to supplier'));
     builder.add([0x0A]);
-    builder.add(_encode('StockSafe Enterprise'));
-    builder.add([0x0A]);
+    if (!proUnlocked) {
+      builder.add(_encode(brandingReorder));
+      builder.add([0x0A]);
+    }
 
     builder.add(cmdFeed(4));
     builder.add(cmdCut);
@@ -579,6 +625,7 @@ class EscPosService {
 
   /// Formatted plain text for Low-Stock Reorder Slip.
   static String buildLowStockReorderText({
+    bool proUnlocked = false,
     required List<LowStockSlipEntry> entries,
     required String shopName,
     ThermalPaperWidth paperWidth = ThermalPaperWidth.mm58,
@@ -609,7 +656,7 @@ class EscPosService {
 
     buffer.writeln();
     buffer.writeln(_center('Take to wholesale market / Hand to supplier', width));
-    buffer.writeln(_center('StockSafe Enterprise', width));
+    if (!proUnlocked) buffer.writeln(_center(brandingReorder, width));
 
     return buffer.toString();
   }

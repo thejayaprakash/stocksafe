@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/esc_pos_service.dart';
 import 'barcode_label_print_page.dart';
@@ -484,7 +485,10 @@ class _StockMovementPageState extends State<StockMovementPage> {
       if (!mounted) return;
 
       if (action == 'print_slip' && product != null) {
-        final shopName = await _db.settingDao.get('shop_name') ?? 'STOCKSAFE';
+        if (!mounted) return;
+        final identity = await resolvePrintIdentity(context, _db);
+        if (identity == null) return;
+
         final b58 = EscPosService.buildDeliverySlipBytes(
           product: product,
           quantity: qty,
@@ -493,7 +497,8 @@ class _StockMovementPageState extends State<StockMovementPage> {
           batchNumber: batchNum.isEmpty ? null : batchNum,
           expiryDate: _expiryDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          shopName: shopName,
+          shopName: identity.shopName,
+          proUnlocked: identity.proUnlocked,
           paperWidth: ThermalPaperWidth.mm58,
         );
         final b80 = EscPosService.buildDeliverySlipBytes(
@@ -504,7 +509,8 @@ class _StockMovementPageState extends State<StockMovementPage> {
           batchNumber: batchNum.isEmpty ? null : batchNum,
           expiryDate: _expiryDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          shopName: shopName,
+          shopName: identity.shopName,
+          proUnlocked: identity.proUnlocked,
           paperWidth: ThermalPaperWidth.mm80,
         );
         final t58 = EscPosService.buildDeliverySlipText(
@@ -515,7 +521,8 @@ class _StockMovementPageState extends State<StockMovementPage> {
           batchNumber: batchNum.isEmpty ? null : batchNum,
           expiryDate: _expiryDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          shopName: shopName,
+          shopName: identity.shopName,
+          proUnlocked: identity.proUnlocked,
           paperWidth: ThermalPaperWidth.mm58,
         );
         final t80 = EscPosService.buildDeliverySlipText(
@@ -526,7 +533,8 @@ class _StockMovementPageState extends State<StockMovementPage> {
           batchNumber: batchNum.isEmpty ? null : batchNum,
           expiryDate: _expiryDate,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          shopName: shopName,
+          shopName: identity.shopName,
+          proUnlocked: identity.proUnlocked,
           paperWidth: ThermalPaperWidth.mm80,
         );
 

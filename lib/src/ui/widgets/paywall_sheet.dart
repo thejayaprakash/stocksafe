@@ -322,6 +322,11 @@ class _PaywallSheetState extends State<PaywallSheet> {
               title: AppLocale.tr('feature_voice_assistant'),
               subtitle: AppLocale.tr('feature_voice_desc'),
             ),
+            _FeatureRow(
+              icon: Icons.storefront,
+              title: AppLocale.tr('feature_own_branding'),
+              subtitle: AppLocale.tr('feature_own_branding_desc'),
+            ),
 
             const SizedBox(height: 12),
 
