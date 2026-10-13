@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'barcode_label_print_page.dart';
 import 'product_edit_page.dart';
 import 'stock_movement_page.dart';
 import '../app_scope.dart';
+import 'widgets/external_app.dart';
 
 /// Product detail: current stock (derived) plus full movement history.
 class ProductDetailPage extends StatelessWidget {
@@ -135,10 +135,7 @@ class ProductDetailPage extends StatelessWidget {
                             ),
                             icon: const Icon(Icons.phone, size: 16, color: Colors.green),
                             label: const Text('Call'),
-                            onPressed: () {
-                              final clean = s.phone.replaceAll(RegExp(r'[^0-9+]'), '');
-                              launchUrl(Uri.parse('tel:$clean'));
-                            },
+                            onPressed: () => ExternalApp.dial(context, s.phone),
                           ),
                         ),
                       ),

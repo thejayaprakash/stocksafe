@@ -1,10 +1,10 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
 import '../app_scope.dart';
+import 'widgets/external_app.dart';
 
 /// Supplier & Vendor Contacts Directory Page.
 /// Retailers can record vendor details, view mapped products,
@@ -340,7 +340,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                     style: IconButton.styleFrom(backgroundColor: Colors.green),
                     icon: const Icon(Icons.phone, color: Colors.white),
                     tooltip: 'Call Supplier',
-                    onPressed: () => _callSupplier(s.phone),
+                    onPressed: () => ExternalApp.dial(context, s.phone),
                   ),
                 ],
               ),
@@ -408,7 +408,12 @@ class _SuppliersPageState extends State<SuppliersPage> {
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.message, color: Colors.teal),
                       label: const Text('WhatsApp'),
-                      onPressed: () => _messageWhatsApp(s.phone, s.name),
+                      onPressed: () => ExternalApp.whatsApp(
+                        context,
+                        s.phone,
+                        message:
+                            'Hello ${s.name}, contacting you regarding stock order.',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -417,7 +422,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                       style: FilledButton.styleFrom(backgroundColor: Colors.green),
                       icon: const Icon(Icons.phone),
                       label: const Text('Call Supplier'),
-                      onPressed: () => _callSupplier(s.phone),
+                      onPressed: () => ExternalApp.dial(context, s.phone),
                     ),
                   ),
                 ],
@@ -429,22 +434,6 @@ class _SuppliersPageState extends State<SuppliersPage> {
     );
   }
 
-  static Future<void> _callSupplier(String phone) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final uri = Uri.parse('tel:$cleanPhone');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
-  }
-
-  static Future<void> _messageWhatsApp(String phone, String supplierName) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final text = Uri.encodeComponent('Hello $supplierName, contacting you regarding stock order.');
-    final uri = Uri.parse('https://wa.me/$cleanPhone?text=$text');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
 }
 
 class _SupplierCard extends StatelessWidget {
@@ -530,10 +519,7 @@ class _SupplierCard extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.phone, size: 16, color: Colors.green),
                     label: const Text('Call', style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      final clean = supplier.phone.replaceAll(RegExp(r'[^0-9+]'), '');
-                      launchUrl(Uri.parse('tel:$clean'));
-                    },
+                    onPressed: () => ExternalApp.dial(context, supplier.phone),
                   ),
                 ],
               ),

@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
@@ -12,6 +11,7 @@ import 'stock_movement_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
 import '../app_scope.dart';
+import 'widgets/external_app.dart';
 
 /// Low-stock & Expiry screen:
 /// 1. Products where stock_qty <= low_stock_level with restock recommendations.
@@ -347,19 +347,8 @@ class _LowStockPageState extends State<LowStockPage> with SingleTickerProviderSt
     );
   }
 
-  Future<void> _callSupplier(String phone) async {
-    final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final uri = Uri.parse('tel:$clean');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cannot launch dialer for: $phone')),
-        );
-      }
-    }
-  }
+  Future<void> _callSupplier(String phone) =>
+      ExternalApp.dial(context, phone);
 
   Future<void> _showAssignSupplierDialog(Product product) async {
     final suppliers = await _db.supplierDao.getAll();
