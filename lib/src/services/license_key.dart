@@ -16,12 +16,18 @@ import 'package:crypto/crypto.dart';
 ///
 /// ## What this is and is not
 ///
-/// The secret is embedded in the app, so an attacker who decompiles it can
-/// mint vouchers. That is unavoidable for any offline check — there is no
-/// server to ask, which is the whole point of the feature. The goal is to
-/// stop casual sharing and guessing, not a determined reverse engineer. The
-/// defence against that is Play Billing (roadmap E.1), which this sits
-/// alongside rather than replaces.
+/// The secret is embedded in the app, so anyone who extracts it can mint
+/// vouchers. That is unavoidable for any offline check — there is no server
+/// to ask, which is the whole point of the feature.
+///
+/// Be concrete about how exposed it is: Dart is compiled ahead of time into
+/// `libapp.so`, and its string literals survive intact. Byte-searching a
+/// release APK finds this secret in plain UTF-8. R8 does not help — it
+/// obfuscates Java and Kotlin bytecode, not the Dart snapshot — and
+/// `--obfuscate` renames Dart symbols but not literals. So this is a speed
+/// bump against sharing and guessing, not a secret. Play Billing is the
+/// defence against a determined attacker; this sits alongside it rather than
+/// replacing it.
 ///
 /// Because the secret is only as private as the APK, it must not be reused
 /// for anything else, and vouchers should be minted in small batches.

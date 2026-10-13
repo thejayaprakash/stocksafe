@@ -297,7 +297,12 @@ class _CompletedSessionsList extends StatelessWidget {
                         final messenger = ScaffoldMessenger.of(context);
                         try {
                           final csv = await BackupService(db).exportAuditSessionCsv(s.id);
-                          await Share.share(csv, subject: 'Stocktake Audit Report - ${s.name}');
+                          await SharePlus.instance.share(
+                            ShareParams(
+                              text: csv,
+                              subject: 'Stocktake Audit Report - ${s.name}',
+                            ),
+                          );
                         } catch (e) {
                           DiagnosticService.instance
                               .log('Audit CSV export failed: $e', level: 'ERROR');
@@ -470,7 +475,7 @@ class _ActiveAuditSessionViewState extends State<_ActiveAuditSessionView> {
                         }
                       }
                     },
-                    errorBuilder: (ctx, error, child) => Center(
+                    errorBuilder: (ctx, error) => Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
