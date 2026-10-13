@@ -1,4 +1,8 @@
+import 'package:drift/drift.dart' show Variable;
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 import '../data/database.dart';
+import 'license_key.dart';
 
 /// Licensing, Free-Tier Limits, and Monetization Engine for StockSafe.
 ///
@@ -61,24 +65,41 @@ class LicenseService {
     return remaining > 0 ? remaining : 0;
   }
 
-  /// Watch current license status reactively.
-  Stream<LicenseStatus> watchLicenseStatus() async* {
-    while (true) {
-      final unlocked = await isProUnlocked();
-      final active = await _db.productDao.countActive();
-      final limit = await getFreeLimit();
-      final unlockMethod = await _db.settingDao.get(keyUnlockMethod);
-
-      yield LicenseStatus(
-        isPro: unlocked,
-        activeProductCount: active,
-        freeLimit: limit,
-        unlockMethod: unlockMethod,
+  /// Watch current licence status reactively.
+  ///
+  /// Driven by the database rather than a timer. This was a `while (true)`
+  /// loop running three queries every second, forever, with no cancellation —
+  /// battery and CPU spent re-reading values that change a handful of times
+  /// in the life of an install.
+  Stream<LicenseStatus> watchLicenseStatus() {
+    return _db
+        .customSelect(
+          '''
+          SELECT
+            (SELECT value FROM setting WHERE key = ?1)          AS pro_flag,
+            (SELECT value FROM setting WHERE key = ?2)          AS unlock_method,
+            (SELECT value FROM setting WHERE key = ?3)          AS free_limit,
+            (SELECT COUNT(*) FROM product WHERE deleted_at IS NULL)
+                                                                AS active_count
+          ''',
+          variables: [
+            Variable<String>(keyProUnlocked),
+            Variable<String>(keyUnlockMethod),
+            Variable<String>(SettingDao.freeLimitKey),
+          ],
+          readsFrom: {_db.settings, _db.products},
+        )
+        .watchSingle()
+        .map((row) {
+      final configured = int.tryParse(row.read<String?>('free_limit') ?? '');
+      return LicenseStatus(
+        isPro: row.read<String?>('pro_flag') == 'true',
+        activeProductCount: row.read<int>('active_count'),
+        freeLimit:
+            (configured != null && configured > 0) ? configured : defaultFreeLimit,
+        unlockMethod: row.read<String?>('unlock_method'),
       );
-
-      // Periodically yield or let caller react to DB changes
-      await Future<void>.delayed(const Duration(seconds: 1));
-    }
+    });
   }
 
   /// One-time unlock via Play Billing or In-App Purchase.
@@ -92,35 +113,40 @@ class LicenseService {
     }
   }
 
-  /// Restore previous Google Play purchase.
+  /// Restore a previous purchase.
+  ///
+  /// Returns true only when this device already holds an unlock. It used to
+  /// call unlockLifetime() unconditionally, so tapping "Restore Purchases" on
+  /// a fresh install granted Pro to anyone — and Play *requires* that button
+  /// to exist, so the bypass was one tap away for every user.
+  ///
+  /// Until Play Billing is integrated (roadmap E.1) there is no receipt to
+  /// query, so an honest answer is "nothing to restore" rather than a
+  /// simulated success.
   Future<bool> restorePurchases() async {
-    // In production, queries Google Play Billing / RevenueCat receipt cache.
-    // Checks if previously purchased, then restores unlock.
-    final existing = await _db.settingDao.get(keyProUnlocked);
-    if (existing == 'true') {
-      return true;
-    }
-    // Simulate successful receipt validation for testing / Play account restore
-    await unlockLifetime(method: 'restored');
-    return true;
+    return isProUnlocked();
   }
 
   /// Validates and activates an offline voucher or license key.
   /// Allows Kirana stores with no Google Play account or in offline environments
   /// to unlock the app with a valid 16-character alphanumeric key.
   Future<bool> validateAndActivateOfflineKey(String key) async {
-    final clean = key.trim().toUpperCase().replaceAll('-', '');
-    
-    // Algorithmic validation for offline retail keys:
-    // Format: STOCKSAFE + 6 alphanumeric characters or checksum
-    if (clean.startsWith('STOCKSAFE') && clean.length >= 12) {
-      await unlockLifetime(method: 'offline_code', code: key.trim());
+    // Signature-checked. The previous version accepted any string beginning
+    // STOCKSAFE with twelve or more characters, plus three hardcoded codes
+    // that are readable in the APK because R8 is disabled.
+    if (LicenseKey.isValid(key)) {
+      await unlockLifetime(
+        method: 'offline_voucher',
+        code: LicenseKey.serialOf(key),
+      );
       return true;
     }
-    
-    // Test activation key for developer/tester validation
-    if (clean == 'PRO2026' || clean == 'KIRANAUNLIMITED' || clean == 'TESTVIP') {
-      await unlockLifetime(method: 'test_code', code: key.trim());
+
+    // Debug builds keep a fixed code so the paywall can be exercised without
+    // minting a voucher. kDebugMode is compiled out of release entirely, so
+    // this cannot be reached by a shipped build.
+    if (kDebugMode && LicenseKey.normalise(key) == 'DEBUGUNLOCK') {
+      await unlockLifetime(method: 'debug_code', code: 'DEBUGUNLOCK');
       return true;
     }
 
