@@ -4,11 +4,15 @@
 // the README — "every schema change ships with a tested migration" — is only
 // true if something actually runs the migrations. This is that something.
 //
-// Regenerate the fixtures after any schema change:
+// Regenerate the fixtures after any schema change — all four steps:
 //   dart run drift_dev schema dump lib/src/data/database.dart drift_schemas/
+//   dart run drift_dev schema steps drift_schemas/ lib/src/data/schema_versions.dart
 //   dart run drift_dev schema generate --data-classes --companions \
 //       drift_schemas/ test/generated_migrations/
 //   bash tool/fix_generated_migrations.sh
+//
+// Then add the new `fromNToN+1` step to AppDatabase.migration and a matching
+// case to the 'Individual migration steps' group below.
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -49,6 +53,119 @@ void main() {
       final db = AppDatabase(NativeDatabase.memory());
       await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
       await db.close();
+    });
+  });
+
+  group('Individual migration steps', () {
+    // stepByStep applies one function per version transition. Testing only
+    // v1 -> current would hide a step that is wrong but compensated for by a
+    // later one, so each boundary is exercised on its own.
+
+    test('step 1 to 2 adds the enterprise schema and keeps v1 data', () async {
+      final schema = await verifier.schemaAt(1);
+      final ts = DateTime.utc(2026, 6, 1, 9, 0);
+
+      final oldDb = v1.DatabaseAtV1(schema.newConnection());
+      await oldDb.into(oldDb.products).insert(
+            v1.ProductsCompanion.insert(
+              name: 'Step test product',
+              buyPrice: const Value(12.0),
+              createdAt: _secs(ts),
+              updatedAt: _secs(ts),
+            ),
+          );
+      await oldDb.into(oldDb.movements).insert(
+            v1.MovementsCompanion.insert(
+              productId: 1,
+              qtyDelta: 7,
+              reason: 'opening_stock',
+              createdAt: _secs(ts),
+            ),
+          );
+      await oldDb.close();
+
+      // Pinning schemaVersion to 2 stops stepByStep after from1To2.
+      final db = _AppDatabaseAtVersion(schema.newConnection(), 2);
+      await verifier.migrateAndValidate(db, 2);
+
+      expect(await _userVersion(db), 2, reason: 'step must land exactly on v2');
+
+      // Tables introduced by this step exist.
+      for (final table in ['stock_audit_session', 'stock_audit_item', 'batch']) {
+        expect(await _tableExists(db, table), isTrue,
+            reason: '$table should be created by step 1->2');
+      }
+      // Columns introduced by this step exist.
+      expect(await _columnExists(db, 'product', 'category'), isTrue);
+      expect(await _columnExists(db, 'movement', 'audit_session_id'), isTrue);
+      expect(await _columnExists(db, 'movement', 'batch_id'), isTrue);
+      // The v3 column must NOT be here yet.
+      expect(await _columnExists(db, 'product', 'supplier_id'), isFalse,
+          reason: 'step 1->2 must not apply step 2->3');
+
+      // v1 data untouched by the step.
+      final rows = await db.customSelect('SELECT name, buy_price FROM product').get();
+      expect(rows, hasLength(1));
+      expect(rows.single.read<String>('name'), 'Step test product');
+      expect(rows.single.read<double>('buy_price'), 12.0);
+      expect(
+        await db.customSelect('SELECT COUNT(*) AS c FROM movement').getSingle(),
+        isA<QueryRow>().having((r) => r.read<int>('c'), 'movement count', 1),
+      );
+
+      await db.close();
+    });
+
+    test('step 2 to 3 adds the supplier schema and keeps v2 data', () async {
+      final schema = await verifier.schemaAt(2);
+      final ts = DateTime.utc(2026, 6, 2, 9, 0);
+
+      final oldDb = v2.DatabaseAtV2(schema.newConnection());
+      await oldDb.into(oldDb.product).insert(
+            v2.ProductCompanion.insert(
+              name: 'Step test product v2',
+              category: const Value('Spices'),
+              createdAt: _secs(ts),
+              updatedAt: _secs(ts),
+            ),
+          );
+      await oldDb.close();
+
+      final db = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
+
+      expect(await _userVersion(db), 3);
+      expect(await _tableExists(db, 'supplier'), isTrue);
+      expect(await _columnExists(db, 'product', 'supplier_id'), isTrue);
+      expect(await _columnExists(db, 'movement', 'supplier_id'), isTrue);
+
+      // v2 data, including the column added by the previous step, survives.
+      final rows =
+          await db.customSelect('SELECT name, category, supplier_id FROM product').get();
+      expect(rows, hasLength(1));
+      expect(rows.single.read<String>('name'), 'Step test product v2');
+      expect(rows.single.read<String>('category'), 'Spices');
+      expect(rows.single.read<int?>('supplier_id'), isNull);
+
+      await db.close();
+    });
+
+    test('a v1 database passes through v2 rather than jumping to v3', () async {
+      // Guards the stepByStep contract: every intermediate step must run, so a
+      // future step that backfills data is never skipped.
+      final schema = await verifier.schemaAt(1);
+
+      final atV2 = _AppDatabaseAtVersion(schema.newConnection(), 2);
+      await verifier.migrateAndValidate(atV2, 2);
+      expect(await _userVersion(atV2), 2);
+      await atV2.close();
+
+      // Resuming from the now-v2 database reaches v3 through from2To3.
+      final atV3 = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(atV3, DatabaseMigrations.currentVersion);
+      expect(await _userVersion(atV3), 3);
+      expect(await _tableExists(atV3, 'supplier'), isTrue);
+      await atV3.close();
     });
   });
 
@@ -289,6 +406,41 @@ void main() {
       await db.close();
     });
   });
+}
+
+/// Reads `PRAGMA user_version`, which is where SQLite records the schema
+/// version — drift's equivalent of Flyway's schema history table.
+Future<int> _userVersion(GeneratedDatabase db) async {
+  final row = await db.customSelect('PRAGMA user_version').getSingle();
+  return row.data.values.first! as int;
+}
+
+Future<bool> _tableExists(GeneratedDatabase db, String name) async {
+  final rows = await db.customSelect(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+    variables: [Variable<String>(name)],
+  ).get();
+  return rows.isNotEmpty;
+}
+
+Future<bool> _columnExists(
+  GeneratedDatabase db,
+  String table,
+  String column,
+) async {
+  final rows = await db.customSelect('PRAGMA table_info("$table")').get();
+  return rows.any((r) => r.read<String>('name') == column);
+}
+
+/// Runs the real [AppDatabase] migration logic but stops at [_version],
+/// so a single step can be validated without the later ones running.
+class _AppDatabaseAtVersion extends AppDatabase {
+  _AppDatabaseAtVersion(super.executor, this._version);
+
+  final int _version;
+
+  @override
+  int get schemaVersion => _version;
 }
 
 /// Minimal harness that creates the exact SQL schema shipped at commit

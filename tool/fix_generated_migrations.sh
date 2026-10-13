@@ -5,7 +5,9 @@
 # collides with drift's own `batch()` helper and fails to compile. drift_dev
 # has no option to rename it, so we rename the getter to `batchTable` here.
 #
-# Run this after every regeneration:
+# Full regeneration sequence after any schema change:
+#   dart run drift_dev schema dump lib/src/data/database.dart drift_schemas/
+#   dart run drift_dev schema steps drift_schemas/ lib/src/data/schema_versions.dart
 #   dart run drift_dev schema generate --data-classes --companions \
 #       drift_schemas/ test/generated_migrations/
 #   bash tool/fix_generated_migrations.sh
