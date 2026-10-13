@@ -265,6 +265,162 @@
       font-size: 10px;
       color: #94a3b8;
     }
+    .priority-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .badge-p0 {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #10b981;
+    }
+    .badge-p1 {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #60a5fa;
+    }
+    .badge-p2 {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #f59e0b;
+    }
+
+    /* ── FEEDBACK SYNTHESIS BANNER ── */
+    .feedback-banner {
+      background: linear-gradient(135deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.95) 100%);
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .feedback-banner::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0; width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .fb-badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #10b981;
+      letter-spacing: 0.08em;
+      background: rgba(16,185,129,0.12);
+      border: 1px solid rgba(16,185,129,0.3);
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .feedback-banner h2 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .feedback-banner p {
+      font-size: 13px;
+      color: #94a3b8;
+      max-width: 820px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .big4-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .big4-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 16px;
+      transition: all 0.2s;
+    }
+    .big4-card:hover {
+      border-color: rgba(16,185,129,0.3);
+      transform: translateY(-2px);
+    }
+    .big4-card.active-diff {
+      background: rgba(16,185,129,0.06);
+      border-color: rgba(16,185,129,0.4);
+    }
+    .b4-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #10b981;
+      margin-bottom: 6px;
+    }
+    .b4-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+    }
+    .b4-desc {
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .nav-bar-demo {
+      background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+    .nb-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .nb-destinations {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .nb-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      flex: 1;
+      min-width: 100px;
+      text-align: center;
+    }
+    .nb-item.active {
+      background: rgba(16,185,129,0.12);
+      border-color: rgba(16,185,129,0.3);
+    }
+    .nb-item.highlight-scan {
+      background: rgba(59,130,246,0.12);
+      border-color: rgba(59,130,246,0.3);
+    }
+    .nb-icon { font-size: 18px; }
+    .nb-label { font-size: 11px; font-weight: 700; color: #f1f5f9; }
+    .nb-sub { font-size: 9px; color: #64748b; }
 
     /* ── PHONE FRAME ─────────────────────────────── */
     .phone-frame-wrap {
@@ -523,20 +679,82 @@
 <!-- ══════════════ MAIN ══════════════ -->
 <main>
 
+  <!-- ══════════════ BETA 1.0 SIMPLIFIED ARCHITECTURE BANNER ══════════════ -->
+  <div class="feedback-banner">
+    <div class="fb-badge">★ PRODUCT REVIEW SYNTHESIS — BETA 1.0</div>
+    <h2>Laser-Focused Beta Scope: The "Big 4" Core Tasks</h2>
+    <p>Following expert product review, the app is organized to maximize Kirana adoption by prioritizing the essential offline inventory loop, relaxing the free tier to <strong>200 products</strong>, and grouping advanced utilities under progressive disclosure.</p>
+
+    <div class="big4-grid">
+      <div class="big4-card">
+        <div class="b4-num">01</div>
+        <div class="b4-title">Add Products</div>
+        <div class="b4-desc">Instant barcode lookup with manual SKU fallback for unbarcoded Kirana goods.</div>
+      </div>
+      <div class="big4-card">
+        <div class="b4-num">02</div>
+        <div class="b4-title">Update Stock</div>
+        <div class="b4-desc">Instant IN/OUT adjustments via tactile 48dp steppers &amp; append-only Drift ledger.</div>
+      </div>
+      <div class="big4-card active-diff">
+        <div class="b4-num">03</div>
+        <div class="b4-title">Physical Stocktake ★</div>
+        <div class="b4-desc">Core differentiator: cycle-counting with variance alerts &amp; atomic reconciliation.</div>
+      </div>
+      <div class="big4-card">
+        <div class="b4-num">04</div>
+        <div class="b4-title">Recover Data Safely</div>
+        <div class="b4-desc">Cryptographic SHA-256 rolling snapshots, 1-tap restore &amp; CSV data sovereignty.</div>
+      </div>
+    </div>
+
+    <!-- 5-Destination Navigation Bar Showcase -->
+    <div class="nav-bar-demo">
+      <div class="nb-title">RESTRUCTURED 5-DESTINATION NAVIGATION (M3)</div>
+      <div class="nb-destinations">
+        <div class="nb-item active">
+          <span class="nb-icon">🏠</span>
+          <span class="nb-label">Home</span>
+          <span class="nb-sub">3 Core Questions</span>
+        </div>
+        <div class="nb-item">
+          <span class="nb-icon">📦</span>
+          <span class="nb-label">Products</span>
+          <span class="nb-sub">Catalog &amp; Filter</span>
+        </div>
+        <div class="nb-item highlight-scan">
+          <span class="nb-icon">📷</span>
+          <span class="nb-label">Scan</span>
+          <span class="nb-sub">Instant Lookup</span>
+        </div>
+        <div class="nb-item">
+          <span class="nb-icon">📋</span>
+          <span class="nb-label">Stock Count</span>
+          <span class="nb-sub">Audit &amp; Reconcile</span>
+        </div>
+        <div class="nb-item">
+          <span class="nb-icon">⋯</span>
+          <span class="nb-label">More</span>
+          <span class="nb-sub">Tools, Backup &amp; Pro</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOC -->
   <nav class="toc" aria-label="Screens">
-    <div class="toc-title">All Screens</div>
+    <div class="toc-title">All Screens &amp; Prioritization</div>
     <div class="toc-grid">
-      <a href="#screen-1" class="toc-item"><span class="toc-num">01</span>Dashboard & Scanner</a>
-      <a href="#screen-2" class="toc-item"><span class="toc-num">02</span>Barcode Scan & Resolution</a>
-      <a href="#screen-3" class="toc-item"><span class="toc-num">03</span>Thermal Receipt Slip</a>
-      <a href="#screen-4" class="toc-item"><span class="toc-num">04</span>Restock Analytics & PO</a>
-      <a href="#screen-5" class="toc-item"><span class="toc-num">05</span>AI Voice Assistant</a>
-      <a href="#screen-6" class="toc-item"><span class="toc-num">06</span>Stocktake Audit Workspace</a>
-      <a href="#screen-7" class="toc-item"><span class="toc-num">07</span>Barcode Label Print</a>
-      <a href="#screen-8" class="toc-item"><span class="toc-num">08</span>Pro Paywall Sheet</a>
-      <a href="#screen-9" class="toc-item"><span class="toc-num">09</span>Backup & Data Sovereignty</a>
-      <a href="#screen-10" class="toc-item"><span class="toc-num">10</span>App Settings</a>
+      <a href="#screen-1" class="toc-item"><span class="toc-num">01</span>Dashboard &amp; Scanner <span style="font-size:9px;color:#10b981;margin-left:auto;">P0</span></a>
+      <a href="#screen-2" class="toc-item"><span class="toc-num">02</span>Barcode Scan &amp; Resolution <span style="font-size:9px;color:#10b981;margin-left:auto;">P0</span></a>
+      <a href="#screen-3" class="toc-item"><span class="toc-num">03</span>Thermal Receipt Slip <span style="font-size:9px;color:#60a5fa;margin-left:auto;">P1</span></a>
+      <a href="#screen-4" class="toc-item"><span class="toc-num">04</span>Restock Analytics &amp; PO <span style="font-size:9px;color:#60a5fa;margin-left:auto;">P1</span></a>
+      <a href="#screen-5" class="toc-item"><span class="toc-num">05</span>AI Voice Assistant <span style="font-size:9px;color:#fbbf24;margin-left:auto;">P2</span></a>
+      <a href="#screen-6" class="toc-item"><span class="toc-num">06</span>Stocktake Audit Workspace <span style="font-size:9px;color:#10b981;margin-left:auto;">P0★</span></a>
+      <a href="#screen-7" class="toc-item"><span class="toc-num">07</span>Barcode Label Print <span style="font-size:9px;color:#fbbf24;margin-left:auto;">P2</span></a>
+      <a href="#screen-8" class="toc-item"><span class="toc-num">08</span>Pro Paywall Sheet <span style="font-size:9px;color:#fbbf24;margin-left:auto;">P2</span></a>
+      <a href="#screen-9" class="toc-item"><span class="toc-num">09</span>Backup &amp; Data Sovereignty <span style="font-size:9px;color:#10b981;margin-left:auto;">P0</span></a>
+      <a href="#screen-10" class="toc-item"><span class="toc-num">10</span>App Settings <span style="font-size:9px;color:#10b981;margin-left:auto;">P0</span></a>
     </div>
   </nav>
 
@@ -545,8 +763,8 @@
     <div class="section-header">
       <span class="section-num">01</span>
       <div class="section-meta">
-        <div class="section-title">Main Dashboard & Live Reticle Viewfinder</div>
-        <div class="section-desc">Inventory command center with real-time KPI tiles, low-stock alerts, and integrated ML Kit barcode scanner viewfinder with ZXing reticle.</div>
+        <div class="section-title">Simplified Dashboard &amp; Fast Scanner <span class="priority-badge badge-p0">P0 · BETA CORE</span></div>
+        <div class="section-desc">Rebuilt around the 3 core questions: (1) What needs attention? (Low-stock &amp; backup health), (2) What stock needs updating? (Recent movement deltas), and (3) What can I do next? (Tactile 48dp action tiles).</div>
         <div class="screen-id">ID: 7ba198b3d4a64d3cb3b3cced9305c369</div>
         <div class="file-tags">
           <span class="file-tag">home_page.dart</span>
@@ -568,15 +786,15 @@
         </div>
       </div>
       <div class="screen-info">
-        <div class="info-section-label">Key Components</div>
-        <div class="info-row"><div class="info-icon icon-green">📊</div><div class="info-text"><div class="info-title">KPI Summary Tiles</div><div class="info-sub">Total SKUs, Low Stock count, Today's IN/OUT movements with ₹ valuation in <span class="info-mono">JetBrains Mono</span></div></div></div>
-        <div class="info-row"><div class="info-icon icon-green">🔍</div><div class="info-text"><div class="info-title">ML Kit Barcode Reticle</div><div class="info-sub">180dp dark viewfinder with emerald green ZXing corner brackets, torch toggle and live scanning animation</div></div></div>
-        <div class="info-row"><div class="info-icon icon-amber">⚠️</div><div class="info-text"><div class="info-title">Low Stock Alert Cards</div><div class="info-sub">Crisp 1px bordered inventory cards with SHORTAGE / REORDER pills and ₹ MRP values</div></div></div>
-        <div class="info-row"><div class="info-icon icon-blue">🧭</div><div class="info-text"><div class="info-title">M3 Bottom Navigation</div><div class="info-sub">5-tab nav: Inventory · Audit · Scan · Restock · Settings with active state indicators</div></div></div>
+        <div class="info-section-label">Answers The 3 Core Questions</div>
+        <div class="info-row"><div class="info-icon icon-amber">⚠️</div><div class="info-text"><div class="info-title">1. What needs my attention?</div><div class="info-sub">Low stock count &amp; reorder threshold banner · Overdue backup hygiene warning (>24h)</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">📈</div><div class="info-text"><div class="info-title">2. What stock needs updating?</div><div class="info-sub">Recent stock movement stream showing signed deltas (<span class="info-mono">+10</span> / <span class="info-mono">-4</span>) with product name and timestamps</div></div></div>
+        <div class="info-row"><div class="info-icon icon-slate">⚡</div><div class="info-text"><div class="info-title">3. What can I do next?</div><div class="info-sub">Tactile 48dp operational action tiles: <strong>Scan &amp; Adjust</strong> · <strong>Physical Audit</strong> · <strong>Add New Product</strong></div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">🧭</div><div class="info-text"><div class="info-title">M3 5-Destination Navigation Bar</div><div class="info-sub">Home · Products · Scan · Stock Count · More (clean progressive disclosure)</div></div></div>
         <div class="features">
-          <span class="feature-chip"><span class="chip-dot"></span>Offline-first SQLite</span>
-          <span class="feature-chip"><span class="chip-dot amber"></span>Restock velocity AI</span>
-          <span class="feature-chip"><span class="chip-dot blue"></span>Drift ORM streams</span>
+          <span class="feature-chip"><span class="chip-dot"></span>3 Core Questions</span>
+          <span class="feature-chip"><span class="chip-dot amber"></span>Low Stock Attention</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>5-Tab Navigation</span>
         </div>
       </div>
     </div>
@@ -587,7 +805,7 @@
     <div class="section-header">
       <span class="section-num">02</span>
       <div class="section-meta">
-        <div class="section-title">Single-SKU Barcode Scan & Discrepancy Resolution</div>
+        <div class="section-title">Single-SKU Barcode Scan &amp; Discrepancy Resolution <span class="priority-badge badge-p0">P0 · BETA CORE</span></div>
         <div class="section-desc">Post-scan product detail sheet with stock adjustment controls, batch/expiry tracking, and IN/OUT movement ledger logging.</div>
         <div class="screen-id">ID: a5f6853483704842861ae1ef2cafc6a5</div>
         <div class="file-tags">
@@ -629,7 +847,7 @@
     <div class="section-header">
       <span class="section-num">03</span>
       <div class="section-meta">
-        <div class="section-title">Thermal Receipt Slip & ESC/POS Bluetooth Printer Sheet</div>
+        <div class="section-title">Thermal Receipt Slip &amp; ESC/POS Bluetooth Printer Sheet <span class="priority-badge badge-p1">P1 · MORE HUB</span></div>
         <div class="section-desc">Offline ESC/POS thermal receipt preview in 58mm and 80mm paper widths with Bluetooth printer pairing and text/binary share options.</div>
         <div class="screen-id">ID: 7e2daf7996ac425ab92dffd2b6c09591</div>
         <div class="file-tags">
@@ -670,7 +888,7 @@
     <div class="section-header">
       <span class="section-num">04</span>
       <div class="section-meta">
-        <div class="section-title">Enterprise Restock Analytics & Multi-Supplier PO Center</div>
+        <div class="section-title">Enterprise Restock Analytics &amp; Multi-Supplier PO Center <span class="priority-badge badge-p1">P1 · MORE HUB</span></div>
         <div class="section-desc">Rule-based velocity restock predictions, ABC/XYZ segmentation, and multi-supplier purchase order generation with CSV export.</div>
         <div class="screen-id">ID: 4dd572a703a44a07b1849bda49cec638</div>
         <div class="file-tags">
@@ -713,7 +931,7 @@
     <div class="section-header">
       <span class="section-num">05</span>
       <div class="section-meta">
-        <div class="section-title">Ask StockSafe AI — Voice Assistant & Offline Semantic Query</div>
+        <div class="section-title">Ask StockSafe AI — Voice Assistant &amp; Offline Semantic Query <span class="priority-badge badge-p2">P2 · ADVANCED</span></div>
         <div class="section-desc">Bilingual (English + Tamil) offline NLP query interface with voice input, semantic search over local SQLite, and suggested query chips.</div>
         <div class="screen-id">ID: ef3b9227b48c4733b43900db8d539c81</div>
         <div class="file-tags">
@@ -755,7 +973,7 @@
     <div class="section-header">
       <span class="section-num">06</span>
       <div class="section-meta">
-        <div class="section-title">Physical Stocktake & Cycle-Count Audit Workspace</div>
+        <div class="section-title">Physical Stocktake &amp; Cycle-Count Audit Workspace <span class="priority-badge badge-p0">P0 · DIFFERENTIATOR</span></div>
         <div class="section-desc">Persistent audit sessions with transparent/blind modes, real-time discrepancy tracking, variance valuation, and atomic ledger reconciliation.</div>
         <div class="screen-id">ID: db1728b177f04999b6b002d8f6c315d6</div>
         <div class="file-tags">
@@ -796,7 +1014,7 @@
     <div class="section-header">
       <span class="section-num">07</span>
       <div class="section-meta">
-        <div class="section-title">Barcode Label Sticker Generator & Print</div>
+        <div class="section-title">Barcode Label Sticker Generator &amp; Print <span class="priority-badge badge-p2">P2 · ADVANCED</span></div>
         <div class="section-desc">A4 multi-up sticker sheet (24/30/40 labels) and thermal roll (50×25mm, 50×30mm) label generation with Code 128 or QR in PDF format.</div>
         <div class="screen-id">ID: e9ce188473964190aedb349aa8c49c4e</div>
         <div class="file-tags">
@@ -837,7 +1055,7 @@
     <div class="section-header">
       <span class="section-num">08</span>
       <div class="section-meta">
-        <div class="section-title">Pro Lifetime Unlock Paywall Bottom Sheet</div>
+        <div class="section-title">Pro Lifetime Unlock Paywall Bottom Sheet <span class="priority-badge badge-p2">P2 · 200-SKU HYPOTHESIS</span></div>
         <div class="section-desc">Non-aggressive M3 modal bottom sheet with free-tier consumption meter, ₹499 one-time pricing card, feature comparison, and offline license key activation.</div>
         <div class="screen-id">ID: a7a8e8559df44327bf953fafcb4f1e4f</div>
         <div class="file-tags">
@@ -861,7 +1079,7 @@
       </div>
       <div class="screen-info">
         <div class="info-section-label">Key Components</div>
-        <div class="info-row"><div class="info-icon icon-amber">👑</div><div class="info-text"><div class="info-title">Free-Tier Meter</div><div class="info-sub">Amber progress bar at 76% (<span class="info-mono">38 / 50</span> products), 12 remaining caption</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">👑</div><div class="info-text"><div class="info-title">Free-Tier Meter (Relaxed 200-SKU)</div><div class="info-sub">Amber progress bar at 19% (<span class="info-mono">38 / 200</span> products), 162 remaining caption</div></div></div>
         <div class="info-row"><div class="info-icon icon-slate">💰</div><div class="info-text"><div class="info-title">Pricing Card</div><div class="info-sub"><span class="info-mono">₹499</span> slate gradient card · ONE-TIME UNLOCK · ~~₹999~~ 50% off promo</div></div></div>
         <div class="info-row"><div class="info-icon icon-green">✅</div><div class="info-text"><div class="info-title">Pro Feature Rows</div><div class="info-sub">Unlimited Products · ESC/POS Printing · Label Printing · Analytics & PO Center</div></div></div>
         <div class="info-row"><div class="info-icon icon-amber">🔑</div><div class="info-text"><div class="info-title">Offline Activation Key</div><div class="info-sub">Voucher code input for kirana shops without internet, validated locally</div></div></div>
@@ -879,7 +1097,7 @@
     <div class="section-header">
       <span class="section-num">09</span>
       <div class="section-meta">
-        <div class="section-title">Backup & Data Sovereignty</div>
+        <div class="section-title">Backup &amp; Data Sovereignty <span class="priority-badge badge-p0">P0 · TRUST FOUNDATION</span></div>
         <div class="section-desc">Cryptographically verified (SHA-256) local rolling snapshots, one-tap restore, CSV catalog import with field mapping, and full ledger export.</div>
         <div class="screen-id">ID: 098e3108242546d09191669a182cb26b</div>
         <div class="file-tags">
@@ -920,7 +1138,7 @@
     <div class="section-header">
       <span class="section-num">10</span>
       <div class="section-meta">
-        <div class="section-title">Enterprise App Settings — StockSafe Kirana</div>
+        <div class="section-title">Enterprise App Settings — StockSafe Kirana <span class="priority-badge badge-p0">P0 · BETA CORE</span></div>
         <div class="section-desc">Full 6-section settings ListView: Pro license, appearance & language, operations & printing, data sovereignty, system health diagnostics, and about.</div>
         <div class="screen-id">ID: 4bfc181f7936461194e1cfc36d9d00c4</div>
         <div class="file-tags">

@@ -52,7 +52,7 @@ Hands-free voice operations in retail terminology. Ask "How much sugar stock?" o
 • Cryptographic backup verification ensures your backup is valid before restoring.
 
 9. FAIR ONE-TIME PRICING (NO SNEAKY SUBSCRIPTIONS)
-Free for up to 50 products. Unlock unlimited products forever with a single one-time payment of ₹499 ($5.99). We never lock your entered data behind a paywall—viewing, stock movements, audits, and backups remain free forever.
+Free for up to 100 products. Unlock unlimited products forever with a single one-time payment of ₹499 ($5.99). We never lock your entered data behind a paywall—viewing, stock movements, audits, and backups remain free forever.
 
 Download StockSafe today and keep your shop's inventory accurate, organized, and 100% safe.
 ```

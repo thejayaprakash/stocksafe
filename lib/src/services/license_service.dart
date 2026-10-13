@@ -7,7 +7,7 @@ import 'license_key.dart';
 /// Licensing, Free-Tier Limits, and Monetization Engine for StockSafe.
 ///
 /// Rules (from dev plan):
-/// 1. Free tier allows up to 50 active products.
+/// 1. Free tier allows up to 100 active products.
 /// 2. One-time payment (₹499 / $5.99) unlocks lifetime unlimited products.
 /// 3. Never put a paywall in front of data already entered:
 ///    Viewing, search, stock movements, audit, CSV export, and backups
@@ -17,7 +17,16 @@ class LicenseService {
 
   final AppDatabase _db;
 
-  static const int defaultFreeLimit = 50;
+  /// Products a shop may hold before the one-time unlock is required.
+  ///
+  /// Raised from 50 to 100. A kirana carrying 100-300 SKUs hit the old ceiling
+  /// partway through its first stocktake — before it had entered enough of its
+  /// catalogue to see whether the app was worth paying for. A paywall that
+  /// lands mid-onboarding is measuring patience, not value.
+  ///
+  /// This is the default. SettingDao.freeLimitKey overrides it, so a changed
+  /// limit reaches existing installs without an app update.
+  static const int defaultFreeLimit = 100;
 
   static const String keyProUnlocked = 'is_pro_unlocked';
   static const String keyUnlockedAt = 'pro_unlocked_at';

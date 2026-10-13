@@ -7,15 +7,13 @@ import '../services/license_service.dart';
 import '../services/voice_assistant_service.dart';
 import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
-import 'barcode_label_print_page.dart';
 import 'low_stock_page.dart';
+import 'more_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'scanner_page.dart';
-import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
-import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
 import '../app_scope.dart';
@@ -144,122 +142,118 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(AppLocale.tr('app_name')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome, color: Colors.amber),
-            tooltip: AppLocale.tr('ask_ai'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AskStockSafePage(),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.fact_check_outlined),
-            tooltip: AppLocale.tr('stock_audit'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => StockAuditPage(),
-              ),
-            ),
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: 'Operations',
-            onSelected: (val) {
-              if (val == 'suppliers') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => SuppliersPage()),
-                );
-              } else if (val == 'labels') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
-                );
-              }
-            },
-            itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'suppliers',
-                child: Row(
-                  children: [
-                    const Icon(Icons.contact_phone_outlined, size: 20),
-                    const SizedBox(width: 10),
-                    Text(AppLocale.tr('suppliers')),
+  PreferredSizeWidget? _buildAppBar() {
+    if (_tabIndex >= 3) return null; // StockAuditPage and MorePage manage their own AppBars
+
+    if (_tabIndex == 1) {
+      return AppBar(
+        title: Text(AppLocale.tr('products')),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(104),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: SearchBar(
+                  controller: _searchController,
+                  hintText: AppLocale.tr('search_hint'),
+                  leading: const Icon(Icons.search),
+                  trailing: [
+                    IconButton(
+                      icon: const Icon(Icons.mic, color: Colors.blue),
+                      tooltip: 'Voice Search',
+                      onPressed: _openVoiceAssistant,
+                    ),
                   ],
+                  onChanged: (value) => setState(() => _query = value.trim()),
                 ),
               ),
-              PopupMenuItem(
-                value: 'labels',
-                child: Row(
-                  children: [
-                    const Icon(Icons.qr_code_2, size: 20),
-                    const SizedBox(width: 10),
-                    Text(AppLocale.tr('barcode_label_printing')),
-                  ],
-                ),
+              _CategoryFilterBar(
+                db: _db,
+                selectedCategory: _selectedCategory,
+                onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
               ),
             ],
           ),
+        ),
+      );
+    }
+
+    // Tab 0: Home Dashboard
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(AppLocale.tr('app_name'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text(
+            'Offline Inventory & Audit',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
         ],
-        bottom: _tabIndex == 0
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(104),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: SearchBar(
-                        controller: _searchController,
-                        hintText: AppLocale.tr('search_hint'),
-                        leading: const Icon(Icons.search),
-                        trailing: [
-                          IconButton(
-                            icon: const Icon(Icons.mic, color: Colors.blue),
-                            tooltip: 'Voice Search',
-                            onPressed: _openVoiceAssistant,
-                          ),
-                        ],
-                        onChanged: (value) => setState(() => _query = value.trim()),
-                      ),
-                    ),
-                    _CategoryFilterBar(
-                      db: _db,
-                      selectedCategory: _selectedCategory,
-                      onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
-                    ),
-                  ],
-                ),
-              )
-            : null,
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.auto_awesome, color: Colors.amber),
+          tooltip: AppLocale.tr('ask_ai'),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AskStockSafePage()),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.security_rounded, color: Color(0xFF10B981)),
+          tooltip: 'Backup & Restore',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const BackupPage()),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: _buildAppBar(),
       body: _buildBody(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        onDestinationSelected: (i) {
+          if (i == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ScannerPage()),
+            );
+            return;
+          }
+          setState(() => _tabIndex = i);
+        },
         destinations: [
+          const NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
           NavigationDestination(
             icon: const Icon(Icons.inventory_2_outlined),
             selectedIcon: const Icon(Icons.inventory_2),
             label: AppLocale.tr('products'),
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.warning_amber_outlined),
-            selectedIcon: const Icon(Icons.warning_amber),
-            label: AppLocale.tr('low_stock'),
+          const NavigationDestination(
+            icon: Icon(Icons.qr_code_scanner_rounded),
+            selectedIcon: Icon(Icons.qr_code_scanner),
+            label: 'Scan',
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            selectedIcon: const Icon(Icons.settings),
-            label: AppLocale.tr('settings'),
+          const NavigationDestination(
+            icon: Icon(Icons.fact_check_outlined),
+            selectedIcon: Icon(Icons.fact_check),
+            label: 'Stock Count',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.more_horiz_rounded),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: 'More',
           ),
         ],
       ),
@@ -270,62 +264,55 @@ class _HomePageState extends State<HomePage> {
   Widget _buildBody() {
     switch (_tabIndex) {
       case 0:
-        return _ProductListBody(
+        return _DashboardHomeBody(
           db: _db,
-          query: _query,
-          category: _selectedCategory,
+          onNavigateToProducts: () => setState(() => _tabIndex = 1),
+          onNavigateToAudit: () => setState(() => _tabIndex = 3),
+          onNavigateToLowStock: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LowStockPage()),
+          ),
           showBackupReminder: _isBackupOverdue && !_backupBannerDismissed,
           onDismissBackupBanner: () => setState(() => _backupBannerDismissed = true),
         );
       case 1:
-        return LowStockPage();
-      case 2:
-        return SettingsPage();
+        return _ProductListBody(
+          db: _db,
+          query: _query,
+          category: _selectedCategory,
+          showBackupReminder: false,
+          onDismissBackupBanner: () {},
+        );
+      case 3:
+        return const StockAuditPage();
+      case 4:
+        return const MorePage();
       default:
         return const SizedBox.shrink();
     }
   }
 
   Widget? _buildFab(BuildContext context) {
-    if (_tabIndex != 0) return null;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Scanner FAB
-        FloatingActionButton.small(
-          heroTag: 'scan',
-          tooltip: AppLocale.tr('scan_barcode'),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ScannerPage(),
-            ),
+    if (_tabIndex != 1) return null;
+    return FloatingActionButton(
+      heroTag: 'add_product',
+      tooltip: AppLocale.tr('add_product'),
+      onPressed: () async {
+        final canAdd = await LicenseService(_db).canAddProduct();
+        if (!context.mounted) return;
+        if (!canAdd) {
+          final unlocked = await PaywallSheet.show(context);
+          if (unlocked != true) return;
+        }
+        if (!context.mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const ProductEditPage(),
           ),
-          child: const Icon(Icons.qr_code_scanner),
-        ),
-        const SizedBox(height: 8),
-        // Add product FAB
-        FloatingActionButton(
-          heroTag: 'add',
-          tooltip: AppLocale.tr('add_product'),
-          onPressed: () async {
-            final canAdd = await LicenseService(_db).canAddProduct();
-            if (!context.mounted) return;
-            if (!canAdd) {
-              final unlocked = await PaywallSheet.show(context);
-              if (unlocked != true) return;
-            }
-            if (!context.mounted) return;
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ProductEditPage(),
-              ),
-            );
-          },
-          child: const Icon(Icons.add),
-        ),
-      ],
+        );
+      },
+      child: const Icon(Icons.add),
     );
   }
 }
@@ -784,6 +771,340 @@ class _BackupReminderBanner extends StatelessWidget {
               tooltip: 'Dismiss',
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Simplified Beta 1.0 Dashboard: Answers the 3 core operational questions:
+/// 1. What needs my attention? (Low-stock count & verified backup hygiene)
+/// 2. What stock needs updating? (Recent movement activity stream)
+/// 3. What can I do next? (Tactile 48dp Quick Action CTAs)
+class _DashboardHomeBody extends StatelessWidget {
+  const _DashboardHomeBody({
+    required this.db,
+    required this.onNavigateToProducts,
+    required this.onNavigateToAudit,
+    required this.onNavigateToLowStock,
+    required this.showBackupReminder,
+    required this.onDismissBackupBanner,
+  });
+
+  final AppDatabase db;
+  final VoidCallback onNavigateToProducts;
+  final VoidCallback onNavigateToAudit;
+  final VoidCallback onNavigateToLowStock;
+  final bool showBackupReminder;
+  final VoidCallback onDismissBackupBanner;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        // ── 1. WHAT NEEDS MY ATTENTION? ──
+        if (showBackupReminder)
+          Card(
+            color: Colors.amber.shade100,
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              leading: const Icon(Icons.shield_outlined, color: Colors.brown),
+              title: Text(
+                AppLocale.tr('backup_reminder_title'),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown),
+              ),
+              subtitle: Text(
+                AppLocale.tr('backup_reminder_body'),
+                style: const TextStyle(fontSize: 11, color: Colors.brown),
+              ),
+              trailing: TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
+                child: Text(AppLocale.tr('backup_now')),
+              ),
+            ),
+          ),
+
+        StreamBuilder<List<Product>>(
+          stream: db.productDao.watchLowStock(),
+          builder: (context, snapshot) {
+            final lowStock = snapshot.data ?? [];
+            if (lowStock.isNotEmpty) {
+              return Card(
+                elevation: 0,
+                margin: const EdgeInsets.only(bottom: 16),
+                color: const Color(0xFFFEF3C7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.amber.shade400),
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.amber.shade200, shape: BoxShape.circle),
+                    child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309), size: 24),
+                  ),
+                  title: Text(
+                    '${lowStock.length} Products Need Reordering',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF78350F)),
+                  ),
+                  subtitle: Text(
+                    'Stock is below reorder threshold. Tap to review restock quantities.',
+                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFF78350F)),
+                  onTap: onNavigateToLowStock,
+                ),
+              );
+            }
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'All stock levels optimal · Zero critical shortages',
+                      style: TextStyle(color: Color(0xFF065F46), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // ── 2. WHAT CAN I DO NEXT? (PRIMARY ACTIONS) ──
+        _buildSectionTitle(theme, 'QUICK OPERATIONAL ACTIONS'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionTile(
+                context,
+                icon: Icons.qr_code_scanner,
+                iconColor: Colors.white,
+                bgColor: const Color(0xFF0F172A),
+                textColor: Colors.white,
+                title: 'Scan & Adjust',
+                subtitle: 'Single-SKU Barcode',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerPage())),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildActionTile(
+                context,
+                icon: Icons.fact_check_outlined,
+                iconColor: const Color(0xFF047857),
+                bgColor: const Color(0xFFECFDF5),
+                textColor: const Color(0xFF064E3B),
+                title: 'Physical Audit',
+                subtitle: 'Cycle-Count Reconcile',
+                onTap: onNavigateToAudit,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildFullWidthAction(
+          context,
+          icon: Icons.add_circle_outline,
+          title: 'Add New Product',
+          subtitle: 'Enter barcode or manual SKU for unbarcoded Kirana goods',
+          onTap: () async {
+            final canAdd = await LicenseService(db).canAddProduct();
+            if (!context.mounted) return;
+            if (!canAdd) {
+              final unlocked = await PaywallSheet.show(context);
+              if (unlocked != true) return;
+            }
+            if (!context.mounted) return;
+            await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductEditPage()));
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // ── 3. WHAT STOCK NEEDS UPDATING? (RECENT ACTIVITY) ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionTitle(theme, 'RECENT STOCK ACTIVITY'),
+            TextButton(
+              onPressed: onNavigateToProducts,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              child: const Text('View All', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        StreamBuilder<List<Movement>>(
+          stream: db.movementDao.watchRecent(limit: 5),
+          builder: (context, snapshot) {
+            final movements = snapshot.data ?? [];
+            if (movements.isEmpty) {
+              return Card(
+                elevation: 0,
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  child: Column(
+                    children: const [
+                      Icon(Icons.history_outlined, size: 36, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('No movements logged yet', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Scan a barcode or add stock to see movement history here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: [
+                for (final m in movements)
+                  FutureBuilder<Product?>(
+                    future: db.productDao.getById(m.productId),
+                    builder: (context, pSnap) {
+                      final pName = pSnap.data?.name ?? 'Product #${m.productId}';
+                      final isPositive = m.qtyDelta > 0;
+                      return Card(
+                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: isPositive
+                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                            child: Icon(
+                              isPositive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                              size: 14,
+                              color: isPositive ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                            ),
+                          ),
+                          title: Text(pName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          subtitle: Text(
+                            '${m.reason} · ${_formatTimestamp(m.createdAt)}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          trailing: Text(
+                            isPositive ? '+${m.qtyDelta}' : '${m.qtyDelta}',
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: isPositive ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  static String _formatTimestamp(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    }
+    return '${dt.day}/${dt.month}';
+  }
+
+  static Widget _buildSectionTitle(ThemeData theme, String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+        letterSpacing: 0.8,
+      ),
+    );
+  }
+
+  static Widget _buildActionTile(
+    BuildContext context, {
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required Color textColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: iconColor, size: 26),
+              const SizedBox(height: 10),
+              Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 11)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _buildFullWidthAction(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: theme.colorScheme.primary),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: onTap,
       ),
     );
   }
