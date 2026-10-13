@@ -7,7 +7,7 @@ import '../../app_scope.dart';
 /// Clean, non-nagging Paywall Sheet for StockSafe Pro.
 ///
 /// Triggers when:
-/// 1. Retailer hits the 50-product free tier limit and tries to add product #51.
+/// 1. Retailer hits the 100-product free tier limit and tries to add product #101.
 /// 2. Retailer accesses "Upgrade to Pro" from Settings.
 class PaywallSheet extends StatefulWidget {
   const PaywallSheet({super.key, this.onUnlocked});
@@ -40,7 +40,10 @@ class _PaywallSheetState extends State<PaywallSheet> {
   late final LicenseService _licenseService;
   bool _isLoading = false;
   int _activeCount = 0;
-  int _freeLimit = 50;
+  // Shown only until the real limit loads from LicenseService a frame later.
+  // Kept in step with LicenseService.defaultFreeLimit so the sheet never
+  // flashes a number the app does not enforce.
+  int _freeLimit = LicenseService.defaultFreeLimit;
 
   @override
   void initState() {

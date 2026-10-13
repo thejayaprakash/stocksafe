@@ -71,7 +71,7 @@ test/
 - [x] Phase 2 core: data model, product list, stock in/out, detail, search
 - [x] Phase 3: barcode scanning (mobile_scanner, bundled model), low-stock screen
 - [x] Phase 4: backup — local rolling snapshots (7-copy rotation), CSV/zip export
-- [~] Phase 5: paywall (free ≤ 50 products) and **signed** offline vouchers are in.
+- [~] Phase 5: paywall (free ≤ 100 products) and **signed** offline vouchers are in.
       **Play Billing is not** — the purchase button has no billing client behind it,
       so there is no revenue path yet. Mint vouchers with
       `dart run tool/mint_voucher.dart`.

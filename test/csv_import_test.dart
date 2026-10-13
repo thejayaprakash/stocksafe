@@ -158,17 +158,18 @@ void main() {
     });
 
     test('the free tier stops at its limit and says why', () async {
+      // Ten more than the free tier allows, so the cut is visible.
       final rows = StringBuffer('Name,Initial Stock\n');
-      for (var i = 1; i <= 60; i++) {
+      for (var i = 1; i <= 110; i++) {
         rows.writeln('Item $i,1');
       }
 
       final result = await importer.importFromCsvString(rows.toString());
 
-      expect(result.importedCount, 50);
+      expect(result.importedCount, 100);
       expect(result.skippedCount, 10);
       expect(result.errors.join(' '), contains('Free tier limit'));
-      expect(await db.productDao.countActive(), 50);
+      expect(await db.productDao.countActive(), 100);
     });
 
     test('rows without a barcode never collide with each other', () async {
@@ -186,7 +187,7 @@ void main() {
     test('a thousand-row supplier file imports', () async {
       // The paste box capped this in practice. A real price list does not.
       // Pro first: on the free tier the importer correctly stops at the
-      // 50-product limit, which is covered in monetization_and_polish_test.
+      // free-tier limit, which is covered in monetization_and_polish_test.
       await LicenseService(db).unlockLifetime(method: 'test');
       final rows = StringBuffer('Name,Barcode,Buy Price,Initial Stock\n');
       for (var i = 1; i <= 1000; i++) {

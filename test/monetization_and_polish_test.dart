@@ -26,15 +26,15 @@ void main() {
   });
 
   group('Phase 5: Monetization & License Enforcement', () {
-    test('Free tier allows up to 50 active products and enforces limit at 50', () async {
+    test('Free tier allows up to 100 active products and enforces limit at 100', () async {
       expect(await licenseService.isProUnlocked(), isFalse);
-      expect(await licenseService.getFreeLimit(), equals(50));
+      expect(await licenseService.getFreeLimit(), equals(100));
       expect(await licenseService.canAddProduct(), isTrue);
-      expect(await licenseService.getRemainingFreeProducts(), equals(50));
+      expect(await licenseService.getRemainingFreeProducts(), equals(100));
 
-      // Insert 50 products
+      // Fill the free tier exactly
       final now = DateTime.now();
-      for (int i = 1; i <= 50; i++) {
+      for (int i = 1; i <= 100; i++) {
         await db.productDao.insertProduct(
           ProductsCompanion.insert(
             name: 'Product $i',
@@ -46,7 +46,7 @@ void main() {
       }
 
       final count = await db.productDao.countActive();
-      expect(count, equals(50));
+      expect(count, equals(100));
 
       // Now at limit: canAddProduct must be false
       expect(await licenseService.canAddProduct(), isFalse);
@@ -55,7 +55,7 @@ void main() {
 
     test('One-time lifetime unlock lifts product count gating', () async {
       final now = DateTime.now();
-      for (int i = 1; i <= 50; i++) {
+      for (int i = 1; i <= 100; i++) {
         await db.productDao.insertProduct(
           ProductsCompanion.insert(
             name: 'Product $i',
@@ -74,17 +74,17 @@ void main() {
       expect(await licenseService.canAddProduct(), isTrue);
       expect(await licenseService.getRemainingFreeProducts(), equals(-1));
 
-      // Can now add 51st product
+      // Can now add the product past the free ceiling
       final id51 = await db.productDao.insertProduct(
         ProductsCompanion.insert(
-          name: 'Product 51 (Pro)',
+          name: 'Product 101 (Pro)',
           unit: const Value('pcs'),
           createdAt: now,
           updatedAt: now,
         ),
       );
       expect(id51, isPositive);
-      expect(await db.productDao.countActive(), equals(51));
+      expect(await db.productDao.countActive(), equals(101));
     });
 
     test('only a correctly signed voucher unlocks', () async {
@@ -147,8 +147,8 @@ void main() {
 
     test('Rule 5: Existing data operations are NEVER blocked when at or over limit', () async {
       final now = DateTime.now();
-      // Insert 50 products
-      for (int i = 1; i <= 50; i++) {
+      // Fill the free tier exactly
+      for (int i = 1; i <= 100; i++) {
         final prodId = await db.productDao.insertProduct(
           ProductsCompanion.insert(
             name: 'Item $i',
@@ -172,7 +172,7 @@ void main() {
 
       // 1. Viewing & searching works
       final prods = await db.productDao.watchAll().first;
-      expect(prods.length, equals(50));
+      expect(prods.length, equals(100));
 
       final search = await db.productDao.watchAll(query: 'Item 25').first;
       expect(search.length, equals(1));
@@ -193,13 +193,13 @@ void main() {
 
       // 4. Full export works
       final exportData = await db.productDao.getAllForExport();
-      expect(exportData.length, equals(50));
+      expect(exportData.length, equals(100));
     });
 
     test('CsvImportService respects free tier limit and informs user of skipped rows', () async {
       final now = DateTime.now();
-      // Pre-fill 48 products
-      for (int i = 1; i <= 48; i++) {
+      // Pre-fill to two short of the free ceiling
+      for (int i = 1; i <= 98; i++) {
         await db.productDao.insertProduct(
           ProductsCompanion.insert(
             name: 'Old Item $i',
@@ -210,9 +210,9 @@ void main() {
         );
       }
 
-      expect(await db.productDao.countActive(), equals(48));
+      expect(await db.productDao.countActive(), equals(98));
 
-      // CSV with 5 new products (would total 53)
+      // CSV with 5 new products (would total 103)
       const csvData = '''
 Product Name,Unit,Buy Price,MRP,Initial Stock
 New Item 1,pcs,10,20,5
@@ -225,12 +225,12 @@ New Item 5,pcs,10,20,5
       final importer = CsvImportService(db);
       final result = await importer.importFromCsvString(csvData);
 
-      // Should import 2 (reaching 50), and skip remaining 3 with free limit message
+      // Should import 2 (reaching 100), and skip the remaining 3 with the reason
       expect(result.importedCount, equals(2));
       expect(result.skippedCount, equals(3));
       expect(result.hasErrors, isTrue);
-      expect(result.errors.first, contains('Free tier limit reached (50 products)'));
-      expect(await db.productDao.countActive(), equals(50));
+      expect(result.errors.first, contains('Free tier limit reached (100 products)'));
+      expect(await db.productDao.countActive(), equals(100));
 
       // Unlock Pro and import the rest
       await licenseService.unlockLifetime();
@@ -242,7 +242,7 @@ New Item 5,pcs,10,20,5
 ''';
       final proResult = await importer.importFromCsvString(csvDataRemaining);
       expect(proResult.importedCount, equals(3));
-      expect(await db.productDao.countActive(), equals(53));
+      expect(await db.productDao.countActive(), equals(103));
     });
   });
 
