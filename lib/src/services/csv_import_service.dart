@@ -88,8 +88,19 @@ class CsvImportService {
     final freeLimit = await license.getFreeLimit();
     final availableQuota = isPro ? 999999 : (freeLimit - currentCount).clamp(0, freeLimit);
 
-    // Barcodes already claimed by rows accepted earlier in this same file.
-    final seenBarcodes = <String>{};
+    // Every barcode already in the catalogue, read once.
+    //
+    // The importer used to run getByBarcode() per row. That is one query per
+    // line of a supplier file — fine for the handful of pasted rows this
+    // feature started with, quadratic-feeling for the thousand-row
+    // spreadsheet it now accepts. Loading them up front turns the duplicate
+    // check into a set lookup, and rows accepted during this import join the
+    // same set, so in-file duplicates are caught by the same code.
+    final catalogueBarcodes = await _existingBarcodes();
+    // Kept separate from the catalogue set so the two cases can be told
+    // apart: "this file lists it twice" and "you already stock it" need
+    // different things from the user.
+    final seenInThisFile = <String>{};
 
     await _db.transaction(() async {
       final now = DateTime.now();
@@ -135,16 +146,15 @@ class CsvImportService {
         // There is now a unique index on live barcodes, so inserting would
         // abort the whole transaction and lose the good rows with the bad.
         if (barcode.isNotEmpty) {
-          if (!seenBarcodes.add(barcode)) {
-            errors.add('Row $rowNum: barcode "$barcode" is repeated '
-                'earlier in this file — row skipped.');
+          if (!seenInThisFile.add(barcode)) {
+            errors.add('Row $rowNum: barcode "$barcode" is repeated earlier '
+                'in this file — row skipped.');
             skipped++;
             continue;
           }
-          final existing = await _db.productDao.getByBarcode(barcode);
-          if (existing != null) {
-            errors.add('Row $rowNum: barcode "$barcode" already belongs to '
-                '"${existing.name}" — row skipped.');
+          if (catalogueBarcodes.contains(barcode)) {
+            errors.add('Row $rowNum: barcode "$barcode" is already in your '
+                'catalogue — row skipped.');
             skipped++;
             continue;
           }
@@ -190,28 +200,96 @@ class CsvImportService {
     );
   }
 
+  /// Barcodes belonging to live products, as a set.
+  Future<Set<String>> _existingBarcodes() async {
+    final rows = await _db
+        .customSelect(
+          'SELECT barcode FROM product '
+          'WHERE barcode IS NOT NULL AND deleted_at IS NULL',
+          readsFrom: {_db.products},
+        )
+        .get();
+    return rows.map((r) => r.read<String>('barcode')).toSet();
+  }
+
+  /// Column synonyms, each list ordered most specific first.
+  ///
+  /// Deliberately overlapping: "code" catches "Item Code", but also appears
+  /// inside "Barcode"; "price" catches a bare "Price" column, but also sits
+  /// inside "Buy Price". Resolution below handles the overlap — the lists
+  /// themselves stay permissive, because supplier headers are not consistent.
+  static const Map<String, List<String>> _headerSynonyms = {
+    'name': ['product name', 'item name', 'name', 'title'],
+    'barcode': ['barcode', 'bar code', 'upc', 'ean', 'qr code'],
+    'sku': ['sku', 'item code', 'product code', 'brand', 'code'],
+    'category': ['category', 'group', 'department', 'type'],
+    'unit': ['unit', 'uom', 'pack', 'measurement'],
+    'buy_price': ['buy price', 'cost price', 'purchase price', 'cost'],
+    'sell_price': ['sell price', 'selling price', 'mrp', 'rate', 'price'],
+    'low_stock': ['low stock', 'reorder level', 'min stock', 'alert level'],
+    'initial_stock': [
+      'initial stock',
+      'opening stock',
+      'current stock',
+      'quantity',
+      'stock',
+      'qty',
+    ],
+  };
+
+  /// Maps a file's header row onto our fields.
+  ///
+  /// Fixes a bug that silently corrupted data. The previous resolver scanned
+  /// headers in the outer loop and returned on the first synonym that hit, so
+  /// for `Name,Buy Price,Sell Price` the loose synonym "price" matched
+  /// "Buy Price" and every product imported with its selling price equal to
+  /// its cost — wrong margins, wrong valuation, nothing to indicate it.
+  ///
+  /// Two mechanisms prevent it, and they are **redundant**: either alone is
+  /// sufficient. Verified by mutation — removing one and then the other left
+  /// the tests green; only removing both reproduced the 450.50-instead-of-520
+  /// failure.
+  ///
+  ///  1. Synonyms are the outer loop, so a specific synonym is tried against
+  ///     every column before a looser one is tried against any.
+  ///  2. A column, once claimed, cannot be claimed again, and `buy_price` is
+  ///     resolved before `sell_price`.
+  ///
+  /// Both are kept deliberately. Supplier headers are not consistent, and the
+  /// failure mode here is silent and financial.
   static Map<String, int?> _resolveHeaderMap(List<String> headers) {
-    int? findIndex(List<String> synonyms) {
-      for (int i = 0; i < headers.length; i++) {
-        final h = headers[i].toLowerCase().replaceAll(RegExp(r'[\s_]+'), ' ');
-        for (final s in synonyms) {
-          if (h == s || h.contains(s)) return i;
+    final normalised = headers
+        .map((h) => h.toLowerCase().trim().replaceAll(RegExp(r'[\s_]+'), ' '))
+        .toList();
+
+    final resolved = <String, int?>{};
+    final claimed = <int>{};
+
+    int? firstMatch(List<String> synonyms, bool Function(String, String) test) {
+      for (final synonym in synonyms) {
+        for (var i = 0; i < normalised.length; i++) {
+          if (claimed.contains(i)) continue;
+          if (test(normalised[i], synonym)) return i;
         }
       }
       return null;
     }
 
-    return {
-      'name': findIndex(['product name', 'item name', 'name', 'title']),
-      'sku': findIndex(['sku', 'brand', 'item code', 'code']),
-      'barcode': findIndex(['barcode', 'upc', 'ean', 'qr code']),
-      'category': findIndex(['category', 'group', 'department', 'type']),
-      'unit': findIndex(['unit', 'pack', 'uom', 'measurement']),
-      'buy_price': findIndex(['buy price', 'cost price', 'cost', 'purchase price']),
-      'sell_price': findIndex(['sell price', 'selling price', 'mrp', 'price', 'rate']),
-      'low_stock': findIndex(['low stock', 'reorder level', 'min stock', 'alert level']),
-      'initial_stock': findIndex(['initial stock', 'opening stock', 'current stock', 'stock', 'qty', 'quantity']),
-    };
+    for (final entry in _headerSynonyms.entries) {
+      final index = firstMatch(
+        entry.value,
+        (header, synonym) => header == synonym || header.contains(synonym),
+      );
+      if (index != null) {
+        resolved[entry.key] = index;
+        claimed.add(index);
+      }
+    }
+
+    for (final key in _headerSynonyms.keys) {
+      resolved.putIfAbsent(key, () => null);
+    }
+    return resolved;
   }
 
   static String _getString(List<dynamic> row, int? index, {String defaultValue = ''}) {
