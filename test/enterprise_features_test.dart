@@ -192,6 +192,87 @@ void main() {
       expect(expiringSoon.first.batchNumber, 'B101');
       expect(expiringSoon.first.stockQty, 25);
     });
+
+    test('MovementDao atomically records movements and updates batch stock', () async {
+      final now = DateTime.now();
+      final pId = await db.productDao.insertProduct(
+        ProductsCompanion.insert(
+          name: 'Bread 400g',
+          buyPrice: const drift.Value(30.0),
+          sellPrice: const drift.Value(40.0),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      // 1. Create a batch with getOrCreateBatch
+      final bId = await db.batchDao.getOrCreateBatch(
+        productId: pId,
+        batchNumber: 'LOT-999',
+        expiryDate: now.add(const Duration(days: 4)),
+      );
+
+      // 2. Stock In with batchId
+      await db.movementDao.recordMovement(
+        productId: pId,
+        qtyDelta: 30,
+        reason: 'Stock in',
+        batchId: bId,
+      );
+
+      var batch = await db.batchDao.getBatchById(bId);
+      expect(batch!.stockQty, 30);
+      expect((await db.productDao.getById(pId))!.stockQty, 30);
+
+      // 3. Stock Out with batchId
+      await db.movementDao.recordMovement(
+        productId: pId,
+        qtyDelta: -10,
+        reason: 'Stock out',
+        batchId: bId,
+      );
+
+      batch = await db.batchDao.getBatchById(bId);
+      expect(batch!.stockQty, 20);
+      expect((await db.productDao.getById(pId))!.stockQty, 20);
+
+      // 4. Verify movement audit trail includes batchId
+      final movements = await db.movementDao.watchForProduct(pId).first;
+      expect(movements.first.batchId, bId);
+    });
+
+    test('ProductDao computes live inventory valuation metrics accurately', () async {
+      final now = DateTime.now();
+      final p1 = await db.productDao.insertProduct(
+        ProductsCompanion.insert(
+          name: 'Item A',
+          buyPrice: const drift.Value(10.0),
+          sellPrice: const drift.Value(15.0),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      final p2 = await db.productDao.insertProduct(
+        ProductsCompanion.insert(
+          name: 'Item B',
+          buyPrice: const drift.Value(50.0),
+          sellPrice: const drift.Value(80.0),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      await db.movementDao.recordMovement(productId: p1, qtyDelta: 10, reason: 'Stock in'); // cost: 100, retail: 150
+      await db.movementDao.recordMovement(productId: p2, qtyDelta: 2, reason: 'Stock in');  // cost: 100, retail: 160
+
+      final valuation = await db.productDao.getInventoryValuation();
+      expect(valuation.totalProducts, 2);
+      expect(valuation.totalUnits, 12);
+      expect(valuation.totalCostValue, 200.0);
+      expect(valuation.totalRetailValue, 310.0);
+      expect(valuation.potentialProfit, 110.0);
+      expect(valuation.marginPercent, closeTo(55.0, 0.01));
+    });
   });
 
   group('Streaming CSV Catalog Importer', () {

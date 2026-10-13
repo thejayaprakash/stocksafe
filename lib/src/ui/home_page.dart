@@ -276,13 +276,18 @@ class _ProductListBody extends StatelessWidget {
           );
         }
 
-        return ListView.separated(
-          itemCount: products.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final p = products[index];
-            final lowStock = p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
-            final isZero = p.stockQty <= 0;
+        return Column(
+          children: [
+            if (query.isEmpty && category == null)
+              _InventoryValuationCard(db: db),
+            Expanded(
+              child: ListView.separated(
+                itemCount: products.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final p = products[index];
+                  final lowStock = p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
+                  final isZero = p.stockQty <= 0;
 
             final subtitleParts = [
               if (p.category != null && p.category!.isNotEmpty) p.category!,
@@ -338,7 +343,10 @@ class _ProductListBody extends StatelessWidget {
               onLongPress: () => _showActions(context, p),
             );
           },
-        );
+        ),
+      ),
+    ],
+  );
       },
     );
   }
@@ -399,6 +407,94 @@ class _ProductListBody extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Collapsible Inventory Valuation Banner showing live Cost, MRP and Margin.
+class _InventoryValuationCard extends StatefulWidget {
+  const _InventoryValuationCard({required this.db});
+  final AppDatabase db;
+
+  @override
+  State<_InventoryValuationCard> createState() => _InventoryValuationCardState();
+}
+
+class _InventoryValuationCardState extends State<_InventoryValuationCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return StreamBuilder<InventoryValuationSummary>(
+      stream: widget.db.productDao.watchInventoryValuation(),
+      builder: (context, snapshot) {
+        final val = snapshot.data;
+        if (val == null || val.totalProducts == 0) return const SizedBox.shrink();
+
+        return Card(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          elevation: 0,
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined, size: 20, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        AppLocale.tr('inventory_valuation'),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '₹${val.totalCostValue.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18),
+                    ],
+                  ),
+                  if (_expanded) ...[
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _metricCol(AppLocale.tr('retail_value'), '₹${val.totalRetailValue.toStringAsFixed(0)}'),
+                        _metricCol(AppLocale.tr('est_margin'), '+₹${val.potentialProfit.toStringAsFixed(0)} (${val.marginPercent.toStringAsFixed(1)}%)'),
+                        _metricCol(AppLocale.tr('total_units'), '${val.totalUnits}'),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _metricCol(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+      ],
     );
   }
 }
