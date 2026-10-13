@@ -4,8 +4,10 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../data/database.dart';
 import '../services/catalog_enrichment_service.dart';
+import '../services/license_service.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
+import 'widgets/paywall_sheet.dart';
 
 /// Barcode scanner using CameraX + ML Kit bundled model (works offline).
 ///
@@ -446,6 +448,15 @@ class _ScannerPageState extends State<ScannerPage> {
         ),
       );
     } else {
+      final canAdd = await LicenseService(widget.db).canAddProduct();
+      if (!mounted) return;
+      if (!canAdd) {
+        setState(() => _processing = false);
+        final unlocked = await PaywallSheet.show(context, widget.db);
+        if (unlocked != true) return;
+      }
+      if (!mounted) return;
+
       final catalogInfo = await CatalogEnrichmentService().lookupBarcode(code);
 
       if (!mounted) return;

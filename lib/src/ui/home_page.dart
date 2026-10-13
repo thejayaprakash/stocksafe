@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/backup_service.dart';
 import '../data/database.dart';
 import '../services/app_localization.dart';
+import '../services/license_service.dart';
 import '../services/voice_assistant_service.dart';
 import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
@@ -15,6 +16,7 @@ import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
 import 'suppliers_page.dart';
+import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
@@ -230,7 +232,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      floatingActionButton: _buildFab(),
+      floatingActionButton: _buildFab(context),
     );
   }
 
@@ -253,7 +255,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Widget? _buildFab() {
+  Widget? _buildFab(BuildContext context) {
     if (_tabIndex != 0) return null;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -275,12 +277,21 @@ class _HomePageState extends State<HomePage> {
         FloatingActionButton(
           heroTag: 'add',
           tooltip: AppLocale.tr('add_product'),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ProductEditPage(db: widget.db),
-            ),
-          ),
+          onPressed: () async {
+            final canAdd = await LicenseService(widget.db).canAddProduct();
+            if (!context.mounted) return;
+            if (!canAdd) {
+              final unlocked = await PaywallSheet.show(context, widget.db);
+              if (unlocked != true) return;
+            }
+            if (!context.mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProductEditPage(db: widget.db),
+              ),
+            );
+          },
           child: const Icon(Icons.add),
         ),
       ],
