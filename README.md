@@ -71,7 +71,10 @@ test/
 - [x] Phase 2 core: data model, product list, stock in/out, detail, search
 - [x] Phase 3: barcode scanning (mobile_scanner, bundled model), low-stock screen
 - [x] Phase 4: backup — local rolling snapshots (7-copy rotation), CSV/zip export
-- [x] Phase 5: paywall (free ≤ 50 products), one-time unlock via Play Billing / RevenueCat / offline voucher
+- [~] Phase 5: paywall (free ≤ 50 products) and **signed** offline vouchers are in.
+      **Play Billing is not** — the purchase button has no billing client behind it,
+      so there is no revenue path yet. Mint vouchers with
+      `dart run tool/mint_voucher.dart`.
 - [x] Phase 6: closed testing protocol, 14-day tracking playbook, and release bundle CI/CD (AAB/APK)
 - [x] Phase 7: store listing metadata (English & Tamil), ASO keyword strategy, Data Safety declaration, and Privacy Policy
 

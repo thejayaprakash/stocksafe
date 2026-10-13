@@ -66,14 +66,18 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         // ── StockSafe Pro & License ───────────────────────────
         _SectionHeader(title: 'StockSafe Pro & License', icon: Icons.workspace_premium),
-        FutureBuilder<bool>(
-          future: _licenseService.isProUnlocked(),
+        // One reactive source rather than two nested FutureBuilders that
+        // never refreshed, and no hardcoded 50: the limit is configurable,
+        // so printing it literally meant changing it had no visible effect.
+        StreamBuilder<LicenseStatus>(
+          stream: _licenseService.watchLicenseStatus(),
           builder: (context, snapshot) {
-            final isPro = snapshot.data ?? false;
-            return FutureBuilder<int>(
-              future: _db.productDao.countActive(),
-              builder: (context, countSnap) {
-                final active = countSnap.data ?? 0;
+            final status = snapshot.data;
+            final isPro = status?.isPro ?? false;
+            final active = status?.activeProductCount ?? 0;
+            final limit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
+            return Builder(
+              builder: (context) {
                 return Container(
                   margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   padding: const EdgeInsets.all(16),
@@ -104,13 +108,15 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  isPro ? 'Lifetime Pro Active ⭐' : 'Free Tier (Max 50 Products)',
+                                  isPro
+                                      ? 'Lifetime Pro Active ⭐'
+                                      : 'Free Tier (Max $limit Products)',
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                 ),
                                 Text(
                                   isPro
                                       ? 'Unlimited products & premium operations unlocked'
-                                      : '$active / 50 products used',
+                                      : '$active / $limit products used',
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                                 ),
                               ],
@@ -134,10 +140,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
-                            value: (active / 50).clamp(0.0, 1.0),
+                            value: (active / limit).clamp(0.0, 1.0),
                             backgroundColor: Colors.grey.shade300,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              active >= 50 ? Colors.red : (active >= 40 ? Colors.orange : Colors.green),
+                              active >= limit
+                                  ? Colors.red
+                                  : (active >= limit * 0.8
+                                      ? Colors.orange
+                                      : Colors.green),
                             ),
                             minHeight: 6,
                           ),

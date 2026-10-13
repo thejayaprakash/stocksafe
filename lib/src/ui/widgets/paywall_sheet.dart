@@ -60,23 +60,25 @@ class _PaywallSheetState extends State<PaywallSheet> {
     }
   }
 
+  /// There is no billing integration yet, so there is nothing to charge and
+  /// nothing to verify.
+  ///
+  /// This used to call unlockLifetime() directly: the button took no money
+  /// and granted Pro to anyone who pressed it. Granting an entitlement that
+  /// was never bought is worse than saying it is not ready — it trains
+  /// testers to expect a free unlock and would fail Play review for showing
+  /// a purchase flow that is not Play Billing.
   Future<void> _handleUnlock() async {
-    setState(() => _isLoading = true);
-    try {
-      // Complete one-time lifetime purchase
-      await _licenseService.unlockLifetime(method: 'play_billing');
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocale.tr('pro_unlocked_success')),
-          backgroundColor: Colors.green.shade700,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'In-app purchase is not available in this build yet. '
+          'If you have an activation voucher, use "Enter activation code".',
         ),
-      );
-      widget.onUnlocked?.call();
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+        duration: const Duration(seconds: 5),
+        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+      ),
+    );
   }
 
   Future<void> _handleRestore() async {
@@ -94,8 +96,12 @@ class _PaywallSheetState extends State<PaywallSheet> {
         );
         widget.onUnlocked?.call();
       } else {
+        // Honest: restorePurchases() now reports only what this device
+        // actually holds, instead of granting Pro to anyone who taps it.
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No previous purchases found for this account.')),
+          const SnackBar(
+            content: Text('No purchase found on this device to restore.'),
+          ),
         );
       }
     } finally {

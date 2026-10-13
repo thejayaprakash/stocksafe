@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:stocksafe/src/data/database.dart';
 import 'package:stocksafe/src/services/csv_import_service.dart';
 import 'package:stocksafe/src/services/diagnostic_service.dart';
+import 'package:stocksafe/src/services/license_key.dart';
 import 'package:stocksafe/src/services/license_service.dart';
 import 'package:stocksafe/src/services/theme_service.dart';
 
@@ -86,31 +87,62 @@ void main() {
       expect(await db.productDao.countActive(), equals(51));
     });
 
-    test('Offline voucher / license key validation and activation', () async {
-      // Invalid keys
-      expect(await licenseService.validateAndActivateOfflineKey('INVALID-KEY'), isFalse);
-      expect(await licenseService.validateAndActivateOfflineKey('12345'), isFalse);
+    test('only a correctly signed voucher unlocks', () async {
+      // The old check accepted any string starting STOCKSAFE with twelve or
+      // more characters, so a single guess got in. These are the guesses.
+      for (final guess in [
+        'INVALID-KEY',
+        '12345',
+        'STOCKSAFE123',
+        'STOCKSAFE-ABCD-1234',
+        'STOCKSAFEAAAAAAAAAAAA',
+        'PRO2026',
+        'KIRANAUNLIMITED',
+        'TESTVIP',
+      ]) {
+        expect(await licenseService.validateAndActivateOfflineKey(guess), isFalse,
+            reason: '"$guess" must not unlock the app');
+      }
       expect(await licenseService.isProUnlocked(), isFalse);
 
-      // Algorithmic offline retail key
-      expect(
-        await licenseService.validateAndActivateOfflineKey('STOCKSAFE-ABCD-1234'),
-        isTrue,
-      );
-      expect(await licenseService.isProUnlocked(), isTrue);
-
-      // Reset and test promotional activation key
-      await licenseService.resetForTesting();
-      expect(await licenseService.isProUnlocked(), isFalse);
-      expect(await licenseService.validateAndActivateOfflineKey('PRO2026'), isTrue);
+      // A minted voucher does.
+      final voucher = LicenseKey.mint('KIRANA0001');
+      expect(await licenseService.validateAndActivateOfflineKey(voucher), isTrue);
       expect(await licenseService.isProUnlocked(), isTrue);
     });
 
-    test('Restore purchases reactivates Pro status', () async {
+    test('a voucher survives being read off paper and typed by hand', () async {
+      final voucher = LicenseKey.mint('SHOP42');
+      for (final typed in [
+        voucher.toLowerCase(),
+        voucher.replaceAll('-', ' '),
+        ' $voucher ',
+      ]) {
+        await licenseService.resetForTesting();
+        expect(await licenseService.validateAndActivateOfflineKey(typed), isTrue,
+            reason: 'case, spacing and dashes must not matter');
+      }
+    });
+
+    test('altering one character of a voucher invalidates it', () async {
+      final voucher = LicenseKey.mint('KIRANA0002');
+      final tampered = voucher.substring(0, voucher.length - 1) +
+          (voucher.endsWith('A') ? 'B' : 'A');
+
+      expect(await licenseService.validateAndActivateOfflineKey(tampered), isFalse);
       expect(await licenseService.isProUnlocked(), isFalse);
-      final restored = await licenseService.restorePurchases();
-      expect(restored, isTrue);
-      expect(await licenseService.isProUnlocked(), isTrue);
+    });
+
+    test('restore reports only what this device actually holds', () async {
+      // It used to call unlockLifetime() unconditionally, so tapping
+      // "Restore Purchases" — a button Play requires — granted Pro to anyone.
+      expect(await licenseService.isProUnlocked(), isFalse);
+      expect(await licenseService.restorePurchases(), isFalse);
+      expect(await licenseService.isProUnlocked(), isFalse,
+          reason: 'restore must never create an entitlement');
+
+      await licenseService.unlockLifetime(method: 'offline_voucher');
+      expect(await licenseService.restorePurchases(), isTrue);
     });
 
     test('Rule 5: Existing data operations are NEVER blocked when at or over limit', () async {
