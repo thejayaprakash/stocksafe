@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockSafe — Enterprise Design System Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:    #0f172a;
+      --primary-2:  #1e293b;
+      --secondary:  #10b981;
+      --secondary-2:#059669;
+      --tertiary:   #f59e0b;
+      --danger:     #ef4444;
+      --surface:    #f8f9ff;
+      --surface-c:  #e5eeff;
+      --outline:    #e2e8f0;
+      --on-surface: #0b1c30;
+      --muted:      #64748b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--primary);
+      color: #fff;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ──────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f3460 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 48px 40px 36px;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 60% at 80% 50%, rgba(16,185,129,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16,185,129,0.15);
+      border: 1px solid rgba(16,185,129,0.4);
+      border-radius: 999px;
+      padding: 4px 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: #10b981;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+    .header-badge::before {
+      content: '';
+      width: 7px; height: 7px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.5; transform:scale(1.4); }
+    }
+    header h1 {
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+    header h1 span { color: #10b981; }
+    header p {
+      color: #94a3b8;
+      font-size: 15px;
+      max-width: 580px;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .header-stats {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .stat-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .stat-num.green { color: #10b981; }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ── TOKEN PILLS ROW ─────────────────────────── */
+    .tokens-bar {
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 12px 40px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .tokens-bar .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #475569;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-right: 4px;
+    }
+    .token-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+    .token-swatch {
+      width: 10px; height: 10px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ── MAIN CONTENT ─────────────────────────────── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 48px 40px 80px;
+    }
+
+    /* ── NAV ─────────────────────────────────────── */
+    .toc {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+    .toc-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 16px;
+    }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+    }
+    .toc-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+    .toc-item:hover {
+      background: rgba(16,185,129,0.08);
+      border-color: rgba(16,185,129,0.2);
+      color: #10b981;
+    }
+    .toc-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      min-width: 20px;
+    }
+
+    /* ── SCREEN CARD ─────────────────────────────── */
+    .screen-section {
+      margin-bottom: 80px;
+    }
+    .section-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .section-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #10b981;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 6px;
+      padding: 4px 10px;
+      white-space: nowrap;
+      margin-top: 3px;
+    }
+    .section-meta { flex: 1; }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    .section-desc {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+    .screen-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #334155;
+      margin-top: 4px;
+    }
+    .file-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .file-tag {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    /* ── PHONE FRAME ─────────────────────────────── */
+    .phone-frame-wrap {
+      display: flex;
+      justify-content: center;
+    }
+    .phone-frame {
+      position: relative;
+      width: 375px;
+      background: #0f172a;
+      border-radius: 48px;
+      padding: 14px 14px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.12),
+        0 0 0 3px #0f172a,
+        0 0 0 4px rgba(255,255,255,0.06),
+        0 40px 80px rgba(0,0,0,0.6),
+        0 8px 24px rgba(0,0,0,0.4);
+    }
+    .phone-notch {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 110px;
+      height: 28px;
+      background: #0f172a;
+      border-radius: 0 0 18px 18px;
+      z-index: 10;
+    }
+    .phone-screen {
+      border-radius: 36px;
+      overflow: hidden;
+      background: #f8f9ff;
+      position: relative;
+    }
+    .phone-screen img {
+      width: 100%;
+      display: block;
+      max-height: 780px;
+      object-fit: cover;
+      object-position: top;
+    }
+    .phone-btn-r {
+      position: absolute;
+      right: -3px;
+      top: 120px;
+      width: 3px;
+      height: 56px;
+      background: #1e293b;
+      border-radius: 0 4px 4px 0;
+    }
+    .phone-btn-l1 {
+      position: absolute;
+      left: -3px;
+      top: 90px;
+      width: 3px;
+      height: 32px;
+      background: #1e293b;
+      border-radius: 4px 0 0 4px;
+    }
+    .phone-btn-l2 {
+      position: absolute;
+      left: -3px;
+      top: 136px;
+      width: 3px;
+      height: 56px;
+      background: #1e293b;
+      border-radius: 4px 0 0 4px;
+    }
+    .phone-btn-l3 {
+      position: absolute;
+      left: -3px;
+      top: 204px;
+      width: 3px;
+      height: 56px;
+      background: #1e293b;
+      border-radius: 4px 0 0 4px;
+    }
+
+    /* ── FEATURE CHIPS ───────────────────────────── */
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .feature-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+    .chip-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      flex-shrink: 0;
+    }
+    .chip-dot.amber { background: #f59e0b; }
+    .chip-dot.red   { background: #ef4444; }
+    .chip-dot.blue  { background: #3b82f6; }
+    .chip-dot.purple{ background: #8b5cf6; }
+
+    /* ── TWO-UP LAYOUT ───────────────────────────── */
+    .two-up {
+      display: grid;
+      grid-template-columns: 375px 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+    .screen-info { padding-top: 8px; }
+    .info-section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #334155;
+      margin-bottom: 12px;
+    }
+    .info-row {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      align-items: flex-start;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .icon-green  { background: rgba(16,185,129,0.12); }
+    .icon-amber  { background: rgba(245,158,11,0.12); }
+    .icon-red    { background: rgba(239,68,68,0.12); }
+    .icon-blue   { background: rgba(59,130,246,0.12); }
+    .icon-purple { background: rgba(139,92,246,0.12); }
+    .icon-slate  { background: rgba(100,116,139,0.12); }
+    .info-text { flex: 1; }
+    .info-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 2px;
+    }
+    .info-sub {
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .info-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #10b981;
+    }
+
+    /* ── DIVIDER ─────────────────────────────────── */
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin: 0 0 80px;
+    }
+
+    /* ── FOOTER ──────────────────────────────────── */
+    footer {
+      background: rgba(255,255,255,0.02);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 32px 40px;
+      text-align: center;
+    }
+    footer p {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #334155;
+      letter-spacing: 0.04em;
+    }
+    .footer-pills {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .fp {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #475569;
+      letter-spacing: 0.06em;
+    }
+
+    @media (max-width: 900px) {
+      .two-up { grid-template-columns: 1fr; }
+      .phone-frame { width: 100%; max-width: 375px; margin: 0 auto; }
+      header { padding: 32px 20px 28px; }
+      main { padding: 32px 20px 60px; }
+      .tokens-bar { padding: 10px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<header>
+  <div class="header-inner">
+    <div class="header-badge">● GOOGLE STITCH MCP · ENTERPRISE DESIGN</div>
+    <h1>StockSafe <span>Design System</span><br/>Preview</h1>
+    <p>Enterprise-grade Flutter Material Design 3 mobile UI — 10 screens generated via Google Stitch MCP using the <em>StockSafe Inventory Intelligence</em> design system.</p>
+    <div class="header-stats">
+      <div class="stat">
+        <span class="stat-num green">10</span>
+        <span class="stat-label">Screens Generated</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">15</span>
+        <span class="stat-label">Flutter Files Covered</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">100%</span>
+        <span class="stat-label">Offline Architecture</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num green">M3</span>
+        <span class="stat-label">Material Design</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════ TOKEN BAR ══════════════ -->
+<div class="tokens-bar">
+  <span class="label">TOKENS</span>
+  <span class="token-pill"><span class="token-swatch" style="background:#0f172a;border:1px solid #334155;"></span>Primary #0F172A</span>
+  <span class="token-pill"><span class="token-swatch" style="background:#10b981;"></span>Secondary #10B981</span>
+  <span class="token-pill"><span class="token-swatch" style="background:#f59e0b;"></span>Tertiary #F59E0B</span>
+  <span class="token-pill"><span class="token-swatch" style="background:#ef4444;"></span>Alert #EF4444</span>
+  <span class="token-pill"><span class="token-swatch" style="background:#f8f9ff;border:1px solid #334155;"></span>Surface #F8F9FF</span>
+  <span class="token-pill">🔤 Inter + JetBrains Mono</span>
+  <span class="token-pill">📐 8pt Grid · 48px Touch</span>
+</div>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<main>
+
+  <!-- TOC -->
+  <nav class="toc" aria-label="Screens">
+    <div class="toc-title">All Screens</div>
+    <div class="toc-grid">
+      <a href="#screen-1" class="toc-item"><span class="toc-num">01</span>Dashboard & Scanner</a>
+      <a href="#screen-2" class="toc-item"><span class="toc-num">02</span>Barcode Scan & Resolution</a>
+      <a href="#screen-3" class="toc-item"><span class="toc-num">03</span>Thermal Receipt Slip</a>
+      <a href="#screen-4" class="toc-item"><span class="toc-num">04</span>Restock Analytics & PO</a>
+      <a href="#screen-5" class="toc-item"><span class="toc-num">05</span>AI Voice Assistant</a>
+      <a href="#screen-6" class="toc-item"><span class="toc-num">06</span>Stocktake Audit Workspace</a>
+      <a href="#screen-7" class="toc-item"><span class="toc-num">07</span>Barcode Label Print</a>
+      <a href="#screen-8" class="toc-item"><span class="toc-num">08</span>Pro Paywall Sheet</a>
+      <a href="#screen-9" class="toc-item"><span class="toc-num">09</span>Backup & Data Sovereignty</a>
+      <a href="#screen-10" class="toc-item"><span class="toc-num">10</span>App Settings</a>
+    </div>
+  </nav>
+
+  <!-- ── SCREEN 1 ── -->
+  <section class="screen-section" id="screen-1">
+    <div class="section-header">
+      <span class="section-num">01</span>
+      <div class="section-meta">
+        <div class="section-title">Main Dashboard & Live Reticle Viewfinder</div>
+        <div class="section-desc">Inventory command center with real-time KPI tiles, low-stock alerts, and integrated ML Kit barcode scanner viewfinder with ZXing reticle.</div>
+        <div class="screen-id">ID: 7ba198b3d4a64d3cb3b3cced9305c369</div>
+        <div class="file-tags">
+          <span class="file-tag">home_page.dart</span>
+          <span class="file-tag">scanner_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1WKXCOHgL-_NM-rZFsX7eQfKEAtJDuIebG2Lv_k40V6CqqbTVFyojmnXlCwX75BHc0iNbFUji9h_D-rfMpw4xeEWY_v_Qy5MSKx9wYr99A9iNv4lHl0dkIPsYW6FB70deHrVlC2H6sVedKUvuAL-YVXkbVgthSTnTguW8nEjzHMj_tBqG9OaOzGmJJGLLrpY69QagLzbL5_6EbYy5G32U9Tdg8B0Hoph7qmznV12lpjoCPTwLcD3QA8kpU" alt="Dashboard Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-green">📊</div><div class="info-text"><div class="info-title">KPI Summary Tiles</div><div class="info-sub">Total SKUs, Low Stock count, Today's IN/OUT movements with ₹ valuation in <span class="info-mono">JetBrains Mono</span></div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">🔍</div><div class="info-text"><div class="info-title">ML Kit Barcode Reticle</div><div class="info-sub">180dp dark viewfinder with emerald green ZXing corner brackets, torch toggle and live scanning animation</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">⚠️</div><div class="info-text"><div class="info-title">Low Stock Alert Cards</div><div class="info-sub">Crisp 1px bordered inventory cards with SHORTAGE / REORDER pills and ₹ MRP values</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">🧭</div><div class="info-text"><div class="info-title">M3 Bottom Navigation</div><div class="info-sub">5-tab nav: Inventory · Audit · Scan · Restock · Settings with active state indicators</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>Offline-first SQLite</span>
+          <span class="feature-chip"><span class="chip-dot amber"></span>Restock velocity AI</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>Drift ORM streams</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 2 ── -->
+  <section class="screen-section" id="screen-2">
+    <div class="section-header">
+      <span class="section-num">02</span>
+      <div class="section-meta">
+        <div class="section-title">Single-SKU Barcode Scan & Discrepancy Resolution</div>
+        <div class="section-desc">Post-scan product detail sheet with stock adjustment controls, batch/expiry tracking, and IN/OUT movement ledger logging.</div>
+        <div class="screen-id">ID: a5f6853483704842861ae1ef2cafc6a5</div>
+        <div class="file-tags">
+          <span class="file-tag">product_detail_page.dart</span>
+          <span class="file-tag">stock_movement_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1X1bGPAG45PDEhjRSHoRXUQvlTWbQzUVlMWbFs9yByh3C2oZEnAsft6UxyJk4hBbF8gmJKfL9izCrQ4zgfNKDL7bxHxj3Ym2h6vKF8GnQrYHxWnAGbV0r6TM7jEKebf64Od9tdDXCMho3sFI5ImJUWMd3aNAkgoyWqtTkYYa3vNEVxkc5gc9muTx7F42nZrCjgwmISKmCUrBxEpDy3N-9BiSuIyiUqztZ8SFo7uKhZqLgPh4s3UVwD0Ag" alt="Barcode Scan Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-green">🏷️</div><div class="info-text"><div class="info-title">SKU Detail Header</div><div class="info-sub">Product name, barcode <span class="info-mono">8901030382910</span>, category pill, current stock count</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">🔢</div><div class="info-text"><div class="info-title">48dp Quantity Stepper</div><div class="info-sub">Tabular JetBrains Mono counter flanked by −/+ tactile buttons, glove-friendly 48px targets</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📦</div><div class="info-text"><div class="info-title">Batch & Expiry Fields</div><div class="info-sub">On-device OCR pre-fill for batch number and expiry date with date-picker fallback</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">✅</div><div class="info-text"><div class="info-title">Commit to Ledger CTA</div><div class="info-sub">Emerald filled button writes atomic movement record to SQLite via Drift</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>OCR pre-fill</span>
+          <span class="feature-chip"><span class="chip-dot amber"></span>Expiry tracking</span>
+          <span class="feature-chip"><span class="chip-dot purple"></span>Ledger movement</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 3 ── -->
+  <section class="screen-section" id="screen-3">
+    <div class="section-header">
+      <span class="section-num">03</span>
+      <div class="section-meta">
+        <div class="section-title">Thermal Receipt Slip & ESC/POS Bluetooth Printer Sheet</div>
+        <div class="section-desc">Offline ESC/POS thermal receipt preview in 58mm and 80mm paper widths with Bluetooth printer pairing and text/binary share options.</div>
+        <div class="screen-id">ID: 7e2daf7996ac425ab92dffd2b6c09591</div>
+        <div class="file-tags">
+          <span class="file-tag">thermal_slip_preview_sheet.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1UJnuFalRdYGZCFyS953dg13OyXQxiN7nsV9bQigqihT0xFckafdvkS6XcHoKEkz6t2Z5v7yIB6wrnn5Fs9u44wfTWWYRs_MCZDkGQPHEr3BZxerMv27Q7UtiwjpRZIeX3tTgY2qSKJaSWOBzsdQYdY0xFkkMog5hJoFdOL6N3Imf9oYWfaV9pHokaLx2j4r064KFEY0EBVUmCvph03-x3bK-UhVI_9YvYSeaiyMBXv3fKCv4If18WORVM" alt="Thermal Receipt Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-slate">🖨️</div><div class="info-text"><div class="info-title">M3 SegmentedButton — Paper Width</div><div class="info-sub">Toggle between <span class="info-mono">58mm</span> and <span class="info-mono">80mm</span> thermal roll formats</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">📄</div><div class="info-text"><div class="info-title">Live Slip Preview</div><div class="info-sub">Monospaced JetBrains Mono receipt rendered pixel-perfect mimicking actual ESC/POS output</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📡</div><div class="info-text"><div class="info-title">Bluetooth Printer Pairing</div><div class="info-sub">Paired device list, connection status badge, and raw byte print send action</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">📤</div><div class="info-text"><div class="info-title">Share as Text / Binary</div><div class="info-sub">Export slip via Android Share sheet or copy ESC/POS bytes to other apps</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>ESC/POS protocol</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>BLE printer</span>
+          <span class="feature-chip"><span class="chip-dot"></span>100% offline</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 4 ── -->
+  <section class="screen-section" id="screen-4">
+    <div class="section-header">
+      <span class="section-num">04</span>
+      <div class="section-meta">
+        <div class="section-title">Enterprise Restock Analytics & Multi-Supplier PO Center</div>
+        <div class="section-desc">Rule-based velocity restock predictions, ABC/XYZ segmentation, and multi-supplier purchase order generation with CSV export.</div>
+        <div class="screen-id">ID: 4dd572a703a44a07b1849bda49cec638</div>
+        <div class="file-tags">
+          <span class="file-tag">low_stock_page.dart</span>
+          <span class="file-tag">suppliers_page.dart</span>
+          <span class="file-tag">restock_analytics_service.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1WSQ3QXARuDUdZjbfyeKZQ91SsqLwZDpVf4rydZAlLCugPCC_6a2IsMmuNFaw_kusl6uZ5-231eyryDZJXFDqJaSE-s4G4GKNVcJRc-BCgnAuToVN8BW_GOoKg1RoNHnhT1FbHDyo97oVFykYsWVjlo77F3S18ZRIM6O46vnvy5t_j23xBRg_v4JkyVSlZVUrDttmxfcuP_FvLdcX3TLI-A7fh355bSHrvFix6RMr4k_hivXI4kOzb96l4" alt="Restock Analytics Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-amber">📈</div><div class="info-text"><div class="info-title">Velocity-Based Restock Cards</div><div class="info-sub">Days-of-stock remaining, suggested reorder quantity, amber REORDER pill badges</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">🏭</div><div class="info-text"><div class="info-title">Supplier Directory</div><div class="info-sub">Vendor cards with tap-to-call, WhatsApp integration, and product category mapping</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📋</div><div class="info-text"><div class="info-title">PO Generation</div><div class="info-sub">Multi-supplier purchase orders consolidated by vendor, CSV export via Android Share</div></div></div>
+        <div class="info-row"><div class="info-icon icon-purple">🔬</div><div class="info-text"><div class="info-title">ABC/XYZ Segmentation</div><div class="info-sub">Rule-based classification of high/medium/low velocity SKUs for smart reorder prioritization</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot amber"></span>Velocity AI</span>
+          <span class="feature-chip"><span class="chip-dot"></span>Multi-supplier PO</span>
+          <span class="feature-chip"><span class="chip-dot red"></span>Out-of-stock alert</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 5 ── -->
+  <section class="screen-section" id="screen-5">
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <div class="section-meta">
+        <div class="section-title">Ask StockSafe AI — Voice Assistant & Offline Semantic Query</div>
+        <div class="section-desc">Bilingual (English + Tamil) offline NLP query interface with voice input, semantic search over local SQLite, and suggested query chips.</div>
+        <div class="screen-id">ID: ef3b9227b48c4733b43900db8d539c81</div>
+        <div class="file-tags">
+          <span class="file-tag">ask_stocksafe_page.dart</span>
+          <span class="file-tag">voice_assistant_dialog.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1UtdyAxN3qNOTxsyMnMVaKZR0FcXnvnBLoj6pH1axDG_dxRW9PRlt7gN-6vUqSTiKsWMDnLr9WWUgOyEIuRjx5G0F2iyGWIsuACuEq5-uExiuFdm9lthI3gjjPQSZDAEyzuTRFbmujMqBfqttOrpMKSKoLD0Z_7QsAjDGW3-Ql22XwIRWdM6PxdCtgFhOdbYt3gr5v2QcLVyKIrrju76jcddhXR_REb7F2bVrp-ThJShv4EJx2zerdtHXk" alt="AI Assistant Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-purple">🎤</div><div class="info-text"><div class="info-title">Voice Input + Waveform</div><div class="info-sub">Live microphone waveform animation, bilingual STT (English / தமிழ்), offline processing</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">🧠</div><div class="info-text"><div class="info-title">Semantic NLP over SQLite</div><div class="info-sub">Rule-based query engine answering "What's low on stock?" or "Show expiring this week" locally</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">💬</div><div class="info-text"><div class="info-title">Suggested Query Chips</div><div class="info-sub">Pre-built query shortcuts as scrollable chips for warehouse operators</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">📊</div><div class="info-text"><div class="info-title">Inline Result Cards</div><div class="info-sub">AI answer rendered as readable summary with tabular data in JetBrains Mono</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot purple"></span>Offline STT</span>
+          <span class="feature-chip"><span class="chip-dot"></span>Bilingual EN/TA</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>Zero cloud API</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 6 ── -->
+  <section class="screen-section" id="screen-6">
+    <div class="section-header">
+      <span class="section-num">06</span>
+      <div class="section-meta">
+        <div class="section-title">Physical Stocktake & Cycle-Count Audit Workspace</div>
+        <div class="section-desc">Persistent audit sessions with transparent/blind modes, real-time discrepancy tracking, variance valuation, and atomic ledger reconciliation.</div>
+        <div class="screen-id">ID: db1728b177f04999b6b002d8f6c315d6</div>
+        <div class="file-tags">
+          <span class="file-tag">stock_audit_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1UTLFoSXGwyyoHvlk8cVSsZA-afVebYYP-1RdTOco2DKS-aPyTv_bkii79tWTS2Al7013STquloojm3drXw6_wcxZhscjIRfsQg4Vw3AusCX2HZf4sbowqxuZPzP6EM2odL84aiqtLko8-y_5zgpMui6Qfh89muBKRLXRA8_SHG06lvDrJCMeIf4kvDTgUkEWy5C1djvKeOnGjeSxlejvmJl3RWN1unXdZzKLy0U7cW243ZGSf1WgVirTM" alt="Stock Audit Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-green">📷</div><div class="info-text"><div class="info-title">Integrated Camera Viewfinder</div><div class="info-sub">180dp dark viewport with emerald ZXing reticle, torch toggle, and continuous multi-burst scanning</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📊</div><div class="info-text"><div class="info-title">3-Column KPI Bar</div><div class="info-sub"><span class="info-mono">42 Counted · 37 Matched · 5 Discrepancies (−₹2,450)</span></div></div></div>
+        <div class="info-row"><div class="info-icon icon-red">⚡</div><div class="info-text"><div class="info-title">Discrepancy Reconciliation Cards</div><div class="info-sub">MATCHED / −3 SHORTAGE / +2 SURPLUS pills with EAN-13 barcodes in JetBrains Mono</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">🔒</div><div class="info-text"><div class="info-title">Atomic Reconciliation CTA</div><div class="info-sub">Commits verified count deltas as movement records to SQLite ledger in one transaction</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>Transparent/Blind mode</span>
+          <span class="feature-chip"><span class="chip-dot red"></span>Variance tracking</span>
+          <span class="feature-chip"><span class="chip-dot amber"></span>ESC/POS slip</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 7 ── -->
+  <section class="screen-section" id="screen-7">
+    <div class="section-header">
+      <span class="section-num">07</span>
+      <div class="section-meta">
+        <div class="section-title">Barcode Label Sticker Generator & Print</div>
+        <div class="section-desc">A4 multi-up sticker sheet (24/30/40 labels) and thermal roll (50×25mm, 50×30mm) label generation with Code 128 or QR in PDF format.</div>
+        <div class="screen-id">ID: e9ce188473964190aedb349aa8c49c4e</div>
+        <div class="file-tags">
+          <span class="file-tag">barcode_label_print_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1U7qyVxiRy7QGAfYNDJqZiHsD5H_0L-PPGqQk1hkM4_F31hYa21gpsxH3IS3JGmejac3aTcnhOoR8S-pOKaqfGKzJGKPu6mTcQ3FC5xR6SNGBd9HDvqwbTUHuHFvSdyEHbThPMZ521_UT5Il1UM277Jx7trOeVX5z4EpYcA3RuAXuLHQgVFSs3RW1AAJ428sNwNCC6BQ22AwuCtm-2buCjJYPdOmz0tzRu__8Q9F4Nmp_cvHjNFAIKRtGc" alt="Barcode Label Print Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-slate">🔍</div><div class="info-text"><div class="info-title">Product Search Selector</div><div class="info-sub">Scan-to-select search field with product cards showing SKU in <span class="info-mono">JetBrains Mono</span> and MRP in ₹</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📐</div><div class="info-text"><div class="info-title">Format Chip Selector</div><div class="info-sub">A4-24, A4-30, A4-40, Thermal 50×25mm, Thermal 50×30mm horizontal chip row</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">🏷️</div><div class="info-text"><div class="info-title">Live Sticker Preview</div><div class="info-sub"><span class="info-mono">★ STOCKSAFE KIRANA ★</span> · MRP ₹95.00 · Code 128 bars · Batch date</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">🖨️</div><div class="info-text"><div class="info-title">Print / Share PDF CTA</div><div class="info-sub">48dp emerald button generates PDF via flutter_pdfium + Bluetooth ESC/POS link</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>Code 128 / QR</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>A4 PDF generation</span>
+          <span class="feature-chip"><span class="chip-dot amber"></span>Offset stepper</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 8 ── -->
+  <section class="screen-section" id="screen-8">
+    <div class="section-header">
+      <span class="section-num">08</span>
+      <div class="section-meta">
+        <div class="section-title">Pro Lifetime Unlock Paywall Bottom Sheet</div>
+        <div class="section-desc">Non-aggressive M3 modal bottom sheet with free-tier consumption meter, ₹499 one-time pricing card, feature comparison, and offline license key activation.</div>
+        <div class="screen-id">ID: a7a8e8559df44327bf953fafcb4f1e4f</div>
+        <div class="file-tags">
+          <span class="file-tag">paywall_sheet.dart</span>
+          <span class="file-tag">license_service.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1VyfnMtERza339QfPLsa1C-oRVDk5oU4vk7r0OSQHGO3wzk9IorF0QzTKtUVNTYLUhWu6CxR-1A-6VcDJt_YlAa8Sfg3tnCeUb9gXIOytAFYUKHIrxymg0wwIWgpifEocVTIER1MF8_7v2dBPf0uz9weUqzEagLFldP5MTG_pArWzj_567oWRePuKriQ3QTh9kRT3k7hlC4d1Gl-Y3Qa6l2Z37Kd-uMjWJ-F_oKKRQY-ImcE_B8-njMaMA" alt="Paywall Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-amber">👑</div><div class="info-text"><div class="info-title">Free-Tier Meter</div><div class="info-sub">Amber progress bar at 76% (<span class="info-mono">38 / 50</span> products), 12 remaining caption</div></div></div>
+        <div class="info-row"><div class="info-icon icon-slate">💰</div><div class="info-text"><div class="info-title">Pricing Card</div><div class="info-sub"><span class="info-mono">₹499</span> slate gradient card · ONE-TIME UNLOCK · ~~₹999~~ 50% off promo</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">✅</div><div class="info-text"><div class="info-title">Pro Feature Rows</div><div class="info-sub">Unlimited Products · ESC/POS Printing · Label Printing · Analytics & PO Center</div></div></div>
+        <div class="info-row"><div class="info-icon icon-amber">🔑</div><div class="info-text"><div class="info-title">Offline Activation Key</div><div class="info-sub">Voucher code input for kirana shops without internet, validated locally</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot amber"></span>₹499 one-time</span>
+          <span class="feature-chip"><span class="chip-dot"></span>Offline activation</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>Play Billing</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 9 ── -->
+  <section class="screen-section" id="screen-9">
+    <div class="section-header">
+      <span class="section-num">09</span>
+      <div class="section-meta">
+        <div class="section-title">Backup & Data Sovereignty</div>
+        <div class="section-desc">Cryptographically verified (SHA-256) local rolling snapshots, one-tap restore, CSV catalog import with field mapping, and full ledger export.</div>
+        <div class="screen-id">ID: 098e3108242546d09191669a182cb26b</div>
+        <div class="file-tags">
+          <span class="file-tag">backup_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1VI2huAnmwySkGobYHmMiyTSycVcRiklcIr9pNqcNYzNqguE_P-Z0XFR5P73wt4mloiHA4KreiDKWgtD4h-YHCDKGbMO8iNWppMni4vD0Djc4un97f_WS7_zRd1yGZvQmw5GUY6lkLq0-ZBr-hvcheduQK2XbArGJzWucPw_9Si1Hu6R5l-DQyc9_4jaBuJXoFmd6e_c1N2EtKiERTmaWw_JHv9kkX_oHRCtbHSelXMoEd-gTaixKcwxg" alt="Backup Screen" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">Key Components</div>
+        <div class="info-row"><div class="info-icon icon-green">🛡️</div><div class="info-text"><div class="info-title">SHA-256 Snapshot Cards</div><div class="info-sub">Filenames in <span class="info-mono">JetBrains Mono</span> with VERIFIED (emerald) / UNVERIFIED (amber) pills and restore actions</div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">✅</div><div class="info-text"><div class="info-title">Integrity Summary</div><div class="info-sub"><span class="info-mono">sha256:9f8a...4b12 · Latest backup: 3 hours ago</span></div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">📤</div><div class="info-text"><div class="info-title">CSV Import / Export</div><div class="info-sub">Side-by-side Import & Export buttons · Product Catalog + Movement Ledger export tiles</div></div></div>
+        <div class="info-row"><div class="info-icon icon-slate">📋</div><div class="info-text"><div class="info-title">Import Status Card</div><div class="info-sub"><span class="info-mono">142 products mapped · 0 errors</span> with View Import Log link</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>SHA-256 verified</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>CSV import/export</span>
+          <span class="feature-chip"><span class="chip-dot"></span>7 rolling snapshots</span>
+        </div>
+      </div>
+    </div>
+  </section><hr class="divider"/>
+
+  <!-- ── SCREEN 10 ── -->
+  <section class="screen-section" id="screen-10">
+    <div class="section-header">
+      <span class="section-num">10</span>
+      <div class="section-meta">
+        <div class="section-title">Enterprise App Settings — StockSafe Kirana</div>
+        <div class="section-desc">Full 6-section settings ListView: Pro license, appearance & language, operations & printing, data sovereignty, system health diagnostics, and about.</div>
+        <div class="screen-id">ID: 4bfc181f7936461194e1cfc36d9d00c4</div>
+        <div class="file-tags">
+          <span class="file-tag">settings_page.dart</span>
+        </div>
+      </div>
+    </div>
+    <div class="two-up">
+      <div class="phone-frame-wrap">
+        <div class="phone-frame">
+          <div class="phone-notch"></div>
+          <div class="phone-btn-r"></div>
+          <div class="phone-btn-l1"></div>
+          <div class="phone-btn-l2"></div>
+          <div class="phone-btn-l3"></div>
+          <div class="phone-screen">
+            <img src="https://lh3.googleusercontent.com/aida/AEtjO1WBK-iQiAhyIfYRjjzoArn01JjGEbxt4uVHA5r8TqXUcMhLCESxMS--DW8yr6Czg61xws_7qoZpmBcMAF13bXNDaoKS1OkW85g2zvdMor1sfS2J8KjhrV-PwHTmPddmjww4agxAZr81QEfFUi7iwvn6vKGc2Z9AjJCMlZsDhSOxu6owIJhyB28-2rvkvPkKSPeRIS0hF22QPZencoAJYkvvkalNZbNeA4-LM0bO62KwIRsvq7bxEHITL78" alt="Settings Screen — StockSafe Kirana" loading="lazy" />
+          </div>
+        </div>
+      </div>
+      <div class="screen-info">
+        <div class="info-section-label">6 Settings Sections</div>
+        <div class="info-row"><div class="info-icon icon-amber">👑</div><div class="info-text"><div class="info-title">Pro & License Card</div><div class="info-sub">Amber progress bar 76% · <span class="info-mono">38 / 50</span> · Upgrade button (slate navy)</div></div></div>
+        <div class="info-row"><div class="info-icon icon-blue">🎨</div><div class="info-text"><div class="info-title">Appearance & Language</div><div class="info-sub">Theme Mode selector · App Language (மொழி) bilingual toggle</div></div></div>
+        <div class="info-row"><div class="info-icon icon-slate">🏭</div><div class="info-text"><div class="info-title">Operations & Printing</div><div class="info-sub">Supplier Directory · Barcode Labels · Store Name <span class="info-mono">STOCKSAFE KIRANA</span></div></div></div>
+        <div class="info-row"><div class="info-icon icon-green">🏥</div><div class="info-text"><div class="info-title">System Health</div><div class="info-sub"><span class="info-mono">99.4%</span> crash-free · Ledger integrity <span class="info-mono">SELECT SUM(qty_delta)</span> · PRAGMA check</div></div></div>
+        <div class="features">
+          <span class="feature-chip"><span class="chip-dot"></span>100% OFFLINE</span>
+          <span class="feature-chip"><span class="chip-dot blue"></span>DRIFT/SQLITE</span>
+          <span class="feature-chip"><span class="chip-dot purple"></span>MKIT BARCODE</span>
+          <span class="feature-chip"><span class="chip-dot red"></span>NO SERVER</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer>
+  <p>STOCKSAFE ENTERPRISE · GOOGLE STITCH MCP · PROJECT 8649689332451071353 · DESIGN SYSTEM assets/a651e3c6ab54453fb1e3fb3c30537783</p>
+  <div class="footer-pills">
+    <span class="fp">FLUTTER MATERIAL 3</span>
+    <span class="fp">INTER + JETBRAINS MONO</span>
+    <span class="fp">8PT GRID SYSTEM</span>
+    <span class="fp">10 SCREENS · 15 FILES</span>
+    <span class="fp">100% OFFLINE</span>
+    <span class="fp">DRIFT / SQLITE</span>
+    <span class="fp">MKIT BARCODE</span>
+    <span class="fp">ESC/POS BLUETOOTH</span>
+  </div>
+</footer>
+
+</body>
+</html>
