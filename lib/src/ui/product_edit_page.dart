@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/database.dart';
 import '../services/diagnostic_service.dart';
 import '../services/label_ocr_service.dart';
+import '../services/expiry_parser.dart';
 import '../services/license_service.dart';
 import 'widgets/paywall_sheet.dart';
 import '../app_scope.dart';
@@ -67,6 +68,15 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
   bool _isOcrProcessing = false;
 
+  /// Batch and expiry read off a label, waiting for the product to exist.
+  ///
+  /// A batch row needs a product id, and on a new product there is not one
+  /// until save. These hold the scanned values in the meantime; [_save]
+  /// writes them to the batch table once the id is known.
+  String? _pendingBatchNumber;
+  DateTime? _pendingExpiry;
+  String? _pendingExpiryText;
+
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
@@ -122,6 +132,22 @@ class _ProductEditPageState extends State<ProductEditPage> {
               label: Text(_isOcrProcessing ? 'Reading label with ML Kit…' : 'Scan Label with AI OCR (MRP, Expiry, Pack)'),
               onPressed: _isOcrProcessing ? null : _scanLabelOcr,
             ),
+
+            // Batch and expiry no longer land in a text field, so without
+            // this the scan would look like it dropped them. They are saved
+            // to the batch table, which the form has no column for.
+            if (_pendingBatchNumber != null || _pendingExpiryText != null)
+              _ScannedBatchNotice(
+                batchNumber: _pendingBatchNumber,
+                expiryText: _pendingExpiryText,
+                expiryParsed: _pendingExpiry,
+                onClear: () => setState(() {
+                  _pendingBatchNumber = null;
+                  _pendingExpiry = null;
+                  _pendingExpiryText = null;
+                }),
+              ),
+
             const SizedBox(height: 16),
 
             TextFormField(
@@ -414,12 +440,17 @@ class _ProductEditPageState extends State<ProductEditPage> {
                     if (data.netQuantity != null) {
                       _unit.text = data.netQuantity!;
                     }
-                    final identifiers = [
-                      if (data.batchNumber != null) data.batchNumber!,
-                      if (data.expiryDate != null) 'EXP:${data.expiryDate!}',
-                    ];
-                    if (identifiers.isNotEmpty && _sku.text.isEmpty) {
-                      _sku.text = identifiers.join(' · ');
+                    // Batch and expiry are not SKU text. They used to be
+                    // joined into the SKU field, which put a date into the
+                    // field used for search and CSV export and left the
+                    // "Expiring Soon" tab permanently empty for scanned
+                    // products - the one thing scanning an expiry is for.
+                    // They are held here and written to the batch table on
+                    // save, where getExpiringBatches() can see them.
+                    if (data.batchNumber != null || data.expiryDate != null) {
+                      _pendingBatchNumber = data.batchNumber;
+                      _pendingExpiryText = data.expiryDate;
+                      _pendingExpiry = parseLabelExpiry(data.expiryDate);
                     }
                   });
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -498,6 +529,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
           supplierId: Value(_supplierId),
         ),
       );
+      await _recordScannedBatch(widget.product!.id);
     } else {
       final canAdd = await LicenseService(_db).canAddProduct();
       if (!mounted) return;
@@ -507,7 +539,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       }
       if (!mounted) return;
 
-      await _db.productDao.insertProduct(
+      final newId = await _db.productDao.insertProduct(
         ProductsCompanion.insert(
           name: name,
           category: Value(category.isEmpty ? null : category),
@@ -522,8 +554,88 @@ class _ProductEditPageState extends State<ProductEditPage> {
           updatedAt: now,
         ),
       );
+      await _recordScannedBatch(newId);
     }
 
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Writes what the label scan found to the batch table.
+  ///
+  /// A batch row needs a product id, which a new product does not have until
+  /// save - hence the pending fields rather than writing it at scan time.
+  Future<void> _recordScannedBatch(int productId) async {
+    await _db.batchDao.recordScannedLabel(
+      productId: productId,
+      batchNumber: _pendingBatchNumber,
+      expiryText: _pendingExpiryText,
+    );
+  }
+}
+
+/// What the label scan found that the form has no field for.
+///
+/// Shown because the alternative is a scan that silently appears to lose the
+/// batch and expiry it just reported finding.
+class _ScannedBatchNotice extends StatelessWidget {
+  const _ScannedBatchNotice({
+    required this.batchNumber,
+    required this.expiryText,
+    required this.expiryParsed,
+    required this.onClear,
+  });
+
+  final String? batchNumber;
+  final String? expiryText;
+  final DateTime? expiryParsed;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final parts = [
+      if (batchNumber != null) 'Batch $batchNumber',
+      if (expiryText != null) 'expires $expiryText',
+    ];
+
+    // An expiry the parser could not read is worth saying out loud: the batch
+    // still saves, but it will never appear under "Expiring Soon".
+    final unreadable = expiryText != null && expiryParsed == null;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              unreadable ? Icons.help_outline : Icons.inventory_2_outlined,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                unreadable
+                    ? '${parts.join(' · ')} — saved as a batch, but the date '
+                        'could not be read, so it will not raise an expiry alert.'
+                    : '${parts.join(' · ')} — saved as a batch when you save '
+                        'this product.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              tooltip: 'Discard scanned batch',
+              onPressed: onClear,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../database.dart';
 import '../tables.dart';
+import '../../services/expiry_parser.dart';
 
 part 'batch_dao.g.dart';
 
@@ -141,6 +142,44 @@ class BatchDao extends DatabaseAccessor<AppDatabase> with _$BatchDaoMixin {
       batchNumber: trimmedNumber,
       expiryDate: expiryDate,
       initialStock: initialStock,
+    );
+  }
+
+  /// Records what a label scan found, as a batch.
+  ///
+  /// The OCR feature is advertised as reading "MRP, Expiry, Pack". The expiry
+  /// used to be joined into the product's SKU string, which put a date into
+  /// the field used for search and CSV export and meant a scanned expiry
+  /// never reached [getExpiringBatches] - so the "Expiring Soon" tab stayed
+  /// empty for exactly the products the user had scanned.
+  ///
+  /// Idempotent on (product, batch number) via [getOrCreateBatch], so saving
+  /// the same product twice updates one batch rather than piling up copies.
+  ///
+  /// The schema requires a batch number. When a label carries only an expiry,
+  /// the date names the batch - it is what distinguishes this stock from the
+  /// rest, and it reads correctly in the batch list.
+  ///
+  /// Returns the batch id, or null when there was nothing to record. An
+  /// expiry string that cannot be parsed still yields a batch, with a null
+  /// expiry date: better no date than a guessed one.
+  Future<int?> recordScannedLabel({
+    required int productId,
+    String? batchNumber,
+    String? expiryText,
+  }) async {
+    final parsedExpiry = parseLabelExpiry(expiryText);
+    final number = batchNumber?.trim();
+    final hasNumber = number != null && number.isNotEmpty;
+    if (!hasNumber && parsedExpiry == null) return null;
+
+    final label = hasNumber ? number : 'EXP ${expiryText?.trim() ?? ''}'.trim();
+    if (label.isEmpty) return null;
+
+    return getOrCreateBatch(
+      productId: productId,
+      batchNumber: label,
+      expiryDate: parsedExpiry,
     );
   }
 
