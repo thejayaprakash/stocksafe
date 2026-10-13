@@ -56,7 +56,11 @@ jobs:
           fi
 
       - name: Run unit & widget tests
-        run: flutter test
+        # The `release` tag is the launch gate (test/release_readiness_test.dart).
+        # It is excluded here because some of its checks only pass once a release
+        # is actually being prepared, and a red main on every push teaches people
+        # to ignore red. The launch-gate job below runs it on demand.
+        run: flutter test --exclude-tags release
 
   release:
     name: Generate Artifact
@@ -86,21 +90,61 @@ jobs:
       - name: Generate Drift code
         run: dart run build_runner build
 
-      - name: Build Android Release APK & App Bundle
+      # NOT PUBLISHABLE. CI holds no signing key, so these are signed with the
+      # public Android debug key and the build has to opt into that explicitly
+      # -- without the flag it now fails outright (see android/app/build.gradle.kts).
+      #
+      # Until this change the fallback was silent apart from a logger.warn()
+      # buried in the Gradle output, and the results were uploaded as
+      # "StockSafe-release-apk", which read like something you could ship.
+      - name: Build tester APK & App Bundle (debug-signed, NOT publishable)
         run: |
-          flutter build apk --release
-          flutter build appbundle --release
+          flutter build apk --release -PallowDebugSigning=true
+          flutter build appbundle --release -PallowDebugSigning=true
 
-      - name: Upload Release APK artifact
+      - name: Upload tester APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StockSafe-release-apk
+          name: StockSafe-TESTING-ONLY-debug-signed-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
 
-      - name: Upload Release App Bundle artifact (AAB)
+      - name: Upload tester App Bundle artifact (AAB)
         uses: actions/upload-artifact@v4
         with:
-          name: StockSafe-release-bundle
+          name: StockSafe-TESTING-ONLY-debug-signed-aab
           path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 14
+
+  launch-gate:
+    name: Launch Gate
+    # Run from the Actions tab before a real upload. Not part of the push
+    # pipeline: these assert decisions that are permanent once the app is on
+    # Play, and the voucher-secret check only passes when given the real secret.
+    #
+    # Set STOCKSAFE_VOUCHER_SECRET as a repository secret first.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Drift code
+        run: dart run build_runner build
+
+      - name: Launch gate (identity, signing, voucher secret)
+        run: |
+          flutter test --tags release \
+            --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET"
+        env:
+          STOCKSAFE_VOUCHER_SECRET: ${{ secrets.STOCKSAFE_VOUCHER_SECRET }}
