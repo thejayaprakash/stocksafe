@@ -1,0 +1,30 @@
+name: stocksafe
+description: "Offline stock manager for small shops. Never loses your data."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  drift: ^2.35.2
+  drift_flutter: ^0.3.1
+  path_provider: ^2.1.6
+  path: ^1.9.0
+  intl: ^0.20.3
+  mobile_scanner: ^6.0.2
+  csv: ^6.0.0
+  share_plus: ^10.1.4
+  archive: ^4.0.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.35.1
+  build_runner: ^2.16.2
+
+flutter:
+  uses-material-design: true
