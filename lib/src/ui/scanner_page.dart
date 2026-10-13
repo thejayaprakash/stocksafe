@@ -26,7 +26,6 @@ class _ScannerPageState extends State<ScannerPage> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
     // Bundled model — works with no Play Services and no internet.
-    // This adds a few MB but is the whole offline positioning.
   );
 
   bool _processing = false;
@@ -43,9 +42,15 @@ class _ScannerPageState extends State<ScannerPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan barcode'),
+        title: const Text('Scan Barcode'),
         actions: [
-          // Torch toggle — shop storerooms are dark.
+          // Manual entry fallback
+          IconButton(
+            icon: const Icon(Icons.keyboard_outlined),
+            onPressed: _showManualBarcodeDialog,
+            tooltip: 'Enter barcode manually',
+          ),
+          // Torch toggle — storerooms are dark.
           ValueListenableBuilder<MobileScannerState>(
             valueListenable: _controller,
             builder: (_, state, __) {
@@ -58,9 +63,9 @@ class _ScannerPageState extends State<ScannerPage> {
               );
             },
           ),
-          // Camera switch for devices with multiple cameras.
+          // Camera switch
           IconButton(
-            icon: const Icon(Icons.cameraswitch),
+            icon: const Icon(Icons.cameraswitch_outlined),
             onPressed: () => _controller.switchCamera(),
             tooltip: 'Switch camera',
           ),
@@ -71,6 +76,48 @@ class _ScannerPageState extends State<ScannerPage> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
+            errorBuilder: (context, error, child) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.videocam_off_outlined, size: 64, color: Colors.orangeAccent),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Camera unavailable or permission needed',
+                        style: theme.textTheme.titleMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        error.errorDetails?.message ?? error.errorCode.name,
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                            onPressed: () => _controller.start(),
+                          ),
+                          const SizedBox(width: 12),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.keyboard),
+                            label: const Text('Type Barcode'),
+                            onPressed: _showManualBarcodeDialog,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
           // Scan overlay guide
           Center(
@@ -79,29 +126,44 @@ class _ScannerPageState extends State<ScannerPage> {
               height: 160,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.7),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.8),
                   width: 3,
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
           ),
-          // Bottom instruction
+          // Bottom instruction and manual entry quick-action
           Positioned(
-            bottom: 48,
-            left: 0,
-            right: 0,
+            bottom: 36,
+            left: 16,
+            right: 16,
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Text(
-                  _processing ? 'Looking up…' : 'Point at a barcode',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      _processing ? 'Looking up…' : 'Point camera at a barcode',
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.black54,
+                    ),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Enter code manually'),
+                    onPressed: _showManualBarcodeDialog,
+                  ),
+                ],
               ),
             ),
           ),
@@ -116,11 +178,16 @@ class _ScannerPageState extends State<ScannerPage> {
     if (barcodes.isEmpty) return;
 
     final code = barcodes.first.rawValue;
-    if (code == null || code.isEmpty) return;
+    if (code == null || code.trim().isEmpty) return;
 
+    await _handleBarcode(code.trim());
+  }
+
+  Future<void> _handleBarcode(String code) async {
+    if (_processing) return;
     setState(() => _processing = true);
 
-    // Haptic + sound feedback — shopkeepers scan without looking.
+    // Haptic feedback — shopkeepers scan without looking.
     await HapticFeedback.mediumImpact();
 
     final existing = await widget.db.productDao.getByBarcode(code);
@@ -128,7 +195,7 @@ class _ScannerPageState extends State<ScannerPage> {
     if (!mounted) return;
 
     if (existing != null) {
-      // Known product — go to detail.
+      // Known product — jump to detail.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -139,7 +206,7 @@ class _ScannerPageState extends State<ScannerPage> {
         ),
       );
     } else {
-      // Unknown barcode — add new product with barcode pre-filled.
+      // Unknown barcode — jump to add-product with barcode pre-filled.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -150,5 +217,49 @@ class _ScannerPageState extends State<ScannerPage> {
         ),
       );
     }
+  }
+
+  void _showManualBarcodeDialog() {
+    final textController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Barcode'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          keyboardType: TextInputType.text,
+          decoration: const InputDecoration(
+            hintText: 'e.g. 8901030895421',
+            prefixIcon: Icon(Icons.qr_code),
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (val) {
+            final trimmed = val.trim();
+            if (trimmed.isNotEmpty) {
+              Navigator.pop(ctx);
+              _handleBarcode(trimmed);
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final trimmed = textController.text.trim();
+              if (trimmed.isNotEmpty) {
+                Navigator.pop(ctx);
+                _handleBarcode(trimmed);
+              }
+            },
+            child: const Text('Search / Add'),
+          ),
+        ],
+      ),
+    );
   }
 }
