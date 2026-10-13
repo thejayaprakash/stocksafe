@@ -308,11 +308,6 @@ class _PaywallSheetState extends State<PaywallSheet> {
               subtitle: AppLocale.tr('feature_unlimited_desc'),
             ),
             _FeatureRow(
-              icon: Icons.print,
-              title: AppLocale.tr('feature_thermal_escpos'),
-              subtitle: AppLocale.tr('feature_thermal_desc'),
-            ),
-            _FeatureRow(
               icon: Icons.qr_code_2,
               title: AppLocale.tr('feature_barcode_stickers'),
               subtitle: AppLocale.tr('feature_barcode_desc'),

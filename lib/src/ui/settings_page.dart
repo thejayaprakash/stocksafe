@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/database.dart';
+import 'pro_gate.dart';
 import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
@@ -214,10 +215,14 @@ class _SettingsPageState extends State<SettingsPage> {
           title: Text(AppLocale.tr('barcode_label_printing')),
           subtitle: const Text('Generate PDF sticker sheets (Code 128 / QR) for loose goods'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
-          ),
+          onTap: () async {
+            if (!await requirePro(context, _db)) return;
+            if (!context.mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
+            );
+          },
         ),
         ListTile(
           leading: const Icon(Icons.storefront_outlined),

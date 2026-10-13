@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import 'pro_gate.dart';
 import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/esc_pos_service.dart';
@@ -550,6 +551,8 @@ class _StockMovementPageState extends State<StockMovementPage> {
           );
         }
       } else if (action == 'print_labels' && product != null) {
+        if (!mounted) return;
+        if (!await requirePro(context, _db)) return;
         if (mounted) {
           await Navigator.push(
             context,

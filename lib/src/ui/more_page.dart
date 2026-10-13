@@ -6,6 +6,7 @@ import '../services/license_service.dart';
 import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
+import 'pro_gate.dart';
 import 'low_stock_page.dart';
 import 'settings_page.dart';
 import 'suppliers_page.dart';
@@ -134,7 +135,12 @@ class MorePage extends StatelessWidget {
             iconColor: const Color(0xFF10B981),
             title: AppLocale.tr('barcode_label_printing'),
             subtitle: 'Generate sticker sheets (A4 or thermal rolls) with Code 128 / QR',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BarcodeLabelPrintPage())),
+            onTap: () async {
+              if (!await requirePro(context, db)) return;
+              if (!context.mounted) return;
+              await Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const BarcodeLabelPrintPage()));
+            },
           ),
           _buildToolTile(
             context,

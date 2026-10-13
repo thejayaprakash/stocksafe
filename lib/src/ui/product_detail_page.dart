@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import 'pro_gate.dart';
 
 import 'barcode_label_print_page.dart';
 import 'product_edit_page.dart';
@@ -39,14 +40,18 @@ class ProductDetailPage extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.qr_code_2),
                 tooltip: 'Print Barcode Labels',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BarcodeLabelPrintPage(
-                      initialProduct: product,
+                onPressed: () async {
+                  if (!await requirePro(context, db)) return;
+                  if (!context.mounted) return;
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BarcodeLabelPrintPage(
+                        initialProduct: product,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               IconButton(
                 icon: const Icon(Icons.edit),
