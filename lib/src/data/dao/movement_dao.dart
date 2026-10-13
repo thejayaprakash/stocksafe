@@ -137,6 +137,18 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
     return q.watch();
   }
 
+  /// How many rows the ledger holds.
+  ///
+  /// The ledger only grows, and its size is what drives migration time and the
+  /// cost of a full integrity audit, so it is the most useful single number
+  /// about a shop's scale — and it says nothing about what the shop sells.
+  Future<int> count() async {
+    final c = countAll();
+    final q = selectOnly(movements)..addColumns([c]);
+    final row = await q.getSingle();
+    return row.read(c) ?? 0;
+  }
+
   /// All movements, newest first — for CSV export (every column).
   Future<List<Movement>> getAllForExport() =>
       (select(movements)

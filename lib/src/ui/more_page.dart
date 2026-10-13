@@ -8,6 +8,7 @@ import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
 import 'low_stock_page.dart';
 import 'settings_page.dart';
+import 'support_report_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
 
@@ -147,6 +148,19 @@ class MorePage extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Section 3: Data Safety & System
+          _buildSectionHeader(theme, 'HELP'),
+          _buildToolTile(
+            context,
+            icon: Icons.support_agent_outlined,
+            iconColor: const Color(0xFF6366F1),
+            title: 'Report a problem',
+            subtitle: 'Send a diagnostic report — counts only, never your product data',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SupportReportPage()),
+            ),
+          ),
+
           _buildSectionHeader(theme, 'DATA & SYSTEM'),
           _buildToolTile(
             context,
