@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../data/database.dart';
 import 'product_detail_page.dart';
 import 'widgets/voice_assistant_dialog.dart';
+import '../app_scope.dart';
 
 class InsightAnswer {
   const InsightAnswer({
@@ -26,15 +27,19 @@ class InsightAnswer {
 /// Performs 100% offline rule-based analytics to answer key business
 /// questions about stock levels, valuation, velocity, and dead stock.
 class AskStockSafePage extends StatefulWidget {
-  const AskStockSafePage({super.key, required this.db});
-
-  final AppDatabase db;
+  const AskStockSafePage({super.key});
 
   @override
   State<AskStockSafePage> createState() => _AskStockSafePageState();
 }
 
 class _AskStockSafePageState extends State<AskStockSafePage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   final TextEditingController _queryController = TextEditingController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
 
@@ -224,7 +229,7 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
                                     onTap: () => Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => ProductDetailPage(db: widget.db, productId: p.id),
+                                        builder: (_) => ProductDetailPage(productId: p.id),
                                       ),
                                     ),
                                   ),
@@ -244,7 +249,7 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
     setState(() => _isLoading = true);
     final q = query.toLowerCase();
 
-    final allProducts = await widget.db.productDao.getAllForExport();
+    final allProducts = await _db.productDao.getAllForExport();
 
     InsightAnswer answer;
 
@@ -290,7 +295,7 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
     } else if (q.contains('dead') || q.contains('zero') || q.contains('slow') || q.contains('idle')) {
       // 3. Dead Stock / No Movement
       final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
-      final recentMovements = await (widget.db.select(widget.db.movements)
+      final recentMovements = await (_db.select(_db.movements)
             ..where((m) => m.createdAt.isBiggerOrEqualValue(thirtyDaysAgo)))
           .get();
 
@@ -312,7 +317,7 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
     } else if (q.contains('movement') || q.contains('fast') || q.contains('top') || q.contains('week') || q.contains('sold')) {
       // 4. Movement velocity
       final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-      final weeklyMovements = await (widget.db.select(widget.db.movements)
+      final weeklyMovements = await (_db.select(_db.movements)
             ..where((m) => m.createdAt.isBiggerOrEqualValue(sevenDaysAgo)))
           .get();
 

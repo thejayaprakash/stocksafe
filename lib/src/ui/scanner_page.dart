@@ -8,6 +8,7 @@ import '../services/license_service.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'widgets/paywall_sheet.dart';
+import '../app_scope.dart';
 
 /// Barcode scanner using CameraX + ML Kit bundled model (works offline).
 ///
@@ -17,15 +18,19 @@ import 'widgets/paywall_sheet.dart';
 ///
 /// Shopkeepers scan without looking — beep + vibrate on every hit.
 class ScannerPage extends StatefulWidget {
-  const ScannerPage({super.key, required this.db});
-
-  final AppDatabase db;
+  const ScannerPage({super.key});
 
   @override
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
 class _ScannerPageState extends State<ScannerPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
   );
@@ -388,7 +393,7 @@ class _ScannerPageState extends State<ScannerPage> {
         _showingBatchDrawer = true;
       });
     } else {
-      final p = await widget.db.productDao.getByBarcode(code);
+      final p = await _db.productDao.getByBarcode(code);
       setState(() {
         _batchItems[code] = _BatchScanItem(barcode: code, product: p, quantity: 1);
         _showingBatchDrawer = true;
@@ -408,7 +413,7 @@ class _ScannerPageState extends State<ScannerPage> {
     for (final item in items) {
       final delta = isStockIn ? item.quantity : -item.quantity;
       final reason = isStockIn ? 'Continuous Stock In' : 'Continuous Stock Out';
-      await widget.db.movementDao.recordMovement(
+      await _db.movementDao.recordMovement(
         productId: item.product!.id,
         qtyDelta: delta,
         reason: reason,
@@ -433,7 +438,7 @@ class _ScannerPageState extends State<ScannerPage> {
 
     await HapticFeedback.mediumImpact();
 
-    final existing = await widget.db.productDao.getByBarcode(code);
+    final existing = await _db.productDao.getByBarcode(code);
 
     if (!mounted) return;
 
@@ -442,17 +447,16 @@ class _ScannerPageState extends State<ScannerPage> {
         context,
         MaterialPageRoute(
           builder: (_) => ProductDetailPage(
-            db: widget.db,
             productId: existing.id,
           ),
         ),
       );
     } else {
-      final canAdd = await LicenseService(widget.db).canAddProduct();
+      final canAdd = await LicenseService(_db).canAddProduct();
       if (!mounted) return;
       if (!canAdd) {
         setState(() => _processing = false);
-        final unlocked = await PaywallSheet.show(context, widget.db);
+        final unlocked = await PaywallSheet.show(context);
         if (unlocked != true) return;
       }
       if (!mounted) return;
@@ -465,7 +469,6 @@ class _ScannerPageState extends State<ScannerPage> {
         context,
         MaterialPageRoute(
           builder: (_) => ProductEditPage(
-            db: widget.db,
             prefillBarcode: code,
             catalogInfo: catalogInfo,
           ),

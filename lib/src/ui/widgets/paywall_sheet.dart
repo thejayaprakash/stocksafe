@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../data/database.dart';
 import '../../services/app_localization.dart';
 import '../../services/license_service.dart';
+import '../../app_scope.dart';
 
 /// Clean, non-nagging Paywall Sheet for StockSafe Pro.
 ///
@@ -9,19 +10,17 @@ import '../../services/license_service.dart';
 /// 1. Retailer hits the 50-product free tier limit and tries to add product #51.
 /// 2. Retailer accesses "Upgrade to Pro" from Settings.
 class PaywallSheet extends StatefulWidget {
-  const PaywallSheet({super.key, required this.db, this.onUnlocked});
+  const PaywallSheet({super.key, this.onUnlocked});
 
-  final AppDatabase db;
   final VoidCallback? onUnlocked;
 
   /// Show paywall as a modal bottom sheet.
-  static Future<bool?> show(BuildContext context, AppDatabase db) {
+  static Future<bool?> show(BuildContext context) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => PaywallSheet(
-        db: db,
         onUnlocked: () => Navigator.pop(ctx, true),
       ),
     );
@@ -32,6 +31,12 @@ class PaywallSheet extends StatefulWidget {
 }
 
 class _PaywallSheetState extends State<PaywallSheet> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   late final LicenseService _licenseService;
   bool _isLoading = false;
   int _activeCount = 0;
@@ -40,12 +45,12 @@ class _PaywallSheetState extends State<PaywallSheet> {
   @override
   void initState() {
     super.initState();
-    _licenseService = LicenseService(widget.db);
+    _licenseService = LicenseService(_db);
     _loadState();
   }
 
   Future<void> _loadState() async {
-    final count = await widget.db.productDao.countActive();
+    final count = await _db.productDao.countActive();
     final limit = await _licenseService.getFreeLimit();
     if (mounted) {
       setState(() {

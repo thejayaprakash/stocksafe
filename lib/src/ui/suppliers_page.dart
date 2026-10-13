@@ -4,20 +4,25 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/database.dart';
 import '../services/app_localization.dart';
+import '../app_scope.dart';
 
 /// Supplier & Vendor Contacts Directory Page.
 /// Retailers can record vendor details, view mapped products,
 /// and tap "Call Supplier" or message on WhatsApp instantly.
 class SuppliersPage extends StatefulWidget {
-  const SuppliersPage({super.key, required this.db});
-
-  final AppDatabase db;
+  const SuppliersPage({super.key});
 
   @override
   State<SuppliersPage> createState() => _SuppliersPageState();
 }
 
 class _SuppliersPageState extends State<SuppliersPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
 
@@ -58,7 +63,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
         ),
       ),
       body: StreamBuilder<List<Supplier>>(
-        stream: widget.db.supplierDao.watchAll(query: _query),
+        stream: _db.supplierDao.watchAll(query: _query),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -114,7 +119,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
             itemBuilder: (context, index) {
               final s = suppliers[index];
               return _SupplierCard(
-                db: widget.db,
+                db: _db,
                 supplier: s,
                 onEdit: () => _showAddEditDialog(context, existing: s),
                 onDelete: () => _confirmDelete(context, s),
@@ -225,7 +230,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
               final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
 
               if (existing != null) {
-                await widget.db.supplierDao.updateSupplier(
+                await _db.supplierDao.updateSupplier(
                   existing.id,
                   SuppliersCompanion(
                     name: Value(name),
@@ -235,7 +240,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                   ),
                 );
               } else {
-                await widget.db.supplierDao.insertSupplier(
+                await _db.supplierDao.insertSupplier(
                   SuppliersCompanion.insert(
                     name: name,
                     phone: phone,
@@ -284,14 +289,14 @@ class _SuppliersPageState extends State<SuppliersPage> {
     );
 
     if (confirmed == true && context.mounted) {
-      await widget.db.supplierDao.softDelete(s.id);
+      await _db.supplierDao.softDelete(s.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Removed "${s.name}"'),
             action: SnackBarAction(
               label: 'Undo',
-              onPressed: () => widget.db.supplierDao.restore(s.id),
+              onPressed: () => _db.supplierDao.restore(s.id),
             ),
           ),
         );
@@ -363,7 +368,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
               ),
               const SizedBox(height: 6),
               FutureBuilder<List<Product>>(
-                future: widget.db.supplierDao.getProductsForSupplier(s.id),
+                future: _db.supplierDao.getProductsForSupplier(s.id),
                 builder: (context, prodSnap) {
                   final prods = prodSnap.data ?? [];
                   if (prods.isEmpty) {

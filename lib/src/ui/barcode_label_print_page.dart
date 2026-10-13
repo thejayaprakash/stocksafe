@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import '../data/database.dart';
 import '../services/app_localization.dart';
 import '../services/barcode_label_service.dart';
+import '../app_scope.dart';
 
 /// Interactive Barcode Label Sticker Generator & Print Screen.
 /// Generates standard A4 multi-up sticker sheets (24, 30, 40 labels)
@@ -12,14 +13,11 @@ import '../services/barcode_label_service.dart';
 class BarcodeLabelPrintPage extends StatefulWidget {
   const BarcodeLabelPrintPage({
     super.key,
-    required this.db,
     this.initialProduct,
     this.initialCount = 24,
     this.batchNumber,
     this.expiryDate,
   });
-
-  final AppDatabase db;
   final Product? initialProduct;
   final int initialCount;
   final String? batchNumber;
@@ -30,6 +28,12 @@ class BarcodeLabelPrintPage extends StatefulWidget {
 }
 
 class _BarcodeLabelPrintPageState extends State<BarcodeLabelPrintPage> {
+  /// The live database, read through the scope rather than passed in.
+  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
+  /// must rebuild when the connection is replaced should call AppScope.of in
+  /// build instead.
+  AppDatabase get _db => AppScope.read(context).db;
+
   Product? _selectedProduct;
   late int _count = widget.initialCount;
   LabelSheetFormat _format = LabelSheetFormat.a4_24;
@@ -52,7 +56,7 @@ class _BarcodeLabelPrintPageState extends State<BarcodeLabelPrintPage> {
   }
 
   Future<void> _loadShopName() async {
-    final saved = await widget.db.settingDao.get('shop_name');
+    final saved = await _db.settingDao.get('shop_name');
     if (saved != null && saved.trim().isNotEmpty && mounted) {
       setState(() {
         _shopName = saved.trim();
@@ -131,7 +135,7 @@ class _BarcodeLabelPrintPageState extends State<BarcodeLabelPrintPage> {
         ),
         Expanded(
           child: StreamBuilder<List<Product>>(
-            stream: widget.db.productDao.watchAll(),
+            stream: _db.productDao.watchAll(),
             builder: (context, snapshot) {
               final products = snapshot.data ?? [];
               if (products.isEmpty) {
