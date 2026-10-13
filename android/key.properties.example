@@ -1,0 +1,19 @@
+# Copy this file to android/key.properties and fill in your own values.
+#
+# android/.gitignore already excludes key.properties, *.jks and *.keystore,
+# so none of this reaches the repository. Keep a backup of the .jks somewhere
+# that is not only your laptop.
+#
+# Create the keystore once:
+#
+#   keytool -genkey -v -keystore ~/keystores/stocksafe-upload.jks \
+#     -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias stocksafe
+#
+# storeFile is resolved relative to the android/ directory, so an absolute
+# path outside the repo is the safest choice.
+
+storeFile=C:/path/to/stocksafe-upload.p12
+storePassword=
+keyAlias=stocksafe
+keyPassword=
