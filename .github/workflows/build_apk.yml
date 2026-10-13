@@ -86,12 +86,21 @@ jobs:
       - name: Generate Drift code
         run: dart run build_runner build
 
-      - name: Build Android Release APK
-        run: flutter build apk --release
+      - name: Build Android Release APK & App Bundle
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
 
       - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: StockSafe-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+      - name: Upload Release App Bundle artifact (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: StockSafe-release-bundle
+          path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 14

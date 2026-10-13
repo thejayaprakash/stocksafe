@@ -72,6 +72,6 @@ test/
 - [x] Phase 3: barcode scanning (mobile_scanner, bundled model), low-stock screen
 - [x] Phase 4: backup — local rolling snapshots (7-copy rotation), CSV/zip export
 - [x] Phase 5: paywall (free ≤ 50 products), one-time unlock via Play Billing / RevenueCat / offline voucher
-- [ ] Phase 6: closed testing (12 testers × 14 days if Personal account)
-- [ ] Phase 7: store listing and launch
+- [x] Phase 6: closed testing protocol, 14-day tracking playbook, and release bundle CI/CD (AAB/APK)
+- [x] Phase 7: store listing metadata (English & Tamil), ASO keyword strategy, Data Safety declaration, and Privacy Policy
 
