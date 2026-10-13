@@ -1,0 +1,958 @@
+{
+  "_meta": {
+    "description": "This file contains a serialized version of schema entities for drift.",
+    "version": "1.3.0"
+  },
+  "options": {
+    "store_date_time_values_as_text": false
+  },
+  "entities": [
+    {
+      "id": 0,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "supplier",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "name",
+            "getter_name": "name",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "allowed-lengths": {
+                  "min": 1,
+                  "max": 200
+                }
+              }
+            ]
+          },
+          {
+            "name": "phone",
+            "getter_name": "phone",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "allowed-lengths": {
+                  "min": 1,
+                  "max": 50
+                }
+              }
+            ]
+          },
+          {
+            "name": "gstin",
+            "getter_name": "gstin",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "notes",
+            "getter_name": "notes",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 1,
+      "references": [
+        0
+      ],
+      "type": "table",
+      "data": {
+        "name": "product",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "name",
+            "getter_name": "name",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "allowed-lengths": {
+                  "min": 1,
+                  "max": 200
+                }
+              }
+            ]
+          },
+          {
+            "name": "sku",
+            "getter_name": "sku",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "barcode",
+            "getter_name": "barcode",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "category",
+            "getter_name": "category",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "unit",
+            "getter_name": "unit",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'pcs\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "buy_price",
+            "getter_name": "buyPrice",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0.0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "sell_price",
+            "getter_name": "sellPrice",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0.0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "low_stock_level",
+            "getter_name": "lowStockLevel",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "stock_qty",
+            "getter_name": "stockQty",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "supplier_id",
+            "getter_name": "supplierId",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES supplier (id) ON DELETE SET NULL",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES supplier (id) ON DELETE SET NULL"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "supplier",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "setNull"
+                }
+              }
+            ]
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 2,
+      "references": [
+        1,
+        0
+      ],
+      "type": "table",
+      "data": {
+        "name": "movement",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "product_id",
+            "getter_name": "productId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES product (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES product (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "product",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "qty_delta",
+            "getter_name": "qtyDelta",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "reason",
+            "getter_name": "reason",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "note",
+            "getter_name": "note",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "audit_session_id",
+            "getter_name": "auditSessionId",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "batch_id",
+            "getter_name": "batchId",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "supplier_id",
+            "getter_name": "supplierId",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES supplier (id) ON DELETE SET NULL",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES supplier (id) ON DELETE SET NULL"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "supplier",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "setNull"
+                }
+              }
+            ]
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 3,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "setting",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "key",
+            "getter_name": "key",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "value",
+            "getter_name": "value",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "key"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "stock_audit_session",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "name",
+            "getter_name": "name",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "allowed-lengths": {
+                  "min": 1,
+                  "max": 100
+                }
+              }
+            ]
+          },
+          {
+            "name": "status",
+            "getter_name": "status",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'in_progress\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "audit_mode",
+            "getter_name": "auditMode",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'transparent\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "started_at",
+            "getter_name": "startedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "completed_at",
+            "getter_name": "completedAt",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "total_items_counted",
+            "getter_name": "totalItemsCounted",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "total_discrepancies",
+            "getter_name": "totalDiscrepancies",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "net_discrepancy_value",
+            "getter_name": "netDiscrepancyValue",
+            "moor_type": "double",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0.0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "notes",
+            "getter_name": "notes",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 5,
+      "references": [
+        4,
+        1
+      ],
+      "type": "table",
+      "data": {
+        "name": "stock_audit_item",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "session_id",
+            "getter_name": "sessionId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES stock_audit_session (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES stock_audit_session (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "stock_audit_session",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "product_id",
+            "getter_name": "productId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES product (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES product (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "product",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "expected_qty",
+            "getter_name": "expectedQty",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "counted_qty",
+            "getter_name": "countedQty",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "difference",
+            "getter_name": "difference",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "is_reconciled",
+            "getter_name": "isReconciled",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"is_reconciled\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"is_reconciled\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "reconciled_at",
+            "getter_name": "reconciledAt",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "notes",
+            "getter_name": "notes",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    },
+    {
+      "id": 6,
+      "references": [
+        1
+      ],
+      "type": "table",
+      "data": {
+        "name": "batch",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "PRIMARY KEY AUTOINCREMENT",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "PRIMARY KEY AUTOINCREMENT"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              "auto-increment"
+            ]
+          },
+          {
+            "name": "product_id",
+            "getter_name": "productId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES product (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES product (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "product",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "batch_number",
+            "getter_name": "batchNumber",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "allowed-lengths": {
+                  "min": 1,
+                  "max": 100
+                }
+              }
+            ]
+          },
+          {
+            "name": "expiry_date",
+            "getter_name": "expiryDate",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "stock_qty",
+            "getter_name": "stockQty",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": []
+      }
+    }
+  ],
+  "fixed_sql": [
+    {
+      "name": "supplier",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"supplier\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"name\" TEXT NOT NULL, \"phone\" TEXT NOT NULL, \"gstin\" TEXT NULL, \"notes\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"deleted_at\" INTEGER NULL);"
+        }
+      ]
+    },
+    {
+      "name": "product",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"product\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"name\" TEXT NOT NULL, \"sku\" TEXT NULL, \"barcode\" TEXT NULL, \"category\" TEXT NULL, \"unit\" TEXT NOT NULL DEFAULT 'pcs', \"buy_price\" REAL NOT NULL DEFAULT 0.0, \"sell_price\" REAL NOT NULL DEFAULT 0.0, \"low_stock_level\" INTEGER NOT NULL DEFAULT 0, \"stock_qty\" INTEGER NOT NULL DEFAULT 0, \"supplier_id\" INTEGER NULL REFERENCES supplier (id) ON DELETE SET NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"deleted_at\" INTEGER NULL);"
+        }
+      ]
+    },
+    {
+      "name": "movement",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"movement\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"product_id\" INTEGER NOT NULL REFERENCES product (id) ON DELETE CASCADE, \"qty_delta\" INTEGER NOT NULL, \"reason\" TEXT NOT NULL, \"note\" TEXT NULL, \"audit_session_id\" INTEGER NULL, \"batch_id\" INTEGER NULL, \"supplier_id\" INTEGER NULL REFERENCES supplier (id) ON DELETE SET NULL, \"created_at\" INTEGER NOT NULL);"
+        }
+      ]
+    },
+    {
+      "name": "setting",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"setting\" (\"key\" TEXT NOT NULL, \"value\" TEXT NOT NULL, PRIMARY KEY (\"key\"));"
+        }
+      ]
+    },
+    {
+      "name": "stock_audit_session",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"stock_audit_session\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"name\" TEXT NOT NULL, \"status\" TEXT NOT NULL DEFAULT 'in_progress', \"audit_mode\" TEXT NOT NULL DEFAULT 'transparent', \"started_at\" INTEGER NOT NULL, \"completed_at\" INTEGER NULL, \"total_items_counted\" INTEGER NOT NULL DEFAULT 0, \"total_discrepancies\" INTEGER NOT NULL DEFAULT 0, \"net_discrepancy_value\" REAL NOT NULL DEFAULT 0.0, \"notes\" TEXT NULL);"
+        }
+      ]
+    },
+    {
+      "name": "stock_audit_item",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"stock_audit_item\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"session_id\" INTEGER NOT NULL REFERENCES stock_audit_session (id) ON DELETE CASCADE, \"product_id\" INTEGER NOT NULL REFERENCES product (id) ON DELETE CASCADE, \"expected_qty\" INTEGER NOT NULL, \"counted_qty\" INTEGER NOT NULL, \"difference\" INTEGER NOT NULL, \"is_reconciled\" INTEGER NOT NULL DEFAULT 0 CHECK (\"is_reconciled\" IN (0, 1)), \"reconciled_at\" INTEGER NULL, \"notes\" TEXT NULL, \"updated_at\" INTEGER NOT NULL);"
+        }
+      ]
+    },
+    {
+      "name": "batch",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"batch\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"product_id\" INTEGER NOT NULL REFERENCES product (id) ON DELETE CASCADE, \"batch_number\" TEXT NOT NULL, \"expiry_date\" INTEGER NULL, \"stock_qty\" INTEGER NOT NULL DEFAULT 0, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL);"
+        }
+      ]
+    }
+  ]
+}
