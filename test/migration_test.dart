@@ -25,6 +25,7 @@ import 'package:stocksafe/src/data/database.dart';
 import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v1.dart' as v1;
 import 'generated_migrations/schema_v2.dart' as v2;
+import 'generated_migrations/schema_v3.dart' as v3;
 
 /// Drift stores `DateTimeColumn` as unix seconds; the generated historical
 /// schemas expose those columns as plain ints.
@@ -131,10 +132,10 @@ void main() {
           );
       await oldDb.close();
 
-      final db = AppDatabase(schema.newConnection());
-      await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
+      final db = _AppDatabaseAtVersion(schema.newConnection(), 3);
+      await verifier.migrateAndValidate(db, 3);
 
-      expect(await _userVersion(db), 3);
+      expect(await _userVersion(db), 3, reason: 'step must land exactly on v3');
       expect(await _tableExists(db, 'supplier'), isTrue);
       expect(await _columnExists(db, 'product', 'supplier_id'), isTrue);
       expect(await _columnExists(db, 'movement', 'supplier_id'), isTrue);
@@ -146,6 +147,81 @@ void main() {
       expect(rows.single.read<String>('name'), 'Step test product v2');
       expect(rows.single.read<String>('category'), 'Spices');
       expect(rows.single.read<int?>('supplier_id'), isNull);
+      expect(await _columnExists(db, 'batch', 'deleted_at'), isFalse,
+          reason: 'step 2->3 must not apply step 3->4');
+
+      await db.close();
+    });
+
+    test('step 3 to 4 soft-deletes batches and de-duplicates barcodes',
+        () async {
+      final schema = await verifier.schemaAt(3);
+      final ts = DateTime.utc(2026, 7, 1, 10, 0);
+
+      final oldDb = v3.DatabaseAtV3(schema.newConnection());
+
+      // Two live products sharing a barcode — what importing the same supplier
+      // CSV twice produced before the importer skipped duplicates.
+      for (final name in ['Original Rice 5kg', 'Duplicate Rice 5kg']) {
+        await oldDb.into(oldDb.product).insert(
+              v3.ProductCompanion.insert(
+                name: name,
+                barcode: const Value('8901234567890'),
+                createdAt: _secs(ts),
+                updatedAt: _secs(ts),
+              ),
+            );
+      }
+      // A product whose barcode is unique must keep it.
+      await oldDb.into(oldDb.product).insert(
+            v3.ProductCompanion.insert(
+              name: 'Dal 1kg',
+              barcode: const Value('8909999999999'),
+              createdAt: _secs(ts),
+              updatedAt: _secs(ts),
+            ),
+          );
+      // Two products with no barcode at all must be unaffected: SQLite treats
+      // NULLs as distinct, so they do not collide.
+      for (final name in ['Loose item A', 'Loose item B']) {
+        await oldDb.into(oldDb.product).insert(
+              v3.ProductCompanion.insert(
+                name: name,
+                createdAt: _secs(ts),
+                updatedAt: _secs(ts),
+              ),
+            );
+      }
+      await oldDb.close();
+
+      final db = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(db, 4);
+
+      expect(await _userVersion(db), 4);
+      expect(await _columnExists(db, 'batch', 'deleted_at'), isTrue);
+
+      // Nothing was deleted — all five products are still present.
+      final all = await db.customSelect(
+        'SELECT id, name, barcode FROM product ORDER BY id',
+      ).get();
+      expect(all, hasLength(5),
+          reason: 'de-duplication must clear barcodes, never drop rows');
+
+      // The oldest claimant keeps the barcode; the newer one is cleared.
+      expect(all[0].read<String?>('barcode'), '8901234567890');
+      expect(all[1].read<String?>('barcode'), isNull,
+          reason: 'the duplicate keeps its stock and ledger, loses the code');
+      expect(all[2].read<String?>('barcode'), '8909999999999',
+          reason: 'a unique barcode must be left alone');
+
+      // The index is real: a second live product cannot claim the code again.
+      await expectLater(
+        db.customStatement(
+          "UPDATE product SET barcode = '8901234567890' WHERE id = 2",
+        ),
+        throwsA(anything),
+        reason: 'the unique index must be enforced after the migration',
+      );
 
       await db.close();
     });
@@ -160,12 +236,13 @@ void main() {
       expect(await _userVersion(atV2), 2);
       await atV2.close();
 
-      // Resuming from the now-v2 database reaches v3 through from2To3.
-      final atV3 = AppDatabase(schema.newConnection());
-      await verifier.migrateAndValidate(atV3, DatabaseMigrations.currentVersion);
-      expect(await _userVersion(atV3), 3);
-      expect(await _tableExists(atV3, 'supplier'), isTrue);
-      await atV3.close();
+      // Resuming from the now-v2 database runs every remaining step in order.
+      final atLatest = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(atLatest, DatabaseMigrations.currentVersion);
+      expect(await _userVersion(atLatest), DatabaseMigrations.currentVersion);
+      expect(await _tableExists(atLatest, 'supplier'), isTrue);
+      expect(await _columnExists(atLatest, 'batch', 'deleted_at'), isTrue);
+      await atLatest.close();
     });
   });
 

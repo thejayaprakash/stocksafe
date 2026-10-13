@@ -147,30 +147,30 @@ class AuditDao extends DatabaseAccessor<AppDatabase> with _$AuditDaoMixin {
 
       for (final item in items) {
         if (item.difference != 0) {
-          // 1. Insert immutable adjustment movement
-          await into(movements).insert(
-            MovementsCompanion.insert(
-              productId: item.productId,
-              qtyDelta: item.difference,
-              reason: reason,
-              note: Value('Stocktake "${session.name}" (difference: ${item.difference > 0 ? "+${item.difference}" : "${item.difference}"})'),
-              auditSessionId: Value(sessionId),
-              createdAt: now,
-            ),
-          );
+          // Valuation impact is read before the adjustment, from the product
+          // that is actually there. A product cascade-deleted since the count
+          // began has nothing to reconcile — skip it rather than fabricating
+          // a stock level from a null.
+          final prod = await (select(products)
+                ..where((p) => p.id.equals(item.productId)))
+              .getSingleOrNull();
+          if (prod == null) continue;
 
-          // 2. Fetch product cost to calculate valuation impact
-          final prod = await (select(products)..where((p) => p.id.equals(item.productId))).getSingleOrNull();
-          if (prod != null) {
-            netValueChange += item.difference * prod.buyPrice;
-          }
+          netValueChange += item.difference * prod.buyPrice;
 
-          // 3. Atomically update product stockQty cache
-          await (update(products)..where((p) => p.id.equals(item.productId))).write(
-            ProductsCompanion(
-              stockQty: Value((prod?.stockQty ?? 0) + item.difference),
-              updatedAt: Value(now),
-            ),
+          // Routed through the ledger entry point so the product cache is
+          // re-derived from SUM(qty_delta) and any batch follows. The previous
+          // code inserted the movement by hand and then *incremented* the
+          // cached value, which inherited any existing drift instead of
+          // correcting it, and left batch quantities untouched.
+          await db.movementDao.recordMovement(
+            productId: item.productId,
+            qtyDelta: item.difference,
+            reason: reason,
+            note: 'Stocktake "${session.name}" (difference: '
+                '${item.difference > 0 ? "+${item.difference}" : "${item.difference}"})',
+            auditSessionId: sessionId,
+            createdAt: now,
           );
         }
 

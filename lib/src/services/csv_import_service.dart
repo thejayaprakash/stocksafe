@@ -88,6 +88,9 @@ class CsvImportService {
     final freeLimit = await license.getFreeLimit();
     final availableQuota = isPro ? 999999 : (freeLimit - currentCount).clamp(0, freeLimit);
 
+    // Barcodes already claimed by rows accepted earlier in this same file.
+    final seenBarcodes = <String>{};
+
     await _db.transaction(() async {
       final now = DateTime.now();
 
@@ -125,11 +128,25 @@ class CsvImportService {
         final lowStock = _getInt(row, colMap['low_stock']);
         final initialStock = _getInt(row, colMap['initial_stock']);
 
-        // Check for duplicate barcode in database if barcode provided
+        // A barcode identifies one product. The previous version reported the
+        // duplicate and then inserted it anyway, so importing the same
+        // supplier file twice produced two rows sharing a code; scanning then
+        // resolved to an arbitrary one and stock landed on the wrong product.
+        // There is now a unique index on live barcodes, so inserting would
+        // abort the whole transaction and lose the good rows with the bad.
         if (barcode.isNotEmpty) {
+          if (!seenBarcodes.add(barcode)) {
+            errors.add('Row $rowNum: barcode "$barcode" is repeated '
+                'earlier in this file — row skipped.');
+            skipped++;
+            continue;
+          }
           final existing = await _db.productDao.getByBarcode(barcode);
           if (existing != null) {
-            errors.add('Row $rowNum: Barcode "$barcode" already exists for "${existing.name}".');
+            errors.add('Row $rowNum: barcode "$barcode" already belongs to '
+                '"${existing.name}" — row skipped.');
+            skipped++;
+            continue;
           }
         }
 

@@ -22,6 +22,17 @@ class Suppliers extends Table {
 /// Product master data. Soft delete only — `deletedAt` marks removal,
 /// the row is never dropped. Cached `stockQty` is a speed convenience;
 /// the movement ledger is the source of truth and it is rebuildable.
+///
+/// A barcode identifies exactly one live product. Without this, importing the
+/// same supplier CSV twice produced two rows with the same code, and scanning
+/// then resolved to an arbitrary one — so stock landed on the wrong product
+/// and the two silently diverged. The index is partial: soft-deleted rows are
+/// excluded so deleting and re-adding an item still works, and SQLite treats
+/// NULLs as distinct so products without a barcode are unaffected.
+@TableIndex.sql(
+  'CREATE UNIQUE INDEX idx_product_barcode_live ON product (barcode) '
+  'WHERE barcode IS NOT NULL AND deleted_at IS NULL;',
+)
 class Products extends Table {
   @override
   String get tableName => 'product';
@@ -109,6 +120,13 @@ class StockAuditItems extends Table {
 }
 
 /// Batch and expiry tracking for perishable and high-velocity goods.
+///
+/// `stockQty` is a cache of `SUM(movement.qty_delta) WHERE batch_id = id`,
+/// exactly as `product.stockQty` is — not an independent counter. It used to
+/// be one, adjusted by delta and clamped at zero, which meant a deduction
+/// larger than the batch held silently lost the difference while the
+/// product-level ledger recorded it in full. The two then disagreed forever
+/// with nothing able to detect or rebuild it.
 @DataClassName('ProductBatch')
 class Batches extends Table {
   @override
@@ -119,9 +137,16 @@ class Batches extends Table {
       integer().references(Products, #id, onDelete: KeyAction.cascade)();
   TextColumn get batchNumber => text().withLength(min: 1, max: 100)();
   DateTimeColumn get expiryDate => dateTime().nullable()();
+
+  /// Rebuildable cache of the batch's ledger total. Never authoritative.
   IntColumn get stockQty => integer().withDefault(const Constant(0))();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+
+  /// Soft delete, as everywhere else. Hard-deleting a batch orphaned the
+  /// `batch_id` on movements that are, by design, never deleted.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
 }
 
 /// Small key/value store: schema metadata, backup timestamps, unlock state.

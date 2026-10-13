@@ -2845,9 +2845,23 @@ class $BatchesTable extends Batches
   late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, productId, batchNumber, expiryDate, stockQty, createdAt, updatedAt];
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        productId,
+        batchNumber,
+        expiryDate,
+        stockQty,
+        createdAt,
+        updatedAt,
+        deletedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2897,6 +2911,10 @@ class $BatchesTable extends Batches
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     return context;
   }
 
@@ -2920,6 +2938,8 @@ class $BatchesTable extends Batches
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
     );
   }
 
@@ -2934,9 +2954,15 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
   final int productId;
   final String batchNumber;
   final DateTime? expiryDate;
+
+  /// Rebuildable cache of the batch's ledger total. Never authoritative.
   final int stockQty;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Soft delete, as everywhere else. Hard-deleting a batch orphaned the
+  /// `batch_id` on movements that are, by design, never deleted.
+  final DateTime? deletedAt;
   const ProductBatch(
       {required this.id,
       required this.productId,
@@ -2944,7 +2970,8 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
       this.expiryDate,
       required this.stockQty,
       required this.createdAt,
-      required this.updatedAt});
+      required this.updatedAt,
+      this.deletedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2957,6 +2984,9 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
     map['stock_qty'] = Variable<int>(stockQty);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -2971,6 +3001,9 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
       stockQty: Value(stockQty),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -2985,6 +3018,7 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
       stockQty: serializer.fromJson<int>(json['stockQty']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -2998,6 +3032,7 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
       'stockQty': serializer.toJson<int>(stockQty),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -3008,7 +3043,8 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
           Value<DateTime?> expiryDate = const Value.absent(),
           int? stockQty,
           DateTime? createdAt,
-          DateTime? updatedAt}) =>
+          DateTime? updatedAt,
+          Value<DateTime?> deletedAt = const Value.absent()}) =>
       ProductBatch(
         id: id ?? this.id,
         productId: productId ?? this.productId,
@@ -3017,6 +3053,7 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
         stockQty: stockQty ?? this.stockQty,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
       );
   ProductBatch copyWithCompanion(BatchesCompanion data) {
     return ProductBatch(
@@ -3029,6 +3066,7 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
       stockQty: data.stockQty.present ? data.stockQty.value : this.stockQty,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -3041,14 +3079,15 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
           ..write('expiryDate: $expiryDate, ')
           ..write('stockQty: $stockQty, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, productId, batchNumber, expiryDate, stockQty, createdAt, updatedAt);
+  int get hashCode => Object.hash(id, productId, batchNumber, expiryDate,
+      stockQty, createdAt, updatedAt, deletedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3059,7 +3098,8 @@ class ProductBatch extends DataClass implements Insertable<ProductBatch> {
           other.expiryDate == this.expiryDate &&
           other.stockQty == this.stockQty &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
 }
 
 class BatchesCompanion extends UpdateCompanion<ProductBatch> {
@@ -3070,6 +3110,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
   final Value<int> stockQty;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
   const BatchesCompanion({
     this.id = const Value.absent(),
     this.productId = const Value.absent(),
@@ -3078,6 +3119,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
     this.stockQty = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   BatchesCompanion.insert({
     this.id = const Value.absent(),
@@ -3087,6 +3129,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
     this.stockQty = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
   })  : productId = Value(productId),
         batchNumber = Value(batchNumber),
         createdAt = Value(createdAt),
@@ -3099,6 +3142,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
     Expression<int>? stockQty,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3108,6 +3152,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
       if (stockQty != null) 'stock_qty': stockQty,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -3118,7 +3163,8 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
       Value<DateTime?>? expiryDate,
       Value<int>? stockQty,
       Value<DateTime>? createdAt,
-      Value<DateTime>? updatedAt}) {
+      Value<DateTime>? updatedAt,
+      Value<DateTime?>? deletedAt}) {
     return BatchesCompanion(
       id: id ?? this.id,
       productId: productId ?? this.productId,
@@ -3127,6 +3173,7 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
       stockQty: stockQty ?? this.stockQty,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -3154,6 +3201,9 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -3166,7 +3216,8 @@ class BatchesCompanion extends UpdateCompanion<ProductBatch> {
           ..write('expiryDate: $expiryDate, ')
           ..write('stockQty: $stockQty, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -3184,6 +3235,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $StockAuditItemsTable stockAuditItems =
       $StockAuditItemsTable(this);
   late final $BatchesTable batches = $BatchesTable(this);
+  late final Index idxProductBarcodeLive = Index('idx_product_barcode_live',
+      'CREATE UNIQUE INDEX idx_product_barcode_live ON product (barcode) WHERE barcode IS NOT NULL AND deleted_at IS NULL');
   late final ProductDao productDao = ProductDao(this as AppDatabase);
   late final MovementDao movementDao = MovementDao(this as AppDatabase);
   late final SettingDao settingDao = SettingDao(this as AppDatabase);
@@ -3201,7 +3254,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         settings,
         stockAuditSessions,
         stockAuditItems,
-        batches
+        batches,
+        idxProductBarcodeLive
       ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules(
@@ -5542,6 +5596,7 @@ typedef $$BatchesTableCreateCompanionBuilder = BatchesCompanion Function({
   Value<int> stockQty,
   required DateTime createdAt,
   required DateTime updatedAt,
+  Value<DateTime?> deletedAt,
 });
 typedef $$BatchesTableUpdateCompanionBuilder = BatchesCompanion Function({
   Value<int> id,
@@ -5551,6 +5606,7 @@ typedef $$BatchesTableUpdateCompanionBuilder = BatchesCompanion Function({
   Value<int> stockQty,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
+  Value<DateTime?> deletedAt,
 });
 
 final class $$BatchesTableReferences
@@ -5598,6 +5654,9 @@ class $$BatchesTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 
   $$ProductsTableFilterComposer get productId {
     final $$ProductsTableFilterComposer composer = $composerBuilder(
@@ -5647,6 +5706,9 @@ class $$BatchesTableOrderingComposer
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
         composer: this,
@@ -5694,6 +5756,9 @@ class $$BatchesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   $$ProductsTableAnnotationComposer get productId {
     final $$ProductsTableAnnotationComposer composer = $composerBuilder(
@@ -5746,6 +5811,7 @@ class $$BatchesTableTableManager extends RootTableManager<
             Value<int> stockQty = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
           }) =>
               BatchesCompanion(
             id: id,
@@ -5755,6 +5821,7 @@ class $$BatchesTableTableManager extends RootTableManager<
             stockQty: stockQty,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deletedAt: deletedAt,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5764,6 +5831,7 @@ class $$BatchesTableTableManager extends RootTableManager<
             Value<int> stockQty = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
+            Value<DateTime?> deletedAt = const Value.absent(),
           }) =>
               BatchesCompanion.insert(
             id: id,
@@ -5773,6 +5841,7 @@ class $$BatchesTableTableManager extends RootTableManager<
             stockQty: stockQty,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deletedAt: deletedAt,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (

@@ -32,7 +32,8 @@ class DatabaseMigrations {
   //     upgrade path repairs the plural variant — see _renameLegacyTables.
   // 2 — enterprise schema (category, stockAuditSessions, stockAuditItems, batches)
   // 3 — supplier directory schema (suppliers table, product.supplierId, movement.supplierId)
-  static const int currentVersion = 3;
+  // 4 — batch.deletedAt (soft delete) + unique index on live product barcodes
+  static const int currentVersion = 4;
 
   /// Tables renamed in 35073b4, oldest name first. Order matters: renaming
   /// `products` first lets SQLite rewrite the foreign key in `movements`
@@ -82,6 +83,19 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(schema.product, schema.product.supplierId);
         await m.addColumn(schema.movement, schema.movement.supplierId);
       },
+      from3To4: (m, schema) async {
+        await m.addColumn(schema.batch, schema.batch.deletedAt);
+
+        // The unique index cannot be created while duplicates exist, and a
+        // user who imported the same CSV twice has them. Clear the barcode on
+        // the newer copies rather than deleting rows — the duplicate still
+        // holds real stock and a real ledger, so dropping it would be the data
+        // loss this app exists to prevent. The user can re-enter the barcode
+        // on whichever row is correct.
+        await _clearDuplicateBarcodes();
+
+        await m.create(schema.idxProductBarcodeLive);
+      },
     ),
     beforeOpen: (details) async {
       // Enforce FK constraints and keep the cache consistent on open.
@@ -113,6 +127,26 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Keeps the barcode on the oldest live product holding it and clears it on
+  /// the rest, so the partial unique index can be created. Returns how many
+  /// rows were changed. Nothing is deleted.
+  Future<int> _clearDuplicateBarcodes() async {
+    final result = await customUpdate(
+      '''
+      UPDATE product SET barcode = NULL
+      WHERE deleted_at IS NULL
+        AND barcode IS NOT NULL
+        AND id NOT IN (
+          SELECT MIN(id) FROM product
+          WHERE deleted_at IS NULL AND barcode IS NOT NULL
+          GROUP BY barcode
+        )
+      ''',
+      updates: {products},
+    );
+    return result;
+  }
+
   Future<bool> _tableExists(String name) async {
     final rows = await customSelect(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
@@ -124,6 +158,14 @@ class AppDatabase extends _$AppDatabase {
   /// Recomputes every product's cached stockQty from the movement ledger.
   /// Callable from settings/debug and after any schema upgrade.
   Future<void> rebuildAllStockCaches() async {
+    await _rebuildProductCaches();
+    // Batch quantities are ledger-derived too, so they are repairable by the
+    // same action. Before this, nothing could rebuild them and any drift was
+    // permanent.
+    await batchDao.rebuildAllBatchStocks();
+  }
+
+  Future<void> _rebuildProductCaches() async {
     await customStatement('''
       UPDATE product SET stock_qty = COALESCE(
         (SELECT SUM(qty_delta) FROM movement WHERE movement.product_id = product.id),

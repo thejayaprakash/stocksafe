@@ -53,8 +53,10 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
         ProductsCompanion(stockQty: Value(total), updatedAt: Value(DateTime.now())),
       );
 
+      // Derived from the ledger in the same transaction, exactly as the
+      // product cache above — never incremented, so it cannot drift.
       if (batchId != null) {
-        await db.batchDao.adjustBatchStock(batchId, qtyDelta);
+        await db.batchDao.rebuildBatchStock(batchId);
       }
     });
   }
