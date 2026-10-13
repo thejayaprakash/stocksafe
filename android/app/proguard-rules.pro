@@ -26,3 +26,7 @@
 
 # Play Core deferred components (not used by app)
 -dontwarn com.google.android.play.core.**
+
+# Speech to Text
+-dontwarn com.csdcorp.speech_to_text.**
+-keep class com.csdcorp.speech_to_text.** { *; }

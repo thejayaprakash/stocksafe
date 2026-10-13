@@ -76,6 +76,13 @@ class AppLocale extends ChangeNotifier {
     'days_left': 'days left',
     'select_expiry': 'Select Expiry Date',
     'fifo_recommended': 'FIFO Recommended',
+    'suppliers': 'Suppliers & Vendors',
+    'call_supplier': 'Call Supplier',
+    'assign_supplier': 'Assign Supplier',
+    'print_reorder_slip': 'Print Reorder Slip (ESC/POS)',
+    'print_discrepancy_slip': 'Print Discrepancy Slip (ESC/POS)',
+    'barcode_label_printing': 'Barcode Sticker Printing',
+    'thermal_printing': 'Thermal Slip (ESC/POS)',
   };
 
   static const Map<String, String> _tamilStrings = {
@@ -122,5 +129,12 @@ class AppLocale extends ChangeNotifier {
     'days_left': 'நாட்கள் மீதம்',
     'select_expiry': 'காலாவதி தேதியைத் தேர்ந்தெடுக்கவும்',
     'fifo_recommended': 'முதலில் வந்ததை முதலில் விற்கவும்',
+    'suppliers': 'விற்பனையாளர்கள் / சப்ளையர்கள்',
+    'call_supplier': 'சப்ளையரை அழைக்கவும்',
+    'assign_supplier': 'சப்ளையரை ஒதுக்கவும்',
+    'print_reorder_slip': 'மறுவரிசை சீட்டு அச்சிடுக (ESC/POS)',
+    'print_discrepancy_slip': 'மாறுபாடு சீட்டு அச்சிடுக (ESC/POS)',
+    'barcode_label_printing': 'பார்கோடு லேபிள் அச்சிடுதல்',
+    'thermal_printing': 'தெர்மல் ரசீது (ESC/POS)',
   };
 }

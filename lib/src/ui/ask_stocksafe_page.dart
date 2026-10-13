@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../data/database.dart';
 import 'product_detail_page.dart';
+import 'widgets/voice_assistant_dialog.dart';
 
 class InsightAnswer {
   const InsightAnswer({
@@ -61,6 +62,14 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
     super.dispose();
   }
 
+  Future<void> _openVoiceQuery() async {
+    final result = await VoiceAssistantDialog.show(context);
+    if (result != null && result.rawTranscript.trim().isNotEmpty) {
+      _queryController.text = result.rawTranscript;
+      await _processQuery(result.rawTranscript);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -85,12 +94,22 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
               decoration: InputDecoration(
                 hintText: 'Ask about stock, value, velocity...',
                 prefixIcon: const Icon(Icons.psychology_outlined),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: () {
-                    final q = _queryController.text.trim();
-                    if (q.isNotEmpty) _processQuery(q);
-                  },
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.mic, color: Colors.blue),
+                      tooltip: 'Voice Query',
+                      onPressed: _openVoiceQuery,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () {
+                        final q = _queryController.text.trim();
+                        if (q.isNotEmpty) _processQuery(q);
+                      },
+                    ),
+                  ],
                 ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
               ),

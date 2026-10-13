@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../data/backup_service.dart';
 import '../data/database.dart';
+import '../services/esc_pos_service.dart';
+import 'widgets/thermal_slip_preview_sheet.dart';
 
 /// Enterprise Physical Stocktake & Audit Module.
 ///
@@ -274,26 +276,88 @@ class _CompletedSessionsList extends StatelessWidget {
                   'Counted: ${s.totalItemsCounted} • Discrepancies: ${s.totalDiscrepancies}',
                 ),
                 isThreeLine: true,
-                trailing: IconButton(
-                  icon: const Icon(Icons.share_outlined),
-                  tooltip: 'Share Audit CSV Report',
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    try {
-                      final csv = await BackupService(db).exportAuditSessionCsv(s.id);
-                      await Share.share(csv, subject: 'Stocktake Audit Report - ${s.name}');
-                    } catch (e) {
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('Export failed: $e')),
-                      );
-                    }
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.print_outlined),
+                      tooltip: 'Print Discrepancy Slip (ESC/POS)',
+                      onPressed: () => _printAuditDiscrepancySlip(context, db, s),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined),
+                      tooltip: 'Share Audit CSV Report',
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          final csv = await BackupService(db).exportAuditSessionCsv(s.id);
+                          await Share.share(csv, subject: 'Stocktake Audit Report - ${s.name}');
+                        } catch (e) {
+                          messenger.showSnackBar(
+                            SnackBar(content: Text('Export failed: $e')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+}
+
+Future<void> _printAuditDiscrepancySlip(
+  BuildContext context,
+  AppDatabase db,
+  StockAuditSession session,
+) async {
+  final items = await db.auditDao.getSessionItems(session.id);
+  final itemsWithProd = <StockAuditItemWithProduct>[];
+  for (final it in items) {
+    final prod = await db.productDao.getById(it.productId);
+    itemsWithProd.add(StockAuditItemWithProduct(item: it, product: prod));
+  }
+
+  final shopName = await db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+
+  final b58 = EscPosService.buildAuditDiscrepancySlipBytes(
+    session: session,
+    items: itemsWithProd,
+    shopName: shopName,
+    paperWidth: ThermalPaperWidth.mm58,
+  );
+  final b80 = EscPosService.buildAuditDiscrepancySlipBytes(
+    session: session,
+    items: itemsWithProd,
+    shopName: shopName,
+    paperWidth: ThermalPaperWidth.mm80,
+  );
+  final t58 = EscPosService.buildAuditDiscrepancyText(
+    session: session,
+    items: itemsWithProd,
+    shopName: shopName,
+    paperWidth: ThermalPaperWidth.mm58,
+  );
+  final t80 = EscPosService.buildAuditDiscrepancyText(
+    session: session,
+    items: itemsWithProd,
+    shopName: shopName,
+    paperWidth: ThermalPaperWidth.mm80,
+  );
+
+  if (context.mounted) {
+    await ThermalSlipPreviewSheet.show(
+      context,
+      title: 'Physical Audit Discrepancy Slip',
+      slipBytes58: b58,
+      slipBytes80: b80,
+      slipText58: t58,
+      slipText80: t80,
+      fileNamePrefix: 'audit_discrepancy',
     );
   }
 }
@@ -360,6 +424,11 @@ class _ActiveAuditSessionViewState extends State<_ActiveAuditSessionView> {
                 _scannerController.stop();
               }
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.print_outlined),
+            tooltip: 'Print Discrepancy Slip (ESC/POS)',
+            onPressed: () => _printAuditDiscrepancySlip(context, widget.db, widget.session),
           ),
           IconButton(
             icon: const Icon(Icons.keyboard),

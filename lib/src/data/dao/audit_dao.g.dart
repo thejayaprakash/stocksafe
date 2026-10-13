@@ -6,6 +6,7 @@ part of 'audit_dao.dart';
 mixin _$AuditDaoMixin on DatabaseAccessor<AppDatabase> {
   $StockAuditSessionsTable get stockAuditSessions =>
       attachedDatabase.stockAuditSessions;
+  $SuppliersTable get suppliers => attachedDatabase.suppliers;
   $ProductsTable get products => attachedDatabase.products;
   $StockAuditItemsTable get stockAuditItems => attachedDatabase.stockAuditItems;
   $MovementsTable get movements => attachedDatabase.movements;
@@ -18,6 +19,8 @@ class AuditDaoManager {
   $$StockAuditSessionsTableTableManager get stockAuditSessions =>
       $$StockAuditSessionsTableTableManager(
           _db.attachedDatabase, _db.stockAuditSessions);
+  $$SuppliersTableTableManager get suppliers =>
+      $$SuppliersTableTableManager(_db.attachedDatabase, _db.suppliers);
   $$ProductsTableTableManager get products =>
       $$ProductsTableTableManager(_db.attachedDatabase, _db.products);
   $$StockAuditItemsTableTableManager get stockAuditItems =>

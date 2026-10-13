@@ -67,10 +67,22 @@ class BackupService {
     final hashFile = File('${dest.path}.sha256');
     await hashFile.writeAsString(hash);
 
-    // 3. Prune old snapshots beyond retention ceiling
+    // 3. Persist timestamp in settings for hygiene tracking
+    await _db.settingDao.set('last_backup_at', DateTime.now().toIso8601String());
+
+    // 4. Prune old snapshots beyond retention ceiling
     await _pruneOldSnapshots(dir);
 
     return dest.path;
+  }
+
+  /// Checks if backup is overdue (e.g. > 7 days or never backed up).
+  Future<bool> isBackupOverdue({int thresholdDays = 7}) async {
+    final lastStr = await _db.settingDao.get('last_backup_at');
+    if (lastStr == null) return true;
+    final lastDate = DateTime.tryParse(lastStr);
+    if (lastDate == null) return true;
+    return DateTime.now().difference(lastDate).inDays >= thresholdDays;
   }
 
   /// Lists existing snapshots with verified integrity status, newest first.

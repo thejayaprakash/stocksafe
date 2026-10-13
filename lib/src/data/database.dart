@@ -5,6 +5,7 @@ import 'dao/batch_dao.dart';
 import 'dao/movement_dao.dart';
 import 'dao/product_dao.dart';
 import 'dao/setting_dao.dart';
+import 'dao/supplier_dao.dart';
 import 'tables.dart';
 
 export 'dao/audit_dao.dart';
@@ -12,6 +13,7 @@ export 'dao/batch_dao.dart';
 export 'dao/movement_dao.dart';
 export 'dao/product_dao.dart';
 export 'dao/setting_dao.dart';
+export 'dao/supplier_dao.dart';
 
 part 'database.g.dart';
 
@@ -23,12 +25,13 @@ class DatabaseMigrations {
   // Version history:
   // 1 — initial schema (products, movements, settings)
   // 2 — enterprise schema (category, stockAuditSessions, stockAuditItems, batches)
-  static const int currentVersion = 2;
+  // 3 — supplier directory schema (suppliers table, product.supplierId, movement.supplierId)
+  static const int currentVersion = 3;
 }
 
 @DriftDatabase(
-  tables: [Products, Movements, Settings, StockAuditSessions, StockAuditItems, Batches],
-  daos: [ProductDao, MovementDao, SettingDao, AuditDao, BatchDao],
+  tables: [Products, Movements, Settings, StockAuditSessions, StockAuditItems, Batches, Suppliers],
+  daos: [ProductDao, MovementDao, SettingDao, AuditDao, BatchDao, SupplierDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
@@ -49,6 +52,11 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(stockAuditSessions);
         await m.createTable(stockAuditItems);
         await m.createTable(batches);
+      }
+      if (from < 3) {
+        await m.createTable(suppliers);
+        await m.addColumn(products, products.supplierId);
+        await m.addColumn(movements, movements.supplierId);
       }
     },
     beforeOpen: (details) async {

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../data/database.dart';
 import '../services/app_localization.dart';
 import 'backup_page.dart';
+import 'barcode_label_print_page.dart';
+import 'suppliers_page.dart';
 
-/// App settings: language selection, cache rebuild, backup, about.
+/// App settings: language selection, operations, cache rebuild, backup, about.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.db});
 
@@ -46,6 +48,41 @@ class _SettingsPageState extends State<SettingsPage> {
           subtitle: Text(currentLang.label),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showLanguageSelector(context),
+        ),
+
+        const Divider(height: 32),
+
+        // ── Operations & Hardware ─────────────────────────────
+        _SectionHeader(title: 'Operations & Printing', icon: Icons.precision_manufacturing_outlined),
+        ListTile(
+          leading: const Icon(Icons.contact_phone_outlined),
+          title: Text(AppLocale.tr('suppliers')),
+          subtitle: const Text('Vendor contact directory with tap-to-call for restocks'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SuppliersPage(db: widget.db)),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.qr_code_2),
+          title: Text(AppLocale.tr('barcode_label_printing')),
+          subtitle: const Text('Generate PDF sticker sheets (Code 128 / QR) for loose goods'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage(db: widget.db)),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.storefront_outlined),
+          title: const Text('Store Name (Receipts & Labels)'),
+          subtitle: FutureBuilder<String?>(
+            future: widget.db.settingDao.get('shop_name'),
+            builder: (_, s) => Text(s.data ?? 'STOCKSAFE KIRANA'),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _editStoreName(context),
         ),
 
         const Divider(height: 32),
@@ -164,6 +201,41 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Stock cache rebuilt from ledger.')),
       );
+    }
+  }
+
+  Future<void> _editStoreName(BuildContext context) async {
+    final current = await widget.db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+    if (!context.mounted) return;
+    final controller = TextEditingController(text: current);
+
+    final updated = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Store / Shop Name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Printed Header Name',
+            hintText: 'e.g. Sri Lakshmi Stores',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (updated != null && updated.isNotEmpty) {
+      await widget.db.settingDao.set('shop_name', updated);
+      if (mounted) setState(() {});
     }
   }
 }
