@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'ask_stocksafe_page.dart';
 import 'low_stock_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'scanner_page.dart';
 import 'settings_page.dart';
+import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
@@ -29,6 +31,28 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('StockSafe'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome, color: Colors.amber),
+            tooltip: 'Ask StockSafe AI',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AskStockSafePage(db: widget.db),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined),
+            tooltip: 'Stock Count Audit',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StockAuditPage(db: widget.db),
+              ),
+            ),
+          ),
+        ],
         bottom: _tabIndex == 0
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(56),

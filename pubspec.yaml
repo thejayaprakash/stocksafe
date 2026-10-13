@@ -18,6 +18,9 @@ dependencies:
   csv: ^6.0.0
   share_plus: ^10.1.4
   archive: ^4.0.4
+  http: ^1.6.0
+  image_picker: ^1.2.4
+  google_mlkit_text_recognition: ^0.17.1
 
 dev_dependencies:
   flutter_test:

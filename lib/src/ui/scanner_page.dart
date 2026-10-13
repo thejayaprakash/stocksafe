@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../data/database.dart';
+import '../services/catalog_enrichment_service.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 
@@ -206,13 +207,18 @@ class _ScannerPageState extends State<ScannerPage> {
         ),
       );
     } else {
-      // Unknown barcode — jump to add-product with barcode pre-filled.
+      // Unknown barcode — query catalog enrichment before navigating to add-product.
+      final catalogInfo = await CatalogEnrichmentService().lookupBarcode(code);
+
+      if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => ProductEditPage(
             db: widget.db,
             prefillBarcode: code,
+            catalogInfo: catalogInfo,
           ),
         ),
       );
