@@ -129,6 +129,14 @@ class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin 
     return q.watch();
   }
 
+  /// Watch recent movements across all products for dashboard activity stream.
+  Stream<List<Movement>> watchRecent({int limit = 10}) {
+    final q = select(movements)
+      ..orderBy([(m) => OrderingTerm.desc(m.createdAt), (m) => OrderingTerm.desc(m.id)])
+      ..limit(limit);
+    return q.watch();
+  }
+
   /// All movements, newest first — for CSV export (every column).
   Future<List<Movement>> getAllForExport() =>
       (select(movements)
