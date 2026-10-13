@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 
 import '../data/database.dart';
@@ -127,11 +129,32 @@ class BarcodeLabelConfig {
 /// Generates PDF sticker sheets and thermal label rolls with Code 128 / QR codes
 /// for unbranded or loose items packaged in the retail shop (grains, pulses, snacks).
 class BarcodeLabelService {
+  /// Bundled Unicode font, loaded once and reused.
+  ///
+  /// The pdf package defaults to Helvetica and Courier, which carry no
+  /// Unicode coverage — so a Tamil shop or product name printed as blank
+  /// boxes, in an app that ships Tamil as a selling point. Noto Sans Tamil
+  /// also covers Latin, so one font serves both languages and there is no
+  /// script detection to get wrong.
+  static pw.ThemeData? _theme;
+
+  static Future<pw.ThemeData> unicodeTheme() async {
+    if (_theme != null) return _theme!;
+    final data = await rootBundle.load('assets/fonts/NotoSansTamil.ttf');
+    final font = pw.Font.ttf(data);
+    return _theme = pw.ThemeData.withFont(base: font, bold: font);
+  }
+
+  /// Clears the cached font. Tests only.
+  @visibleForTesting
+  static void resetFontCache() => _theme = null;
+
   /// Generate printable PDF sticker sheet bytes.
   static Future<Uint8List> generateLabelSheet(BarcodeLabelConfig config) async {
     final pdf = pw.Document(
       title: 'StockSafe Labels - ${config.product.name}',
       author: 'StockSafe',
+      theme: await unicodeTheme(),
     );
 
     final totalSlotsNeeded = config.startOffset + config.count;
@@ -255,6 +278,11 @@ class BarcodeLabelService {
                   ? pw.BarcodeWidget(
                       barcode: pw.Barcode.qrCode(),
                       data: barcodeData,
+                      // BarcodeWidget renders its caption in Courier, which
+                      // has no Unicode coverage. A QR's caption is illegible
+                      // at 16 mm anyway, and Code 128 already prints the
+                      // number separately below.
+                      drawText: false,
                       width: isThermal ? 16 * PdfPageFormat.mm : 20 * PdfPageFormat.mm,
                       height: isThermal ? 16 * PdfPageFormat.mm : 20 * PdfPageFormat.mm,
                     )

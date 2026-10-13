@@ -62,10 +62,27 @@ void main() {
       expect(history.last.qtyDelta, 5);
     });
 
-    test('ledger refuses deletion — append only', () async {
+    test('a movement is reversed by a compensating entry, not a deletion',
+        () async {
+      // The ledger exposes no delete. Stock is derived from it, so removing a
+      // row would rewrite history and silently change every quantity after it.
+      // This asserts the behaviour that replaces deletion.
+      final id = await addProduct('Sugar 1kg');
+      await db.movementDao.recordMovement(
+        productId: id, qtyDelta: 25, reason: 'purchase');
+      await db.movementDao.recordMovement(
+        productId: id, qtyDelta: -25, reason: 'purchase_reversal',
+        note: 'entered twice by mistake');
+
+      // Net zero, and both rows are still readable.
+      expect((await db.productDao.getById(id))!.stockQty, 0);
+      final history = await db.movementDao.watchForProduct(id).first;
+      expect(history, hasLength(2));
+      expect(history.map((m) => m.qtyDelta).toList()..sort(), [-25, 25]);
       expect(
-        () => db.movementDao.deleteMovementNever(1),
-        throwsUnsupportedError,
+        history.any((m) => m.reason == 'purchase_reversal'),
+        isTrue,
+        reason: 'the correction stays visible, so the history explains itself',
       );
     });
   });

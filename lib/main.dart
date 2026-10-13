@@ -1,5 +1,8 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'src/app_scope.dart';
 import 'src/data/database.dart';
@@ -11,7 +14,18 @@ import 'src/ui/home_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Route uncaught Flutter errors to DiagnosticService ring buffer
+  DiagnosticService.instance.recordSession();
+
+  // Persist errors before anything else can throw. The buffer was in-memory
+  // only, so a crash destroyed the one record worth having.
+  try {
+    await DiagnosticService.instance
+        .attachLogFile(await getApplicationSupportDirectory());
+  } catch (_) {
+    // Diagnostics must never be the reason the app fails to start.
+  }
+
+  // Errors raised inside the Flutter framework.
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     DiagnosticService.instance.log(
@@ -19,6 +33,17 @@ Future<void> main() async {
       level: 'ERROR',
       stackTrace: details.stack?.toString(),
     );
+  };
+
+  // Errors raised outside it — a failed Future in a callback, a platform
+  // channel error. These were previously unobserved entirely.
+  PlatformDispatcher.instance.onError = (error, stack) {
+    DiagnosticService.instance.log(
+      error.toString(),
+      level: 'ERROR',
+      stackTrace: stack.toString(),
+    );
+    return true; // handled: logged, and the app keeps running
   };
 
   runApp(const StockSafeApp());

@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../services/barcode_label_service.dart';
 import '../../services/esc_pos_service.dart';
 
 /// Modal bottom sheet providing a realistic ESC/POS thermal receipt preview,
@@ -212,23 +213,29 @@ class _ThermalSlipPreviewSheetState extends State<ThermalSlipPreviewSheet> {
                   ),
                   const SizedBox(width: 8),
 
-                  // Send to Bluetooth / RawBT
+                  // StockSafe does not talk to the printer itself. It builds
+                  // the ESC/POS byte stream and hands it to a printer app
+                  // (RawBT and similar), which owns the Bluetooth pairing.
+                  // That avoids a BLUETOOTH_CONNECT permission and a device
+                  // pairing UI — but the button must not imply this app
+                  // prints directly, or a user without a printer app taps it
+                  // and gets a share sheet with nothing useful in it.
                   Expanded(
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.blueGrey.shade800,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      onPressed: _isExporting ? null : _sendToBluetoothPrinter,
+                      onPressed: _isExporting ? null : _sendToPrinterApp,
                       icon: _isExporting
                           ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Icon(Icons.bluetooth_searching, size: 20),
+                          : const Icon(Icons.send_to_mobile, size: 20),
                       label: const Text(
-                        'Print (Bluetooth ESC/POS)',
+                        'Send to printer app',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -268,7 +275,7 @@ class _ThermalSlipPreviewSheetState extends State<ThermalSlipPreviewSheet> {
     }
   }
 
-  Future<void> _sendToBluetoothPrinter() async {
+  Future<void> _sendToPrinterApp() async {
     setState(() => _isExporting = true);
     try {
       final file = await EscPosService.saveEscPosBinary(
@@ -282,13 +289,19 @@ class _ThermalSlipPreviewSheetState extends State<ThermalSlipPreviewSheet> {
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/octet-stream')],
         subject: '${widget.title} - ESC/POS Raw Binary',
-        text: 'Select your Bluetooth Thermal Printer app (e.g. RawBT, ESC POS Bluetooth Print, or POS-Printer).',
+        text: 'Open this with your thermal printer app — RawBT, ESC POS '
+            'Bluetooth Print or POS-Printer. That app connects to the printer; '
+            'StockSafe only prepares the receipt.',
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isExporting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to export ESC/POS binary: $e')),
+        const SnackBar(
+          content: Text(
+            'Could not prepare the receipt file. Please try again.',
+          ),
+        ),
       );
     }
   }
@@ -299,7 +312,9 @@ class _ThermalSlipPreviewSheetState extends State<ThermalSlipPreviewSheet> {
 
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async {
-        final pdf = pw.Document();
+        // Same Unicode font as the label sheets: the receipt carries the
+        // shop name and product names, which may be Tamil.
+        final pdf = pw.Document(theme: await BarcodeLabelService.unicodeTheme());
         pdf.addPage(
           pw.Page(
             pageFormat: _selectedWidth == ThermalPaperWidth.mm58

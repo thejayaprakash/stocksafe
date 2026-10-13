@@ -55,6 +55,19 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!--
+          url_launcher resolves every URI with ACTION_VIEW: canLaunchUrl()
+          builds `new Intent(Intent.ACTION_VIEW)` and calls resolveActivity().
+          Under Android 11+ package visibility, resolveActivity() only sees
+          apps matching a declared <intent> here, so declaring ACTION_DIAL
+          alone leaves canLaunchUrl('tel:...') returning false and tap-to-call
+          silently doing nothing. ACTION_VIEW + tel is the entry that matters;
+          ACTION_DIAL is kept for anything that launches the dialer directly.
+        -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />

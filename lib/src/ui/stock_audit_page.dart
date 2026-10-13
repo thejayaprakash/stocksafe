@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../data/backup_service.dart';
 import '../data/database.dart';
+import '../services/diagnostic_service.dart';
 import '../services/esc_pos_service.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
 import '../app_scope.dart';
@@ -298,8 +299,15 @@ class _CompletedSessionsList extends StatelessWidget {
                           final csv = await BackupService(db).exportAuditSessionCsv(s.id);
                           await Share.share(csv, subject: 'Stocktake Audit Report - ${s.name}');
                         } catch (e) {
+                          DiagnosticService.instance
+                              .log('Audit CSV export failed: $e', level: 'ERROR');
                           messenger.showSnackBar(
-                            SnackBar(content: Text('Export failed: $e')),
+                            const SnackBar(
+                              content: Text(
+                                'Could not share the audit report. '
+                                'Please try again.',
+                              ),
+                            ),
                           );
                         }
                       },
