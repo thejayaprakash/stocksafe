@@ -504,6 +504,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       requiredDuringInsert: false,
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'REFERENCES supplier (id) ON DELETE SET NULL'));
+  static const VerificationMeta _imagePathMeta =
+      const VerificationMeta('imagePath');
+  @override
+  late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
+      'image_path', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -535,6 +541,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         lowStockLevel,
         stockQty,
         supplierId,
+        imagePath,
         createdAt,
         updatedAt,
         deletedAt
@@ -598,6 +605,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           supplierId.isAcceptableOrUnknown(
               data['supplier_id']!, _supplierIdMeta));
     }
+    if (data.containsKey('image_path')) {
+      context.handle(_imagePathMeta,
+          imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -645,6 +656,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.int, data['${effectivePrefix}stock_qty'])!,
       supplierId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}supplier_id']),
+      imagePath: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}image_path']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -676,6 +689,20 @@ class Product extends DataClass implements Insertable<Product> {
 
   /// Preferred supplier / vendor for this product.
   final int? supplierId;
+
+  /// Path to a product photo on this device, or null.
+  ///
+  /// Nothing writes to it yet — the catalogue draws a tinted initial from the
+  /// product's own category and name instead. The column is here because the
+  /// alternative is a second migration later for a feature already planned,
+  /// and an always-null column costs nothing in SQLite. Capture, storage and
+  /// clean-up are a separate piece of work.
+  ///
+  /// A path rather than a URL: this app is offline by design, and a photo it
+  /// cannot load without a network is a photo it cannot show. Readers must
+  /// treat a non-null value as a file that may since have been deleted, moved
+  /// by the OS, or restored onto a different device — always fall back.
+  final String? imagePath;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -691,6 +718,7 @@ class Product extends DataClass implements Insertable<Product> {
       required this.lowStockLevel,
       required this.stockQty,
       this.supplierId,
+      this.imagePath,
       required this.createdAt,
       required this.updatedAt,
       this.deletedAt});
@@ -715,6 +743,9 @@ class Product extends DataClass implements Insertable<Product> {
     map['stock_qty'] = Variable<int>(stockQty);
     if (!nullToAbsent || supplierId != null) {
       map['supplier_id'] = Variable<int>(supplierId);
+    }
+    if (!nullToAbsent || imagePath != null) {
+      map['image_path'] = Variable<String>(imagePath);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -743,6 +774,9 @@ class Product extends DataClass implements Insertable<Product> {
       supplierId: supplierId == null && nullToAbsent
           ? const Value.absent()
           : Value(supplierId),
+      imagePath: imagePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imagePath),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -766,6 +800,7 @@ class Product extends DataClass implements Insertable<Product> {
       lowStockLevel: serializer.fromJson<int>(json['lowStockLevel']),
       stockQty: serializer.fromJson<int>(json['stockQty']),
       supplierId: serializer.fromJson<int?>(json['supplierId']),
+      imagePath: serializer.fromJson<String?>(json['imagePath']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -786,6 +821,7 @@ class Product extends DataClass implements Insertable<Product> {
       'lowStockLevel': serializer.toJson<int>(lowStockLevel),
       'stockQty': serializer.toJson<int>(stockQty),
       'supplierId': serializer.toJson<int?>(supplierId),
+      'imagePath': serializer.toJson<String?>(imagePath),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -804,6 +840,7 @@ class Product extends DataClass implements Insertable<Product> {
           int? lowStockLevel,
           int? stockQty,
           Value<int?> supplierId = const Value.absent(),
+          Value<String?> imagePath = const Value.absent(),
           DateTime? createdAt,
           DateTime? updatedAt,
           Value<DateTime?> deletedAt = const Value.absent()}) =>
@@ -819,6 +856,7 @@ class Product extends DataClass implements Insertable<Product> {
         lowStockLevel: lowStockLevel ?? this.lowStockLevel,
         stockQty: stockQty ?? this.stockQty,
         supplierId: supplierId.present ? supplierId.value : this.supplierId,
+        imagePath: imagePath.present ? imagePath.value : this.imagePath,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -839,6 +877,7 @@ class Product extends DataClass implements Insertable<Product> {
       stockQty: data.stockQty.present ? data.stockQty.value : this.stockQty,
       supplierId:
           data.supplierId.present ? data.supplierId.value : this.supplierId,
+      imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -859,6 +898,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('lowStockLevel: $lowStockLevel, ')
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
+          ..write('imagePath: $imagePath, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -879,6 +919,7 @@ class Product extends DataClass implements Insertable<Product> {
       lowStockLevel,
       stockQty,
       supplierId,
+      imagePath,
       createdAt,
       updatedAt,
       deletedAt);
@@ -897,6 +938,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.lowStockLevel == this.lowStockLevel &&
           other.stockQty == this.stockQty &&
           other.supplierId == this.supplierId &&
+          other.imagePath == this.imagePath &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -914,6 +956,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> lowStockLevel;
   final Value<int> stockQty;
   final Value<int?> supplierId;
+  final Value<String?> imagePath;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -929,6 +972,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.lowStockLevel = const Value.absent(),
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
+    this.imagePath = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -945,6 +989,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.lowStockLevel = const Value.absent(),
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
+    this.imagePath = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -963,6 +1008,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? lowStockLevel,
     Expression<int>? stockQty,
     Expression<int>? supplierId,
+    Expression<String>? imagePath,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -979,6 +1025,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (lowStockLevel != null) 'low_stock_level': lowStockLevel,
       if (stockQty != null) 'stock_qty': stockQty,
       if (supplierId != null) 'supplier_id': supplierId,
+      if (imagePath != null) 'image_path': imagePath,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -997,6 +1044,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<int>? lowStockLevel,
       Value<int>? stockQty,
       Value<int?>? supplierId,
+      Value<String?>? imagePath,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
       Value<DateTime?>? deletedAt}) {
@@ -1012,6 +1060,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       lowStockLevel: lowStockLevel ?? this.lowStockLevel,
       stockQty: stockQty ?? this.stockQty,
       supplierId: supplierId ?? this.supplierId,
+      imagePath: imagePath ?? this.imagePath,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -1054,6 +1103,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (supplierId.present) {
       map['supplier_id'] = Variable<int>(supplierId.value);
     }
+    if (imagePath.present) {
+      map['image_path'] = Variable<String>(imagePath.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1080,6 +1132,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('lowStockLevel: $lowStockLevel, ')
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
+          ..write('imagePath: $imagePath, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -4191,6 +4244,7 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<int> lowStockLevel,
   Value<int> stockQty,
   Value<int?> supplierId,
+  Value<String?> imagePath,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
@@ -4207,6 +4261,7 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<int> lowStockLevel,
   Value<int> stockQty,
   Value<int?> supplierId,
+  Value<String?> imagePath,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
@@ -4313,6 +4368,9 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<int> get stockQty => $composableBuilder(
       column: $table.stockQty, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get imagePath => $composableBuilder(
+      column: $table.imagePath, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -4447,6 +4505,9 @@ class $$ProductsTableOrderingComposer
   ColumnOrderings<int> get stockQty => $composableBuilder(
       column: $table.stockQty, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get imagePath => $composableBuilder(
+      column: $table.imagePath, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -4515,6 +4576,9 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<int> get stockQty =>
       $composableBuilder(column: $table.stockQty, builder: (column) => column);
+
+  GeneratedColumn<String> get imagePath =>
+      $composableBuilder(column: $table.imagePath, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4647,6 +4711,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<int> lowStockLevel = const Value.absent(),
             Value<int> stockQty = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
+            Value<String?> imagePath = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -4663,6 +4728,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             lowStockLevel: lowStockLevel,
             stockQty: stockQty,
             supplierId: supplierId,
+            imagePath: imagePath,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
@@ -4679,6 +4745,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<int> lowStockLevel = const Value.absent(),
             Value<int> stockQty = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
+            Value<String?> imagePath = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -4695,6 +4762,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             lowStockLevel: lowStockLevel,
             stockQty: stockQty,
             supplierId: supplierId,
+            imagePath: imagePath,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
