@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data/database.dart';
 
 /// App theme manager supporting System, Light, and Dark modes.
@@ -64,6 +65,16 @@ class ThemeService extends ChangeNotifier {
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
+        // The clock and battery sit on our background, not the app bar's,
+        // because the app bar is transparent. Without this they stayed light
+        // when the light theme came in and were unreadable on a near-white
+        // page. `statusBarIconBrightness` is the Android knob; the iOS one is
+        // named for the content behind the bar, so they read as opposites.
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -92,6 +103,11 @@ class ThemeService extends ChangeNotifier {
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,

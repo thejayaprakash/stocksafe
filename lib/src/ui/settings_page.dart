@@ -65,9 +65,25 @@ class _SettingsPageState extends State<SettingsPage> {
       ThemeMode.dark => AppLocale.tr('dark_theme'),
     };
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      children: [
+    // Scaffold, because this is a pushed route now.
+    //
+    // Settings used to be a tab body inside HomePage's Scaffold and inherited
+    // its Material, background and safe area. The navigation rework moved it
+    // behind More as its own MaterialPageRoute, where it had no Scaffold
+    // ancestor: text rendered in Flutter's unparented-Text style (red, double
+    // yellow underline), the first row drew under the status bar, and
+    // everything below the first section was not painted at all - which took
+    // Rebuild Stock Cache, Verify Ledger Integrity, the PRAGMA check and the
+    // diagnostic export with it. Those are the recovery tools, so losing them
+    // silently is the worst version of this bug.
+    //
+    // It looked survivable in the dark theme only because an unpainted
+    // background is black anyway.
+    return Scaffold(
+      appBar: AppBar(title: Text(AppLocale.tr('settings'))),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
         // ── StockSafe Pro & License ───────────────────────────
         _SectionHeader(title: 'StockSafe Pro & License', icon: Icons.workspace_premium),
         // One reactive source rather than two nested FutureBuilders that
@@ -329,8 +345,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             );
           },
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
