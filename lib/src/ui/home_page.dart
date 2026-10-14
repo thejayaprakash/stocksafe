@@ -101,11 +101,15 @@ class _HomePageState extends State<HomePage> {
     if (result == null || !mounted) return;
 
     switch (result.intent) {
+      // These indices were written for the old three-tab layout, where 1 was
+      // Low Stock. After the rework 1 is Products and low stock is a route,
+      // so "show me low stock" quietly opened the catalogue instead.
       case VoiceIntentType.navigateLowStock:
-        setState(() => _tabIndex = 1);
-        break;
       case VoiceIntentType.navigateExpiring:
-        setState(() => _tabIndex = 1);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LowStockPage()),
+        );
         break;
       case VoiceIntentType.navigateAudit:
         Navigator.push(context, MaterialPageRoute(builder: (_) => StockAuditPage()));
@@ -114,7 +118,8 @@ class _HomePageState extends State<HomePage> {
         Navigator.push(context, MaterialPageRoute(builder: (_) => BackupPage()));
         break;
       case VoiceIntentType.navigateValuation:
-        setState(() => _tabIndex = 0);
+        // The valuation card lives on the product list, not the dashboard.
+        setState(() => _tabIndex = 1);
         break;
       case VoiceIntentType.quickStockMovement:
         if (result.productName != null) {
@@ -292,7 +297,20 @@ class _HomePageState extends State<HomePage> {
       case 4:
         return const MorePage();
       default:
-        return const SizedBox.shrink();
+        // Scan (index 2) opens as a route rather than a tab, so no index
+        // should land here. If one ever does, show the dashboard: an empty
+        // box looks exactly like the app has crashed.
+        return _DashboardHomeBody(
+          db: _db,
+          onNavigateToProducts: () => setState(() => _tabIndex = 1),
+          onNavigateToAudit: () => setState(() => _tabIndex = 3),
+          onNavigateToLowStock: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LowStockPage()),
+          ),
+          showBackupReminder: false,
+          onDismissBackupBanner: () {},
+        );
     }
   }
 
