@@ -8,6 +8,8 @@ import '../services/diagnostic_service.dart';
 import '../services/label_ocr_service.dart';
 import '../services/expiry_parser.dart';
 import '../services/license_service.dart';
+import '../services/theme_service.dart';
+import 'money_format.dart';
 import 'widgets/paywall_sheet.dart';
 import '../app_scope.dart';
 
@@ -77,8 +79,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   DateTime? _pendingExpiry;
   String? _pendingExpiryText;
 
-  static String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  static String _fmt(double v) => formatAmount(v);
 
   bool get _isEdit => widget.product != null;
 
@@ -119,7 +120,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           children: [
             // AI Label OCR Trigger
             OutlinedButton.icon(
@@ -150,119 +151,129 @@ class _ProductEditPageState extends State<ProductEditPage> {
 
             const SizedBox(height: 16),
 
-            TextFormField(
-              controller: _name,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Name *',
-                border: OutlineInputBorder(),
+            _Field(
+              label: 'Product Name',
+              required: true,
+              child: TextFormField(
+                controller: _name,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Aachi Sambar Powder 200g',
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Name is required' : null,
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Name is required' : null,
             ),
-            const SizedBox(height: 14),
 
-            TextFormField(
-              controller: _category,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Category (e.g. Dairy, Spices, Beverages)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.category_outlined),
+            _Field(
+              label: 'Category',
+              child: TextFormField(
+                controller: _category,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  hintText: 'Dairy, Spices, Beverages…',
+                  prefixIcon: Icon(Icons.category_outlined),
+                ),
               ),
             ),
-            const SizedBox(height: 14),
 
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: TextFormField(
-                    controller: _sku,
-                    decoration: const InputDecoration(
-                      labelText: 'SKU / Brand',
-                      border: OutlineInputBorder(),
+                  child: _Field(
+                    label: 'SKU / Brand',
+                    child: TextFormField(
+                      controller: _sku,
+                      decoration: const InputDecoration(hintText: 'AASAM200'),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(
-                    controller: _unit,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit / Pack',
-                      hintText: 'pcs, 500g, 1L',
-                      border: OutlineInputBorder(),
+                  child: _Field(
+                    label: 'Unit / Pack',
+                    child: TextFormField(
+                      controller: _unit,
+                      decoration: const InputDecoration(
+                        hintText: 'pcs, 500g, 1L',
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
 
-            TextFormField(
-              controller: _barcode,
-              keyboardType: TextInputType.text,
-              decoration: InputDecoration(
-                labelText: 'Barcode',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.qr_code),
+            _Field(
+              label: 'Barcode',
+              child: TextFormField(
+                controller: _barcode,
+                keyboardType: TextInputType.text,
+                decoration: const InputDecoration(
+                  hintText: '8901234567890',
+                  prefixIcon: Icon(Icons.qr_code),
+                ),
               ),
             ),
-            const SizedBox(height: 14),
 
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: TextFormField(
-                    controller: _buyPrice,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Buy Price (Cost)',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
+                  child: _Field(
+                    label: 'Buy Price (Cost)',
+                    child: TextFormField(
+                      controller: _buyPrice,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        prefixText: '₹ ',
+                        hintText: '0',
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextFormField(
-                    controller: _sellPrice,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Sell Price (MRP)',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
+                  child: _Field(
+                    label: 'Sell Price (MRP)',
+                    child: TextFormField(
+                      controller: _sellPrice,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        prefixText: '₹ ',
+                        hintText: '0',
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
 
-            TextFormField(
-              controller: _lowStock,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Low Stock Alert Threshold',
-                helperText: 'Shows restock alert when count is at or below this level',
-                border: OutlineInputBorder(),
+            _Field(
+              label: 'Low Stock Alert Threshold',
+              hint: 'Shows an alert when stock is at or below this level',
+              child: TextFormField(
+                controller: _lowStock,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(hintText: '0'),
               ),
             ),
-            const SizedBox(height: 14),
 
             // Preferred Supplier Dropdown
             StreamBuilder<List<Supplier>>(
               stream: _db.supplierDao.watchAll(),
               builder: (context, snapshot) {
                 final suppliers = snapshot.data ?? [];
-                return DropdownButtonFormField<int?>(
+                return _Field(
+                  label: 'Preferred Supplier',
+                  child: DropdownButtonFormField<int?>(
                   initialValue: _supplierId,
                   decoration: const InputDecoration(
-                    labelText: 'Preferred Supplier / Vendor',
                     hintText: 'Select supplier for reorders',
                     prefixIcon: Icon(Icons.store_outlined),
-                    border: OutlineInputBorder(),
                   ),
                   items: [
                     const DropdownMenuItem<int?>(
@@ -276,18 +287,18 @@ class _ProductEditPageState extends State<ProductEditPage> {
                       ),
                   ],
                   onChanged: (val) => setState(() => _supplierId = val),
+                  ),
                 );
               },
             ),
-            const SizedBox(height: 24),
-
-            FilledButton(
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-              onPressed: _save,
-              child: Text(_isEdit ? 'Save Changes' : 'Add Product', style: const TextStyle(fontSize: 16)),
-            ),
           ],
         ),
+      ),
+      // Pinned, so the one button that commits the form is reachable without
+      // scrolling past every field to find it.
+      bottomNavigationBar: _SaveBar(
+        label: _isEdit ? 'Save Changes' : 'Save Product',
+        onPressed: _save,
       ),
     );
   }
@@ -634,6 +645,115 @@ class _ScannedBatchNotice extends StatelessWidget {
               onPressed: onClear,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A form field with its label above it rather than floating inside.
+///
+/// A floating label vanishes into the border once the field has a value, so
+/// a half-filled form stops saying what each box is for — which matters most
+/// on the row where "Buy Price" and "Sell Price" sit side by side and
+/// entering the wrong one silently inverts every margin the app reports.
+class _Field extends StatelessWidget {
+  const _Field({
+    required this.label,
+    required this.child,
+    this.hint,
+    this.required = false,
+  });
+
+  final String label;
+  final Widget child;
+
+  /// A line of explanation under the input.
+  final String? hint;
+
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: label),
+                if (required)
+                  TextSpan(
+                    text: ' *',
+                    style: TextStyle(color: palette.error),
+                  ),
+              ],
+            ),
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: palette.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          child,
+          if (hint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 5, left: 2),
+              child: Text(
+                hint!,
+                style: TextStyle(fontSize: 11, color: palette.textTertiary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The pinned save button at the foot of the form.
+class _SaveBar extends StatelessWidget {
+  const _SaveBar({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.cardSurface,
+        border: Border(top: BorderSide(color: palette.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: SizedBox(
+            height: 50,
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

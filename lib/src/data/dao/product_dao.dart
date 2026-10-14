@@ -26,6 +26,14 @@ enum ProductSort {
   valueHigh,
 }
 
+/// Which shelves the catalogue is narrowed to.
+///
+/// "Low" deliberately excludes zero: a product that has run out and one that
+/// is about to are different problems, and a shopkeeper filtering for "low"
+/// is looking for the things still worth reordering before they run dry.
+/// [ProductStockStatus.outOfStock] covers the rest.
+enum ProductStockStatus { any, inStock, low, outOfStock }
+
 /// Products are soft-deleted only. Every query here filters `deletedAt`,
 /// so a user who taps the wrong button can be restored later.
 @DriftAccessor(tables: [Products, Movements])
@@ -36,29 +44,104 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   Stream<List<Product>> watchAll({
     String query = '',
     String? category,
+    int? supplierId,
+    ProductStockStatus status = ProductStockStatus.any,
     ProductSort sort = ProductSort.nameAsc,
     int limit = 100,
     int offset = 0,
   }) {
     final q = select(products)
-      ..where((p) {
-        var predicate = p.deletedAt.isNull();
-        if (category != null && category.isNotEmpty) {
-          predicate = predicate & p.category.equals(category);
-        }
-        if (query.isNotEmpty) {
-          final like = '%${_escapeLike(query)}%';
-          predicate = predicate &
-              (p.name.lower().like(like, escapeChar: r'\') |
-                  p.sku.lower().like(like, escapeChar: r'\') |
-                  p.barcode.lower().like(like, escapeChar: r'\'));
-        }
-        return predicate;
-      })
+      ..where((p) => _filters(
+            query: query,
+            category: category,
+            supplierId: supplierId,
+            status: status,
+          ))
       ..orderBy([..._ordering(sort), (p) => OrderingTerm.asc(p.id)])
       ..limit(limit, offset: offset);
 
     return q.watch();
+  }
+
+  /// Everything but the ordering and the window.
+  ///
+  /// Shared so the list and [idsMatching] cannot disagree about what the
+  /// filters mean — "select all" picking up a product the user cannot see is
+  /// the kind of bug that only shows up after a bulk delete.
+  Expression<bool> _filters({
+    required String query,
+    required String? category,
+    required int? supplierId,
+    required ProductStockStatus status,
+  }) {
+    var predicate = products.deletedAt.isNull();
+    if (category != null && category.isNotEmpty) {
+      predicate = predicate & products.category.equals(category);
+    }
+    if (supplierId != null) {
+      predicate = predicate & products.supplierId.equals(supplierId);
+    }
+    predicate = predicate & _statusPredicate(products, status);
+    if (query.isNotEmpty) {
+      final like = '%${_escapeLike(query)}%';
+      predicate = predicate &
+          (products.name.lower().like(like, escapeChar: r'\') |
+              products.sku.lower().like(like, escapeChar: r'\') |
+              products.barcode.lower().like(like, escapeChar: r'\'));
+    }
+    return predicate;
+  }
+
+  /// The stock-level half of the where clause.
+  ///
+  /// `lowStockLevel` is 0 when the shopkeeper never set a threshold, and 0 is
+  /// not a threshold — without excluding it every product in the shop counts
+  /// as low the moment it is not in stock.
+  Expression<bool> _statusPredicate(
+    $ProductsTable p,
+    ProductStockStatus status,
+  ) {
+    switch (status) {
+      case ProductStockStatus.any:
+        return const Constant(true);
+      case ProductStockStatus.inStock:
+        return p.stockQty.isBiggerThanValue(0);
+      case ProductStockStatus.low:
+        return p.stockQty.isBiggerThanValue(0) &
+            p.lowStockLevel.isBiggerThanValue(0) &
+            p.stockQty.isSmallerOrEqual(p.lowStockLevel);
+      case ProductStockStatus.outOfStock:
+        return p.stockQty.isSmallerOrEqualValue(0);
+    }
+  }
+
+  /// How many products each status covers right now, for the filter chips.
+  ///
+  /// Counted in one pass rather than four queries: the chips are all on
+  /// screen together and a shop with a large catalogue would otherwise scan
+  /// the table once per chip on every keystroke.
+  Stream<ProductStatusCounts> watchStatusCounts() {
+    return (select(products)..where((p) => p.deletedAt.isNull()))
+        .watch()
+        .map((rows) {
+      var inStock = 0;
+      var low = 0;
+      var out = 0;
+      for (final p in rows) {
+        if (p.stockQty <= 0) {
+          out++;
+        } else {
+          inStock++;
+          if (p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel) low++;
+        }
+      }
+      return ProductStatusCounts(
+        all: rows.length,
+        inStock: inStock,
+        low: low,
+        outOfStock: out,
+      );
+    });
   }
 
   List<OrderClauseGenerator<$ProductsTable>> _ordering(ProductSort sort) {
@@ -78,6 +161,32 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
           (p) => OrderingTerm.asc(p.name),
         ];
     }
+  }
+
+  /// The ids of every product the given filters match.
+  ///
+  /// For "select all", which has to mean everything behind the filters and
+  /// not merely the page the list has scrolled far enough to load. Only the
+  /// id column is read: the selection needs nothing else, and a catalogue of
+  /// several thousand products should not be hydrated into memory to tick
+  /// some boxes.
+  Future<List<int>> idsMatching({
+    String query = '',
+    String? category,
+    int? supplierId,
+    ProductStockStatus status = ProductStockStatus.any,
+  }) async {
+    final rows = await (selectOnly(products)
+          ..addColumns([products.id])
+          ..where(_filters(
+            query: query,
+            category: category,
+            supplierId: supplierId,
+            status: status,
+          ))
+          ..orderBy([OrderingTerm.asc(products.id)]))
+        .get();
+    return rows.map((row) => row.read(products.id)).whereType<int>().toList();
   }
 
   /// Get distinct non-empty categories from active products.
@@ -143,6 +252,63 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     final now = DateTime.now();
     await (update(products)..where((p) => p.id.equals(id)))
         .write(ProductsCompanion(deletedAt: Value(now), updatedAt: Value(now)));
+  }
+
+  /// Soft-deletes several products at once.
+  ///
+  /// One transaction, so a bulk delete that fails halfway leaves the
+  /// catalogue exactly as it was rather than half-removed. Nothing is
+  /// dropped: `deletedAt` is set, the ledger behind each product is
+  /// untouched, and [restore] brings any of them back.
+  Future<void> softDeleteMany(Iterable<int> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final now = DateTime.now();
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+      );
+    });
+  }
+
+  /// Moves several products into one category.
+  ///
+  /// A null or blank [category] clears it, which is how a mis-imported
+  /// category gets undone.
+  Future<void> setCategoryMany(Iterable<int> ids, String? category) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final trimmed = category?.trim();
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(
+          category: Value(
+            trimmed == null || trimmed.isEmpty ? null : trimmed,
+          ),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
+  }
+
+  /// Sets the same selling price on several products.
+  ///
+  /// Only the sell price: the buy price is what each product actually cost,
+  /// which is per-product history and never the same across a selection.
+  Future<void> setSellPriceMany(Iterable<int> ids, double sellPrice) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    if (sellPrice < 0) {
+      throw ArgumentError.value(sellPrice, 'sellPrice', 'must not be negative');
+    }
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(
+          sellPrice: Value(sellPrice),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
   }
 
   Future<void> restore(int id) =>
@@ -261,4 +427,29 @@ class InventoryValuationSummary {
     required this.potentialProfit,
     required this.marginPercent,
   });
+}
+
+/// How many products sit behind each filter chip.
+class ProductStatusCounts {
+  const ProductStatusCounts({
+    required this.all,
+    required this.inStock,
+    required this.low,
+    required this.outOfStock,
+  });
+
+  final int all;
+  final int inStock;
+
+  /// In stock, but at or below a threshold the shopkeeper actually set.
+  final int low;
+
+  final int outOfStock;
+
+  int forStatus(ProductStockStatus status) => switch (status) {
+        ProductStockStatus.any => all,
+        ProductStockStatus.inStock => inStock,
+        ProductStockStatus.low => low,
+        ProductStockStatus.outOfStock => outOfStock,
+      };
 }

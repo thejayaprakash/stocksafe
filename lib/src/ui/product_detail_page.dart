@@ -9,7 +9,11 @@ import 'barcode_label_print_page.dart';
 import 'product_edit_page.dart';
 import 'stock_movement_page.dart';
 import '../app_scope.dart';
+import '../services/theme_service.dart';
+import 'money_format.dart';
+import 'widgets/app_tiles.dart';
 import 'widgets/external_app.dart';
+import 'widgets/product_avatar.dart';
 
 /// Product detail: current stock (derived) plus full movement history.
 class ProductDetailPage extends StatelessWidget {
@@ -34,9 +38,12 @@ class ProductDetailPage extends StatelessWidget {
         }
         final lowStock = product.stockQty <= product.lowStockLevel;
 
+        final palette = context.palette;
+
         return Scaffold(
           appBar: AppBar(
-            title: Text(product.name),
+            // No title: the product's name is the first thing in the body, at
+            // a size it deserves, and repeating it in the bar truncates it.
             actions: [
               IconButton(
                 icon: const Icon(Icons.qr_code_2),
@@ -55,65 +62,173 @@ class ProductDetailPage extends StatelessWidget {
                 },
               ),
               IconButton(
-                icon: const Icon(Icons.edit),
+                icon: const Icon(Icons.edit_outlined),
                 tooltip: 'Edit Product',
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        ProductEditPage(product: product),
+                    builder: (_) => ProductEditPage(product: product),
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
             ],
           ),
           body: ListView(
+            padding: const EdgeInsets.only(bottom: 24),
             children: [
+              // Hero. A photo belongs here; until products carry one this is
+              // the same tinted square the catalogue uses, at a size that
+              // anchors the page.
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  child: ProductAvatar(
+                    product: product,
+                    size: 168,
+                    radiusFactor: 0.12,
+                  ),
+                ),
+              ),
+
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          '${product.stockQty}',
-                          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: lowStock
-                                ? Theme.of(context).colorScheme.error
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          product.unit,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        if (lowStock) ...[
-                          const SizedBox(width: 12),
-                          Chip(
-                            label: const Text('Low stock'),
-                            backgroundColor:
-                                Theme.of(context).colorScheme.errorContainer,
-                          ),
-                        ],
-                      ],
+                    Text(
+                      product.name,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                        letterSpacing: -0.4,
+                        color: palette.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      [
-                        if (product.category != null) 'Category: ${product.category}',
-                        if (product.sku != null) 'SKU: ${product.sku}',
-                        if (product.barcode != null) 'Barcode: ${product.barcode}',
-                        'Buy: ₹${product.buyPrice}  ·  Sell: ₹${product.sellPrice}',
-                        'Alert at: ${product.lowStockLevel}',
-                      ].join('\n'),
-                      style: Theme.of(context).textTheme.bodyMedium,
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (product.sku != null &&
+                            product.sku!.trim().isNotEmpty)
+                          Text(
+                            'SKU: ${product.sku}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: palette.textTertiary,
+                            ),
+                          ),
+                        _DetailChip(
+                          label: product.stockQty <= 0
+                              ? 'Out of stock'
+                              : (lowStock ? 'Low stock' : 'In stock'),
+                          accent: product.stockQty <= 0
+                              ? palette.error
+                              : (lowStock ? palette.warning : palette.success),
+                          icon: product.stockQty <= 0
+                              ? Icons.remove_circle_outline
+                              : (lowStock
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.check_circle_outline),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (product.category != null &&
+                            product.category!.trim().isNotEmpty)
+                          _DetailChip(
+                            label: product.category!,
+                            accent: palette.primary,
+                          ),
+                        _DetailChip(
+                          label: product.unit,
+                          accent: palette.secondary,
+                        ),
+                        if (product.barcode != null &&
+                            product.barcode!.trim().isNotEmpty)
+                          _DetailChip(
+                            label: product.barcode!,
+                            accent: palette.textTertiary,
+                            icon: Icons.qr_code_rounded,
+                          ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: const SectionTitle(
+                  'Stock Information',
+                  padding: EdgeInsets.only(bottom: 10),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: palette.cardSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: palette.border),
+                  ),
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          // The unit belongs in the label, not after the
+                          // number. It holds a pack size as often as a
+                          // counting word, and "30 200 g" is not a sentence.
+                          Expanded(
+                            child: _StockFact(
+                              label: 'Current Stock (${product.unit})',
+                              value: '${product.stockQty}',
+                              accent: product.stockQty <= 0
+                                  ? palette.error
+                                  : (lowStock ? palette.warning : null),
+                            ),
+                          ),
+                          Expanded(
+                            child: _StockFact(
+                              label: 'Low Stock Alert (${product.unit})',
+                              value: product.lowStockLevel > 0
+                                  ? '${product.lowStockLevel}'
+                                  : 'Not set',
+                            ),
+                          ),
+                        ],
+                      ),
+                      Divider(height: 24, color: palette.border),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _StockFact(
+                              label: 'Buy Price (Cost)',
+                              value: formatRupees(product.buyPrice),
+                            ),
+                          ),
+                          Expanded(
+                            child: _StockFact(
+                              label: 'Sell Price (MRP)',
+                              value: formatRupees(product.sellPrice),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
 
               // SUPPLIER CARD (TAP-TO-CALL)
               if (product.supplierId != null)
@@ -156,10 +271,7 @@ class ProductDetailPage extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Batches & Expiry',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    const SectionTitle('Batches & Expiry'),
                     TextButton.icon(
                       onPressed: () => Navigator.push(
                         context,
@@ -286,10 +398,7 @@ class ProductDetailPage extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Where it is',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
+                            const SectionTitle('Where it is'),
                             TextButton.icon(
                               onPressed: () => _showTransferSheet(
                                 context, db, product, rows),
@@ -326,10 +435,7 @@ class ProductDetailPage extends StatelessWidget {
               const Divider(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Text(
-                  'Movement history',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                child: const SectionTitle('Movement history'),
               ),
               StreamBuilder<List<Movement>>(
                 stream: db.movementDao.watchForProduct(productId),
@@ -404,39 +510,18 @@ class ProductDetailPage extends StatelessWidget {
               ),
             ],
           ),
-          floatingActionButton: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FloatingActionButton.small(
-                heroTag: 'stock_in',
-                tooltip: 'Stock in',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StockMovementPage(
-                      productId: productId,
-                      initialDirection: StockDirection.inward,
-                    ),
-                  ),
-                ),
-                child: const Icon(Icons.add),
+          // Two labelled buttons rather than the stacked + and - FABs that
+          // were here. A small circle with a minus in it does not say "take
+          // stock off this product", and getting it wrong writes a movement
+          // the wrong way round into an append-only ledger.
+          bottomNavigationBar: _DetailActionBar(
+            onEdit: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProductEditPage(product: product),
               ),
-              const SizedBox(height: 8),
-              FloatingActionButton.small(
-                heroTag: 'stock_out',
-                tooltip: 'Stock out',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StockMovementPage(
-                      productId: productId,
-                      initialDirection: StockDirection.outward,
-                    ),
-                  ),
-                ),
-                child: const Icon(Icons.remove),
-              ),
-            ],
+            ),
+            onAdjust: () => _showAdjustSheet(context, product),
           ),
         );
       },
@@ -573,4 +658,214 @@ class ProductDetailPage extends StatelessWidget {
     );
   }
 
+}
+
+/// Asks which way the stock is moving, then hands over to the movement
+/// screen with that direction already chosen.
+Future<void> _showAdjustSheet(BuildContext context, Product product) {
+  final palette = context.palette;
+
+  void open(BuildContext sheetContext, StockDirection direction) {
+    Navigator.pop(sheetContext);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StockMovementPage(
+          productId: product.id,
+          initialDirection: direction,
+        ),
+      ),
+    );
+  }
+
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(
+              product.name,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              '${product.stockQty} in stock · ${product.unit}',
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: IconBadge(
+              icon: Icons.arrow_downward_rounded,
+              accent: palette.success,
+            ),
+            title: const Text('Stock In'),
+            subtitle: const Text('A delivery, a return, a correction upward'),
+            onTap: () => open(sheetContext, StockDirection.inward),
+          ),
+          ListTile(
+            leading: IconBadge(
+              icon: Icons.arrow_upward_rounded,
+              accent: palette.error,
+            ),
+            title: const Text('Stock Out'),
+            subtitle: const Text('A sale, damage, a correction downward'),
+            onTap: () => open(sheetContext, StockDirection.outward),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+/// A small tinted pill carrying one fact about the product.
+class _DetailChip extends StatelessWidget {
+  const _DetailChip({required this.label, required this.accent, this.icon});
+
+  final String label;
+  final Color accent;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: EdgeInsets.fromLTRB(icon == null ? 10 : 8, 5, 10, 5),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.20 : 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: accent),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One label-over-value cell of the stock information card.
+class _StockFact extends StatelessWidget {
+  const _StockFact({required this.label, required this.value, this.accent});
+
+  final String label;
+  final String value;
+
+  /// Tints the value when it is the one that needs attention.
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: accent ?? palette.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The pinned Edit / Adjust Stock bar at the foot of the product page.
+class _DetailActionBar extends StatelessWidget {
+  const _DetailActionBar({required this.onEdit, required this.onAdjust});
+
+  final VoidCallback onEdit;
+  final VoidCallback onAdjust;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.cardSurface,
+        border: Border(top: BorderSide(color: palette.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 19),
+                    label: const Text(
+                      'Edit',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: palette.primary,
+                      side: BorderSide(color: palette.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: onAdjust,
+                    icon: const Icon(Icons.swap_vert_rounded, size: 20),
+                    label: const Text(
+                      'Adjust Stock',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: palette.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
