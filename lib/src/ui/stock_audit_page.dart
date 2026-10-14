@@ -9,6 +9,7 @@ import '../data/database.dart';
 import 'print_identity.dart';
 import '../services/diagnostic_service.dart';
 import '../services/esc_pos_service.dart';
+import 'widgets/app_tiles.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
 import '../app_scope.dart';
 
@@ -72,12 +73,24 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Stocktake & Audits'),
+        title: const Text(
+          'Stocktake & Audits',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 21),
+        ),
         bottom: TabBar(
           controller: _tabController,
+          indicatorSize: TabBarIndicatorSize.tab,
+          labelStyle: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
+          ),
           tabs: const [
-            Tab(text: 'Active Audits', icon: Icon(Icons.pending_actions)),
-            Tab(text: 'Completed History', icon: Icon(Icons.history)),
+            Tab(text: 'Active Audits'),
+            Tab(text: 'Completed History'),
           ],
         ),
       ),
@@ -94,10 +107,20 @@ class _StockAuditPageState extends State<StockAuditPage> with SingleTickerProvid
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('New Audit Session'),
-        onPressed: _showCreateSessionDialog,
+      // Only once a session exists. While the list is empty the screen's own
+      // centred button is the call to action, and a FAB beside it is the
+      // same offer made twice.
+      floatingActionButton: StreamBuilder<List<StockAuditSession>>(
+        stream: _db.auditDao.watchActiveSessions(),
+        builder: (context, snapshot) {
+          final sessions = snapshot.data ?? const <StockAuditSession>[];
+          if (sessions.isEmpty) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            icon: const Icon(Icons.add),
+            label: const Text('New Audit Session'),
+            onPressed: _showCreateSessionDialog,
+          );
+        },
       ),
     );
   }
@@ -198,23 +221,12 @@ class _ActiveSessionsList extends StatelessWidget {
       builder: (context, snapshot) {
         final sessions = snapshot.data ?? [];
         if (sessions.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.check_circle_outline, size: 64, color: Colors.grey),
-                const SizedBox(height: 12),
-                const Text('No in-progress stocktake sessions', style: TextStyle(fontSize: 16)),
-                const SizedBox(height: 6),
-                const Text('Tap "New Audit Session" below to begin counting shelf stock.', style: TextStyle(color: Colors.grey)),
-                const SizedBox(height: 16),
-                FilledButton.tonalIcon(
-                  onPressed: onCreateNew,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Start New Count'),
-                ),
-              ],
-            ),
+          return EmptyState(
+            icon: Icons.fact_check_outlined,
+            title: 'No in-progress stocktake sessions',
+            message: 'Tap "New Audit Session" to begin counting shelf stock.',
+            actionLabel: 'New Audit Session',
+            onAction: onCreateNew,
           );
         }
 

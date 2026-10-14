@@ -12,6 +12,7 @@ import 'low_stock_page.dart';
 import 'settings_page.dart';
 import 'support_report_page.dart';
 import 'suppliers_page.dart';
+import 'widgets/app_tiles.dart';
 import 'widgets/paywall_sheet.dart';
 
 /// "More" hub for secondary and advanced operational tools.
@@ -38,87 +39,22 @@ class MorePage extends StatelessWidget {
           FutureBuilder<bool>(
             future: LicenseService(db).isProUnlocked(),
             builder: (context, snapshot) {
-              final isPro = snapshot.data ?? false;
-              if (isPro) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: palette.secondaryGradient,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: palette.secondary.withValues(alpha: 0.3)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Icon(Icons.workspace_premium, color: palette.secondary, size: 32),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'StockSafe Pro Active',
-                                style: TextStyle(color: palette.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Lifetime unlimited products & offline features',
-                                style: TextStyle(color: palette.textSecondary, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: palette.primaryGradient,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: palette.primary.withValues(alpha: 0.3)),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => PaywallSheet.show(context),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.stars, color: palette.secondary, size: 32),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Upgrade to Pro — ₹499 Lifetime',
-                                  style: TextStyle(color: palette.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Track as many products as you like - the free tier stops at 100',
-                                  style: TextStyle(color: palette.textSecondary, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right, color: palette.textPrimary),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              // Null while the check is in flight. Rendering the upgrade
+              // offer during that frame would flash "Upgrade to Pro" at
+              // somebody who has already paid, so nothing is shown until the
+              // answer is in.
+              final isPro = snapshot.data;
+              if (isPro == null) return const SizedBox(height: 74);
+              return _ProCard(
+                isPro: isPro,
+                onTap: isPro ? null : () => PaywallSheet.show(context),
               );
             },
           ),
           const SizedBox(height: 16),
 
           // Section 1: Inventory & Suppliers
-          _buildSectionHeader(theme, 'OPERATIONS & REORDERING'),
+          _buildSectionHeader(theme, 'Operations & Reordering'),
           _buildToolTile(
             context,
             icon: Icons.warning_amber_rounded,
@@ -138,7 +74,7 @@ class MorePage extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Section 2: Hardware & Utilities
-          _buildSectionHeader(theme, 'PRINTING & LABELS'),
+          _buildSectionHeader(theme, 'Printing & Labels'),
           _buildToolTile(
             context,
             icon: Icons.qr_code_2_rounded,
@@ -163,7 +99,7 @@ class MorePage extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Section 3: Data Safety & System
-          _buildSectionHeader(theme, 'HELP'),
+          _buildSectionHeader(theme, 'Help'),
           _buildToolTile(
             context,
             icon: Icons.support_agent_outlined,
@@ -176,7 +112,7 @@ class MorePage extends StatelessWidget {
             ),
           ),
 
-          _buildSectionHeader(theme, 'DATA & SYSTEM'),
+          _buildSectionHeader(theme, 'Data & System'),
           _buildToolTile(
             context,
             icon: Icons.security_rounded,
@@ -199,17 +135,9 @@ class MorePage extends StatelessWidget {
   }
 
   static Widget _buildSectionHeader(ThemeData theme, String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 6),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-          letterSpacing: 0.8,
-        ),
-      ),
+    return SectionTitle(
+      title,
+      padding: const EdgeInsets.only(left: 2, bottom: 8),
     );
   }
 
@@ -221,27 +149,94 @@ class MorePage extends StatelessWidget {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
+    return ToolTile(
+      icon: icon,
+      accent: iconColor,
+      title: title,
+      subtitle: subtitle,
+      onTap: onTap,
+    );
+  }
+}
+
+/// The gold banner at the top of More: the licence state, and the way to
+/// change it.
+class _ProCard extends StatelessWidget {
+  const _ProCard({required this.isPro, this.onTap});
+
+  final bool isPro;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const gold = Color(0xFFF59E0B);
+    final radius = BorderRadius.circular(14);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Material(
+        color: gold.withValues(alpha: isDark ? 0.14 : 0.10),
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(color: gold.withValues(alpha: 0.38)),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 13, 12, 13),
+            child: Row(
+              children: [
+                Icon(
+                  isPro
+                      ? Icons.workspace_premium_rounded
+                      : Icons.emoji_events_rounded,
+                  size: 28,
+                  color: gold,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isPro
+                            ? 'StockSafe Pro Active'
+                            : 'Upgrade to Pro — ₹499 Lifetime',
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isPro
+                            ? 'Lifetime unlimited products & offline features'
+                            : 'Track as many products as you like — the free '
+                                'tier stops at 100',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.3,
+                          color: palette.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isPro)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 22,
+                    color: palette.textTertiary,
+                  ),
+              ],
+            ),
           ),
-          child: Icon(icon, color: iconColor, size: 22),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right, size: 20),
-        onTap: onTap,
       ),
     );
   }
