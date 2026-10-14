@@ -42,6 +42,18 @@ class _VoiceAssistantDialogState extends State<VoiceAssistantDialog>
     _startVoiceSession();
   }
 
+  /// Set the moment this dialog has decided to close.
+  ///
+  /// Speech recognition reports partial results, so `onResult` fires once per
+  /// word or so. Every call used to schedule its own delayed
+  /// `Navigator.pop`, and a sentence produced a queue of them: the first
+  /// closed this dialog and the rest popped whatever route was underneath -
+  /// the page the command had just opened, then the one below that. The
+  /// screen ended up blank with nothing left to show, and only relaunching
+  /// rebuilt the stack. `mounted` did not stop it, because the later
+  /// callbacks fire while this route is still animating out.
+  bool _closing = false;
+
   Future<void> _startVoiceSession() async {
     final available = await VoiceAssistantService.instance.initialize();
     if (!mounted) return;
@@ -54,7 +66,7 @@ class _VoiceAssistantDialogState extends State<VoiceAssistantDialog>
           content: Text('Speech recognition not available or permission denied.'),
         ),
       );
-      Navigator.pop(context);
+      _close(null);
       return;
     }
 
@@ -68,16 +80,29 @@ class _VoiceAssistantDialogState extends State<VoiceAssistantDialog>
           _detectedResult = result;
         });
 
-        // If intent recognized with final certainty or silence
-        if (result.intent != VoiceIntentType.unknown && result.rawTranscript.trim().length > 3) {
+        // Close once the command is understood - but only ever once.
+        if (!_closing &&
+            result.intent != VoiceIntentType.unknown &&
+            result.rawTranscript.trim().length > 3) {
+          _closing = true;
           Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) {
-              Navigator.pop(context, result);
-            }
+            _close(result);
           });
         }
       },
     );
+  }
+
+  /// Dismisses this dialog, and nothing else.
+  ///
+  /// `ModalRoute.isCurrent` is the guard that matters: without it a pop
+  /// scheduled before the route closed goes on to tear a page off the stack
+  /// underneath.
+  void _close(VoiceCommandResult? result) {
+    if (!mounted) return;
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isCurrent) return;
+    Navigator.pop(context, result);
   }
 
   @override
@@ -178,7 +203,7 @@ class _VoiceAssistantDialogState extends State<VoiceAssistantDialog>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => _close(null),
                 child: Text(isTamil ? 'ரத்து செய்' : 'Cancel'),
               ),
               if (_detectedResult != null && _detectedResult!.rawTranscript.isNotEmpty) ...[
@@ -186,7 +211,7 @@ class _VoiceAssistantDialogState extends State<VoiceAssistantDialog>
                 FilledButton.icon(
                   icon: const Icon(Icons.check),
                   label: Text(isTamil ? 'செயல்படுத்து' : 'Apply'),
-                  onPressed: () => Navigator.pop(context, _detectedResult),
+                  onPressed: () => _close(_detectedResult),
                 ),
               ],
             ],

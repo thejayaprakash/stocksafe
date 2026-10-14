@@ -1,8 +1,10 @@
 # Privacy Policy for StockSafe: Inventory Manager
 
-**Last Updated: October 13, 2026**
+**Last Updated: October 14, 2026**
 
-StockSafe ("we", "our", or "the app") is committed to protecting your privacy and providing transparent, sovereign data security. Our core architectural promise is: **your data belongs exclusively to you, and StockSafe operates 100% offline.**
+StockSafe ("we", "our", or "the app") is committed to protecting your privacy and providing transparent, sovereign data security. Our core promise is: **your inventory data belongs exclusively to you and never leaves your device.** There is no account, no server of ours, and nothing in the app that uploads your catalogue, prices, stock levels or supplier details anywhere.
+
+That promise is about *your business data*, and it is exact. StockSafe is not, however, a network-silent app: it includes Google's ML Kit to read barcodes and packaging labels on your device, and ML Kit brings Google's own diagnostics library with it. Section 1a sets out precisely what that means.
 
 ---
 
@@ -12,16 +14,34 @@ StockSafe does **NOT** collect, transmit, sell, or monetize your personal or bus
 
 - **Local Storage Only:** All inventory catalogs, product details, stock movements, supplier directory entries, audit records, and business settings are stored locally on your device in a private SQLite database. The file lives in StockSafe's private app storage, which Android keeps inaccessible to other apps, and is covered by your device's own disk encryption. StockSafe does not add a separate password or encryption layer of its own.
 - **No Cloud Servers / No Accounts:** You do not need to create an account, provide an email address, or sign in to use StockSafe. We operate no remote servers to receive your inventory data.
-- **No Third-Party Analytics or Trackers:** StockSafe contains no ad tracking networks, telemetry trackers, or third-party marketing SDKs.
+- **No Ad Networks or Marketing SDKs:** StockSafe contains no advertising networks, no attribution SDKs and no third-party marketing trackers. We do not profile you and we sell nothing.
+
+---
+
+## 1a. Google ML Kit, and the network permissions it brings
+
+We would rather state this plainly than let you discover it in the permission list.
+
+StockSafe uses **Google ML Kit** for barcode scanning and for reading MRP, batch and expiry off a packaging label. The recognition itself runs **on your device** - no photo, camera frame or scanned image is uploaded by StockSafe, and the feature works in aeroplane mode.
+
+ML Kit ships with Google's `datatransport` diagnostics library. Including it has two consequences we are obliged to disclose:
+
+- **The app requests `INTERNET` and `ACCESS_NETWORK_STATE`.** Neither is declared by StockSafe's own manifest; both are merged in automatically by that Google library. You will see them if you inspect the app's permissions.
+- **Google's ML Kit may report its own diagnostics to Google.** Google's published ML Kit data disclosure states that its SDKs collect device information, app information and performance metrics for diagnostics and usage analytics. That channel belongs to Google, not to us: we neither receive nor have access to anything sent through it, and no inventory data is part of it.
+
+We measured the app's network usage on a test device after installing, launching it and running a full scanning session: Android's per-app traffic accounting recorded **no traffic attributed to StockSafe**. We report that as a measurement, not a guarantee - the diagnostics library batches and schedules its uploads, so an empty window does not prove it never sends anything.
+
+If you want ML Kit's diagnostics gone entirely, the only reliable answer is to remove barcode scanning and label OCR from the app. We have chosen to keep those features and tell you this instead.
 
 ---
 
 ## 2. Device Permissions Used and Purpose
 
-StockSafe requests only minimal permissions necessary to execute its retail inventory operations:
+StockSafe requests only the permissions its features need, plus two that arrive with Google's ML Kit (see section 1a):
 
 | Permission | Technical Name | Purpose |
 |---|---|---|
+| **Network** | `android.permission.INTERNET`, `android.permission.ACCESS_NETWORK_STATE` | **Not used by StockSafe.** Declared automatically by Google's ML Kit diagnostics library, which barcode scanning and label OCR depend on. StockSafe sends none of your data over the network and has no server to send it to. |
 | **Camera** | `android.permission.CAMERA` | Used exclusively to scan product barcodes and capture product packaging labels for on-device ML Kit OCR (detecting MRP, Batch numbers, and Expiry dates). No camera frames or pictures are ever sent over the network. |
 | **Microphone / Speech** | `android.permission.RECORD_AUDIO` | Used exclusively when the user explicitly taps the microphone button to dictate retail queries (e.g., checking stock or low-stock items in English or Tamil). Speech processing is handled on-device. |
 | **Phone / Dialer** | `android.intent.action.DIAL` | Used solely when you tap the "Call Supplier" button to launch your device's native phone dialer with the supplier's number prefilled. StockSafe never makes calls automatically. |

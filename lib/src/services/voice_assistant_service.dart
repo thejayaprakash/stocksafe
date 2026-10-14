@@ -98,9 +98,16 @@ class VoiceAssistantService extends ChangeNotifier {
           _lastWords = result.recognizedWords;
           notifyListeners();
 
-          if (result.finalResult || _lastWords.trim().isNotEmpty) {
-            final parsed = parseCommand(_lastWords);
-            onResult(parsed);
+          // Partial results included on purpose: the dialog shows a live
+          // transcript, which needs them. `result.finalResult ||` used to
+          // lead this condition and decided nothing, because the right side
+          // is already true once a single word is heard.
+          //
+          // The caller therefore gets many calls per utterance, and must not
+          // treat each one as a decision to act. VoiceAssistantDialog latches
+          // on the first recognised intent for exactly that reason.
+          if (_lastWords.trim().isNotEmpty) {
+            onResult(parseCommand(_lastWords));
           }
         },
       );
