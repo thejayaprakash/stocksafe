@@ -38,9 +38,10 @@ class DatabaseMigrations {
   // 5 — indexes on the hot paths: movement.product_id / created_at / batch_id,
   //     product.name (live rows), stock_audit_item.session_id
   // 6 — locations: location table, movement.location_id, movement.transfer_ref
-  // 7 — product.image_path, nullable and unwritten: the catalogue draws a
+  // 7 — product.image_path (nullable, unwritten: the catalogue draws a
   //     tinted initial today, and the column is in place so adding photos
-  //     later is a UI change rather than another migration.
+  //     later is a UI change rather than another migration) and
+  //     product.is_favourite.
   static const int currentVersion = 7;
 
   /// Name given to the location that inherits all pre-existing stock.
@@ -152,10 +153,11 @@ class AppDatabase extends _$AppDatabase {
         }
       },
       from6To7: (m, schema) async {
-        // One nullable column. Existing rows get NULL, which is exactly what
-        // "this product has no photo" means, so there is nothing to backfill
-        // and no value to recompute.
+        // Two columns, neither of which needs a backfill. An existing row
+        // has no photo, which is what NULL means, and is not a favourite,
+        // which is what the column's default says.
         await m.addColumn(schema.product, schema.product.imagePath);
+        await m.addColumn(schema.product, schema.product.isFavourite);
       },
     ),
     beforeOpen: (details) async {

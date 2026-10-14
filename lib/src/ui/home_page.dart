@@ -20,6 +20,7 @@ import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
 import 'widgets/bulk_actions.dart';
+import 'widgets/favourite_button.dart';
 import 'widgets/floating_wave_nav_bar.dart';
 import 'widgets/product_avatar.dart';
 import 'widgets/paywall_sheet.dart';
@@ -52,6 +53,7 @@ class _HomePageState extends State<HomePage> {
   /// very query the list is showing — selecting everything the filters
   /// match, not merely the page that happens to be loaded.
   ProductStockStatus _status = ProductStockStatus.any;
+  bool _favouritesOnly = false;
   ProductSort _sort = ProductSort.recentlyUpdated;
   bool _grid = false;
 
@@ -208,6 +210,7 @@ class _HomePageState extends State<HomePage> {
       query: _query,
       category: _selectedCategory,
       status: _status,
+      favouritesOnly: _favouritesOnly,
     );
     if (!mounted) return;
     setState(() => _selected
@@ -496,11 +499,14 @@ class _HomePageState extends State<HomePage> {
           query: _query,
           category: _selectedCategory,
           status: _status,
+          favouritesOnly: _favouritesOnly,
           sort: _sort,
           grid: _grid,
           selectionMode: _selectionMode,
           selectedIds: _selected,
           onStatusChanged: (status) => setState(() => _status = status),
+          onFavouritesOnlyChanged: (only) =>
+              setState(() => _favouritesOnly = only),
           onSortChanged: (sort) => setState(() => _sort = sort),
           onLayoutChanged: (grid) => setState(() => _grid = grid),
           onToggleSelected: _toggleSelected,
@@ -781,11 +787,13 @@ class _ProductListBody extends StatefulWidget {
     required this.db,
     required this.query,
     required this.status,
+    required this.favouritesOnly,
     required this.sort,
     required this.grid,
     required this.selectionMode,
     required this.selectedIds,
     required this.onStatusChanged,
+    required this.onFavouritesOnlyChanged,
     required this.onSortChanged,
     required this.onLayoutChanged,
     required this.onToggleSelected,
@@ -798,6 +806,7 @@ class _ProductListBody extends StatefulWidget {
   final String query;
   final String? category;
   final ProductStockStatus status;
+  final bool favouritesOnly;
   final ProductSort sort;
   final bool grid;
 
@@ -805,6 +814,7 @@ class _ProductListBody extends StatefulWidget {
   final Set<int> selectedIds;
 
   final ValueChanged<ProductStockStatus> onStatusChanged;
+  final ValueChanged<bool> onFavouritesOnlyChanged;
   final ValueChanged<ProductSort> onSortChanged;
   final ValueChanged<bool> onLayoutChanged;
   final ValueChanged<int> onToggleSelected;
@@ -861,6 +871,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
       query: widget.query,
       category: widget.category,
       status: widget.status,
+      favouritesOnly: widget.favouritesOnly,
       sort: widget.sort,
       limit: _limit,
     );
@@ -875,6 +886,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
     if (oldWidget.query != widget.query ||
         oldWidget.category != widget.category ||
         oldWidget.status != widget.status ||
+        oldWidget.favouritesOnly != widget.favouritesOnly ||
         oldWidget.sort != widget.sort) {
       _limit = _pageSize;
       _mayHaveMore = true;
@@ -904,7 +916,8 @@ class _ProductListBodyState extends State<_ProductListBody> {
   Widget build(BuildContext context) {
     final unfiltered = widget.query.isEmpty &&
         widget.category == null &&
-        widget.status == ProductStockStatus.any;
+        widget.status == ProductStockStatus.any &&
+        !widget.favouritesOnly;
 
     // The status chips stay on screen whatever the list below them shows.
     // Filtering down to nothing and losing the control that did it leaves
@@ -914,7 +927,9 @@ class _ProductListBodyState extends State<_ProductListBody> {
         _StatusFilterBar(
           db: widget.db,
           status: widget.status,
+          favouritesOnly: widget.favouritesOnly,
           onChanged: widget.onStatusChanged,
+          onFavouritesOnlyChanged: widget.onFavouritesOnlyChanged,
         ),
         Expanded(
           child: StreamBuilder<List<Product>>(
@@ -934,7 +949,10 @@ class _ProductListBodyState extends State<_ProductListBody> {
                   filtered: !unfiltered,
                   onClearFilters: unfiltered
                       ? null
-                      : () => widget.onStatusChanged(ProductStockStatus.any),
+                      : () {
+                          widget.onStatusChanged(ProductStockStatus.any);
+                          widget.onFavouritesOnlyChanged(false);
+                        },
                 );
               }
 
@@ -1058,12 +1076,16 @@ class _StatusFilterBar extends StatelessWidget {
   const _StatusFilterBar({
     required this.db,
     required this.status,
+    required this.favouritesOnly,
     required this.onChanged,
+    required this.onFavouritesOnlyChanged,
   });
 
   final AppDatabase db;
   final ProductStockStatus status;
+  final bool favouritesOnly;
   final ValueChanged<ProductStockStatus> onChanged;
+  final ValueChanged<bool> onFavouritesOnlyChanged;
 
   static const _options = [
     (ProductStockStatus.any, 'All', null),
@@ -1110,6 +1132,22 @@ class _StatusFilterBar extends StatelessWidget {
                   selected: status == value,
                   onTap: () => onChanged(value),
                 ),
+              // Favourites sits alongside the stock filters rather than
+              // among them: it narrows by what the shopkeeper pinned, not by
+              // what is on the shelf, and the two combine.
+              StreamBuilder<int>(
+                stream: db.productDao.watchFavouriteCount(),
+                builder: (context, snapshot) => _StatusChip(
+                  label: 'Favourites',
+                  icon: favouritesOnly
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  count: snapshot.data,
+                  accent: palette.error,
+                  selected: favouritesOnly,
+                  onTap: () => onFavouritesOnlyChanged(!favouritesOnly),
+                ),
+              ),
             ],
           ),
         );
@@ -1667,7 +1705,14 @@ class _ProductTile extends StatelessWidget {
                 children: [
                   ProductAvatar(product: p, size: 52),
                   const Spacer(),
-                  _StockBadge(product: p, compact: true),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      FavouriteButton(product: p, size: 18),
+                      const SizedBox(height: 4),
+                      _StockBadge(product: p, compact: true),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 10),

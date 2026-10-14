@@ -510,6 +510,16 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
   late final GeneratedColumn<String> imagePath = GeneratedColumn<String>(
       'image_path', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isFavouriteMeta =
+      const VerificationMeta('isFavourite');
+  @override
+  late final GeneratedColumn<bool> isFavourite = GeneratedColumn<bool>(
+      'is_favourite', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_favourite" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -542,6 +552,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         stockQty,
         supplierId,
         imagePath,
+        isFavourite,
         createdAt,
         updatedAt,
         deletedAt
@@ -609,6 +620,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
       context.handle(_imagePathMeta,
           imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta));
     }
+    if (data.containsKey('is_favourite')) {
+      context.handle(
+          _isFavouriteMeta,
+          isFavourite.isAcceptableOrUnknown(
+              data['is_favourite']!, _isFavouriteMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -658,6 +675,8 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
           .read(DriftSqlType.int, data['${effectivePrefix}supplier_id']),
       imagePath: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}image_path']),
+      isFavourite: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_favourite'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -703,6 +722,13 @@ class Product extends DataClass implements Insertable<Product> {
   /// treat a non-null value as a file that may since have been deleted, moved
   /// by the OS, or restored onto a different device — always fall back.
   final String? imagePath;
+
+  /// Pinned by the shopkeeper.
+  ///
+  /// Non-null with a default of false, so every existing row is simply "not
+  /// favourited" and there is nothing to backfill. Toggled offline like
+  /// everything else here; it is a local preference, not a synced one.
+  final bool isFavourite;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -719,6 +745,7 @@ class Product extends DataClass implements Insertable<Product> {
       required this.stockQty,
       this.supplierId,
       this.imagePath,
+      required this.isFavourite,
       required this.createdAt,
       required this.updatedAt,
       this.deletedAt});
@@ -747,6 +774,7 @@ class Product extends DataClass implements Insertable<Product> {
     if (!nullToAbsent || imagePath != null) {
       map['image_path'] = Variable<String>(imagePath);
     }
+    map['is_favourite'] = Variable<bool>(isFavourite);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -777,6 +805,7 @@ class Product extends DataClass implements Insertable<Product> {
       imagePath: imagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(imagePath),
+      isFavourite: Value(isFavourite),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -801,6 +830,7 @@ class Product extends DataClass implements Insertable<Product> {
       stockQty: serializer.fromJson<int>(json['stockQty']),
       supplierId: serializer.fromJson<int?>(json['supplierId']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
+      isFavourite: serializer.fromJson<bool>(json['isFavourite']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -822,6 +852,7 @@ class Product extends DataClass implements Insertable<Product> {
       'stockQty': serializer.toJson<int>(stockQty),
       'supplierId': serializer.toJson<int?>(supplierId),
       'imagePath': serializer.toJson<String?>(imagePath),
+      'isFavourite': serializer.toJson<bool>(isFavourite),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -841,6 +872,7 @@ class Product extends DataClass implements Insertable<Product> {
           int? stockQty,
           Value<int?> supplierId = const Value.absent(),
           Value<String?> imagePath = const Value.absent(),
+          bool? isFavourite,
           DateTime? createdAt,
           DateTime? updatedAt,
           Value<DateTime?> deletedAt = const Value.absent()}) =>
@@ -857,6 +889,7 @@ class Product extends DataClass implements Insertable<Product> {
         stockQty: stockQty ?? this.stockQty,
         supplierId: supplierId.present ? supplierId.value : this.supplierId,
         imagePath: imagePath.present ? imagePath.value : this.imagePath,
+        isFavourite: isFavourite ?? this.isFavourite,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -878,6 +911,8 @@ class Product extends DataClass implements Insertable<Product> {
       supplierId:
           data.supplierId.present ? data.supplierId.value : this.supplierId,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      isFavourite:
+          data.isFavourite.present ? data.isFavourite.value : this.isFavourite,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -899,6 +934,7 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
           ..write('imagePath: $imagePath, ')
+          ..write('isFavourite: $isFavourite, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -920,6 +956,7 @@ class Product extends DataClass implements Insertable<Product> {
       stockQty,
       supplierId,
       imagePath,
+      isFavourite,
       createdAt,
       updatedAt,
       deletedAt);
@@ -939,6 +976,7 @@ class Product extends DataClass implements Insertable<Product> {
           other.stockQty == this.stockQty &&
           other.supplierId == this.supplierId &&
           other.imagePath == this.imagePath &&
+          other.isFavourite == this.isFavourite &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -957,6 +995,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> stockQty;
   final Value<int?> supplierId;
   final Value<String?> imagePath;
+  final Value<bool> isFavourite;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -973,6 +1012,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.isFavourite = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -990,6 +1030,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.isFavourite = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
@@ -1009,6 +1050,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? stockQty,
     Expression<int>? supplierId,
     Expression<String>? imagePath,
+    Expression<bool>? isFavourite,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -1026,6 +1068,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (stockQty != null) 'stock_qty': stockQty,
       if (supplierId != null) 'supplier_id': supplierId,
       if (imagePath != null) 'image_path': imagePath,
+      if (isFavourite != null) 'is_favourite': isFavourite,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -1045,6 +1088,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       Value<int>? stockQty,
       Value<int?>? supplierId,
       Value<String?>? imagePath,
+      Value<bool>? isFavourite,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt,
       Value<DateTime?>? deletedAt}) {
@@ -1061,6 +1105,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       stockQty: stockQty ?? this.stockQty,
       supplierId: supplierId ?? this.supplierId,
       imagePath: imagePath ?? this.imagePath,
+      isFavourite: isFavourite ?? this.isFavourite,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -1106,6 +1151,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (imagePath.present) {
       map['image_path'] = Variable<String>(imagePath.value);
     }
+    if (isFavourite.present) {
+      map['is_favourite'] = Variable<bool>(isFavourite.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1133,6 +1181,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
           ..write('imagePath: $imagePath, ')
+          ..write('isFavourite: $isFavourite, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -4245,6 +4294,7 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<int> stockQty,
   Value<int?> supplierId,
   Value<String?> imagePath,
+  Value<bool> isFavourite,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
@@ -4262,6 +4312,7 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<int> stockQty,
   Value<int?> supplierId,
   Value<String?> imagePath,
+  Value<bool> isFavourite,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
@@ -4371,6 +4422,9 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get imagePath => $composableBuilder(
       column: $table.imagePath, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isFavourite => $composableBuilder(
+      column: $table.isFavourite, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -4508,6 +4562,9 @@ class $$ProductsTableOrderingComposer
   ColumnOrderings<String> get imagePath => $composableBuilder(
       column: $table.imagePath, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isFavourite => $composableBuilder(
+      column: $table.isFavourite, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -4579,6 +4636,9 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<String> get imagePath =>
       $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFavourite => $composableBuilder(
+      column: $table.isFavourite, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4712,6 +4772,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<int> stockQty = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
             Value<String?> imagePath = const Value.absent(),
+            Value<bool> isFavourite = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -4729,6 +4790,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             stockQty: stockQty,
             supplierId: supplierId,
             imagePath: imagePath,
+            isFavourite: isFavourite,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,
@@ -4746,6 +4808,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             Value<int> stockQty = const Value.absent(),
             Value<int?> supplierId = const Value.absent(),
             Value<String?> imagePath = const Value.absent(),
+            Value<bool> isFavourite = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
             Value<DateTime?> deletedAt = const Value.absent(),
@@ -4763,6 +4826,7 @@ class $$ProductsTableTableManager extends RootTableManager<
             stockQty: stockQty,
             supplierId: supplierId,
             imagePath: imagePath,
+            isFavourite: isFavourite,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt,

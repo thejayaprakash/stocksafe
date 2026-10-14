@@ -432,6 +432,12 @@ class Product extends Table with TableInfo<Product, ProductData> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       $customConstraints: 'NULL');
+  late final GeneratedColumn<int> isFavourite = GeneratedColumn<int>(
+      'is_favourite', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      $customConstraints: 'NOT NULL DEFAULT 0 CHECK (is_favourite IN (0, 1))',
+      defaultValue: const CustomExpression('0'));
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
       'created_at', aliasedName, false,
       type: DriftSqlType.int,
@@ -461,6 +467,7 @@ class Product extends Table with TableInfo<Product, ProductData> {
         stockQty,
         supplierId,
         imagePath,
+        isFavourite,
         createdAt,
         updatedAt,
         deletedAt
@@ -500,6 +507,8 @@ class Product extends Table with TableInfo<Product, ProductData> {
           .read(DriftSqlType.int, data['${effectivePrefix}supplier_id']),
       imagePath: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}image_path']),
+      isFavourite: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}is_favourite'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -531,6 +540,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
   final int stockQty;
   final int? supplierId;
   final String? imagePath;
+  final int isFavourite;
   final int createdAt;
   final int updatedAt;
   final int? deletedAt;
@@ -547,6 +557,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       required this.stockQty,
       this.supplierId,
       this.imagePath,
+      required this.isFavourite,
       required this.createdAt,
       required this.updatedAt,
       this.deletedAt});
@@ -575,6 +586,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
     if (!nullToAbsent || imagePath != null) {
       map['image_path'] = Variable<String>(imagePath);
     }
+    map['is_favourite'] = Variable<int>(isFavourite);
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -605,6 +617,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       imagePath: imagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(imagePath),
+      isFavourite: Value(isFavourite),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -629,6 +642,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       stockQty: serializer.fromJson<int>(json['stockQty']),
       supplierId: serializer.fromJson<int?>(json['supplierId']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
+      isFavourite: serializer.fromJson<int>(json['isFavourite']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
@@ -650,6 +664,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       'stockQty': serializer.toJson<int>(stockQty),
       'supplierId': serializer.toJson<int?>(supplierId),
       'imagePath': serializer.toJson<String?>(imagePath),
+      'isFavourite': serializer.toJson<int>(isFavourite),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'deletedAt': serializer.toJson<int?>(deletedAt),
@@ -669,6 +684,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
           int? stockQty,
           Value<int?> supplierId = const Value.absent(),
           Value<String?> imagePath = const Value.absent(),
+          int? isFavourite,
           int? createdAt,
           int? updatedAt,
           Value<int?> deletedAt = const Value.absent()}) =>
@@ -685,6 +701,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
         stockQty: stockQty ?? this.stockQty,
         supplierId: supplierId.present ? supplierId.value : this.supplierId,
         imagePath: imagePath.present ? imagePath.value : this.imagePath,
+        isFavourite: isFavourite ?? this.isFavourite,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -706,6 +723,8 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       supplierId:
           data.supplierId.present ? data.supplierId.value : this.supplierId,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      isFavourite:
+          data.isFavourite.present ? data.isFavourite.value : this.isFavourite,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -727,6 +746,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
           ..write('imagePath: $imagePath, ')
+          ..write('isFavourite: $isFavourite, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -748,6 +768,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
       stockQty,
       supplierId,
       imagePath,
+      isFavourite,
       createdAt,
       updatedAt,
       deletedAt);
@@ -767,6 +788,7 @@ class ProductData extends DataClass implements Insertable<ProductData> {
           other.stockQty == this.stockQty &&
           other.supplierId == this.supplierId &&
           other.imagePath == this.imagePath &&
+          other.isFavourite == this.isFavourite &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -785,6 +807,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
   final Value<int> stockQty;
   final Value<int?> supplierId;
   final Value<String?> imagePath;
+  final Value<int> isFavourite;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<int?> deletedAt;
@@ -801,6 +824,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.isFavourite = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -818,6 +842,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
     this.stockQty = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.isFavourite = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.deletedAt = const Value.absent(),
@@ -837,6 +862,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
     Expression<int>? stockQty,
     Expression<int>? supplierId,
     Expression<String>? imagePath,
+    Expression<int>? isFavourite,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<int>? deletedAt,
@@ -854,6 +880,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
       if (stockQty != null) 'stock_qty': stockQty,
       if (supplierId != null) 'supplier_id': supplierId,
       if (imagePath != null) 'image_path': imagePath,
+      if (isFavourite != null) 'is_favourite': isFavourite,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -873,6 +900,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
       Value<int>? stockQty,
       Value<int?>? supplierId,
       Value<String?>? imagePath,
+      Value<int>? isFavourite,
       Value<int>? createdAt,
       Value<int>? updatedAt,
       Value<int?>? deletedAt}) {
@@ -889,6 +917,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
       stockQty: stockQty ?? this.stockQty,
       supplierId: supplierId ?? this.supplierId,
       imagePath: imagePath ?? this.imagePath,
+      isFavourite: isFavourite ?? this.isFavourite,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -934,6 +963,9 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
     if (imagePath.present) {
       map['image_path'] = Variable<String>(imagePath.value);
     }
+    if (isFavourite.present) {
+      map['is_favourite'] = Variable<int>(isFavourite.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -961,6 +993,7 @@ class ProductCompanion extends UpdateCompanion<ProductData> {
           ..write('stockQty: $stockQty, ')
           ..write('supplierId: $supplierId, ')
           ..write('imagePath: $imagePath, ')
+          ..write('isFavourite: $isFavourite, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')

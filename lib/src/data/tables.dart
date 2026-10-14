@@ -104,6 +104,13 @@ class Products extends Table {
   /// by the OS, or restored onto a different device — always fall back.
   TextColumn get imagePath => text().nullable()();
 
+  /// Pinned by the shopkeeper.
+  ///
+  /// Non-null with a default of false, so every existing row is simply "not
+  /// favourited" and there is nothing to backfill. Toggled offline like
+  /// everything else here; it is a local preference, not a synced one.
+  BoolColumn get isFavourite => boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get deletedAt => dateTime().nullable()();

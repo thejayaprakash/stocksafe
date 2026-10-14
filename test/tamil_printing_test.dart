@@ -15,6 +15,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Product tamilProduct() => Product(
+    isFavourite: false,
         id: 1,
         name: 'அரிசி ஒரு கிலோ',
         sku: const Value('RICE-1').value,

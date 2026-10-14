@@ -165,6 +165,7 @@ void main() {
     test('ESC/POS byte stream begins with init [ESC @] and ends with cut [GS V 0]', () {
       final now = DateTime.now();
       final product = Product(
+        isFavourite: false,
         id: 1,
         name: 'Sugar M30 Loose 1kg',
         category: 'Staples',
@@ -210,6 +211,7 @@ void main() {
       );
 
       final p1 = Product(
+        isFavourite: false,
         id: 1,
         name: 'Tata Salt 1kg',
         unit: 'pkt',
@@ -221,6 +223,7 @@ void main() {
         updatedAt: now,
       );
       final p2 = Product(
+        isFavourite: false,
         id: 2,
         name: 'Sunflower Oil 1L',
         unit: 'pouch',
@@ -302,6 +305,7 @@ void main() {
       );
 
       final p = Product(
+        isFavourite: false,
         id: 7,
         name: 'Aashirvaad Atta 5kg',
         unit: 'bag',
@@ -341,6 +345,7 @@ void main() {
     test('Generates valid PDF document for unbranded loose packaged goods', () async {
       final now = DateTime.now();
       final looseRice = Product(
+        isFavourite: false,
         id: 42,
         name: 'Sona Masoori Rice 1kg Pack',
         category: 'Grains',
@@ -380,6 +385,7 @@ void main() {
     test('Generates Thermal Roll 50x25mm and QR Code labels correctly', () async {
       final now = DateTime.now();
       final dryFruits = Product(
+        isFavourite: false,
         id: 99,
         name: 'California Almonds 250g',
         unit: '250g',
@@ -412,6 +418,7 @@ void main() {
     test('Supports partial sheet start offset skipping on used A4 sticker sheets', () async {
       final now = DateTime.now();
       final dal = Product(
+        isFavourite: false,
         id: 15,
         name: 'Chana Dal 500g',
         unit: '500g',
