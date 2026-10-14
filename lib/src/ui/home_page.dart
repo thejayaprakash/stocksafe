@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
@@ -8,15 +10,16 @@ import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
 import '../services/theme_service.dart';
 import '../services/voice_assistant_service.dart';
-import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
 import 'low_stock_page.dart';
 import 'more_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'scanner_page.dart';
+import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
+import 'widgets/floating_wave_nav_bar.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
 import '../app_scope.dart';
@@ -157,32 +160,41 @@ class _HomePageState extends State<HomePage> {
 
     if (_tabIndex == 1) {
       return AppBar(
-        title: Text(AppLocale.tr('products')),
+        toolbarHeight: 58,
+        title: Text(
+          AppLocale.tr('products'),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 21),
+        ),
+        actions: [
+          _HeaderIconButton(
+            icon: Icons.qr_code_scanner_rounded,
+            tooltip: 'Scan a barcode',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ScannerPage()),
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(104),
+          preferredSize: const Size.fromHeight(102),
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                child: SearchBar(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: _ProductSearchField(
                   controller: _searchController,
-                  hintText: AppLocale.tr('search_hint'),
-                  leading: const Icon(Icons.search),
-                  trailing: [
-                    IconButton(
-                      icon: const Icon(Icons.mic, color: Colors.blue),
-                      tooltip: 'Voice Search',
-                      onPressed: _openVoiceAssistant,
-                    ),
-                  ],
                   onChanged: (value) => setState(() => _query = value.trim()),
+                  onVoice: _openVoiceAssistant,
                 ),
               ),
               _CategoryFilterBar(
                 db: _db,
                 selectedCategory: _selectedCategory,
-                onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
+                onCategorySelected: (cat) =>
+                    setState(() => _selectedCategory = cat),
               ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -190,34 +202,73 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Tab 0: Home Dashboard
+    final palette = context.palette;
     return AppBar(
+      toolbarHeight: 66,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(AppLocale.tr('app_name'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          const Text(
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Stock',
+                  style: TextStyle(color: palette.textPrimary),
+                ),
+                TextSpan(
+                  text: 'Safe',
+                  style: TextStyle(color: palette.primary),
+                ),
+              ],
+            ),
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 21,
+              letterSpacing: -0.3,
+            ),
+          ),
+          Text(
             'Offline Inventory & Audit',
-            style: TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: palette.textTertiary,
+            ),
           ),
         ],
       ),
       actions: [
-        IconButton(
-          icon: Icon(Icons.auto_awesome, color: Theme.of(context).palette.secondary),
-          tooltip: AppLocale.tr('ask_ai'),
+        // The bell carries a dot only when something is genuinely waiting.
+        // There is no notification centre behind it: the one thing this app
+        // ever needs to raise is "you are about to run out", so it opens the
+        // low-stock list and is silent when that list is empty.
+        StreamBuilder<List<Product>>(
+          stream: _db.productDao.watchLowStock(),
+          builder: (context, snapshot) {
+            final waiting = snapshot.data?.length ?? 0;
+            return _HeaderIconButton(
+              icon: Icons.notifications_none_rounded,
+              showBadge: waiting > 0,
+              tooltip: waiting > 0
+                  ? '$waiting products need reordering'
+                  : 'Nothing needs attention',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LowStockPage()),
+              ),
+            );
+          },
+        ),
+        _HeaderIconButton(
+          icon: Icons.settings_outlined,
+          tooltip: AppLocale.tr('settings'),
           onPressed: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const AskStockSafePage()),
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
           ),
         ),
-        IconButton(
-          icon: Icon(Icons.security_rounded, color: Theme.of(context).palette.brandSuccess),
-          tooltip: 'Backup & Restore',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const BackupPage()),
-          ),
-        ),
+        const SizedBox(width: 6),
       ],
     );
   }
@@ -227,7 +278,7 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: _buildAppBar(),
       body: _buildBody(),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: FloatingWaveNavBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (i) {
           if (i == 2) {
@@ -239,30 +290,30 @@ class _HomePageState extends State<HomePage> {
           }
           setState(() => _tabIndex = i);
         },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
+        items: [
+          const WaveNavItem(
+            icon: Icons.home_outlined,
+            selectedIcon: Icons.home_rounded,
             label: 'Home',
           ),
-          NavigationDestination(
-            icon: const Icon(Icons.inventory_2_outlined),
-            selectedIcon: const Icon(Icons.inventory_2),
+          WaveNavItem(
+            icon: Icons.inventory_2_outlined,
+            selectedIcon: Icons.inventory_2_rounded,
             label: AppLocale.tr('products'),
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.qr_code_scanner_rounded),
-            selectedIcon: Icon(Icons.qr_code_scanner),
+          const WaveNavItem(
+            icon: Icons.qr_code_scanner_rounded,
+            selectedIcon: Icons.qr_code_scanner_rounded,
             label: 'Scan',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
+          const WaveNavItem(
+            icon: Icons.check_box_outlined,
+            selectedIcon: Icons.check_box_rounded,
             label: 'Stock Count',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.more_horiz_rounded),
-            selectedIcon: Icon(Icons.more_horiz),
+          const WaveNavItem(
+            icon: Icons.more_horiz_rounded,
+            selectedIcon: Icons.more_horiz_rounded,
             label: 'More',
           ),
         ],
@@ -290,8 +341,6 @@ class _HomePageState extends State<HomePage> {
           db: _db,
           query: _query,
           category: _selectedCategory,
-          showBackupReminder: false,
-          onDismissBackupBanner: () {},
         );
       case 3:
         return const StockAuditPage();
@@ -340,6 +389,117 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+/// A circular, softly filled header button, with an optional alert dot.
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.showBadge = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final bool showBadge;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: palette.elevatedSurface,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(icon, size: 21, color: palette.textSecondary),
+                  if (showBadge)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: palette.error,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: palette.elevatedSurface,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The rounded search field at the top of the catalogue.
+class _ProductSearchField extends StatelessWidget {
+  const _ProductSearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onVoice,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onVoice;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      style: TextStyle(fontSize: 14, color: palette.textPrimary),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: palette.elevatedSurface,
+        hintText: AppLocale.tr('search_hint'),
+        hintStyle: TextStyle(fontSize: 14, color: palette.textTertiary),
+        prefixIcon: Icon(Icons.search_rounded, size: 21, color: palette.textTertiary),
+        suffixIcon: IconButton(
+          icon: Icon(Icons.mic_none_rounded, size: 21, color: palette.primary),
+          tooltip: 'Voice search',
+          onPressed: onVoice,
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(26),
+          borderSide: BorderSide(color: palette.primary, width: 1.4),
+        ),
+      ),
+    );
+  }
+}
+
 /// Category chip selector under search bar.
 class _CategoryFilterBar extends StatelessWidget {
   const _CategoryFilterBar({
@@ -361,26 +521,22 @@ class _CategoryFilterBar extends StatelessWidget {
         if (categories.isEmpty) return const SizedBox.shrink();
 
         return SizedBox(
-          height: 38,
+          height: 34,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: FilterChip(
-                  label: Text(AppLocale.tr('all_categories')),
-                  selected: selectedCategory == null,
-                  onSelected: (_) => onCategorySelected(null),
-                ),
+              _CategoryChip(
+                label: AppLocale.tr('all_categories'),
+                selected: selectedCategory == null,
+                onTap: () => onCategorySelected(null),
               ),
               for (final cat in categories)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    label: Text(cat),
-                    selected: selectedCategory == cat,
-                    onSelected: (selected) => onCategorySelected(selected ? cat : null),
+                _CategoryChip(
+                  label: cat,
+                  selected: selectedCategory == cat,
+                  onTap: () => onCategorySelected(
+                    selectedCategory == cat ? null : cat,
                   ),
                 ),
             ],
@@ -391,21 +547,62 @@ class _CategoryFilterBar extends StatelessWidget {
   }
 }
 
-/// Product list with reactive stream supporting search and category filtering.
+/// One category pill.
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final radius = BorderRadius.circular(17);
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected ? palette.primary : palette.elevatedSurface,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? Colors.white : palette.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The catalogue: a live, paged product list with search, category filter,
+/// a sort order and a list/grid switch.
 class _ProductListBody extends StatefulWidget {
   const _ProductListBody({
     required this.db,
     required this.query,
     this.category,
-    this.showBackupReminder = false,
-    this.onDismissBackupBanner,
   });
 
   final AppDatabase db;
   final String query;
   final String? category;
-  final bool showBackupReminder;
-  final VoidCallback? onDismissBackupBanner;
 
   @override
   State<_ProductListBody> createState() => _ProductListBodyState();
@@ -425,11 +622,15 @@ class _ProductListBodyState extends State<_ProductListBody> {
   /// The list is backed by a live query: rows can be inserted or soft-deleted
   /// while the user scrolls, and offset paging over a shifting result set
   /// silently skips and repeats items. Re-querying `0..limit` is always
-  /// self-consistent, and with the index on product.name it stays cheap.
+  /// self-consistent, and every sort order ends in the row id so it stays
+  /// total.
   int _limit = _pageSize;
 
   final ScrollController _scrollController = ScrollController();
   bool _mayHaveMore = true;
+
+  ProductSort _sort = ProductSort.recentlyUpdated;
+  bool _grid = false;
 
   @override
   void initState() {
@@ -463,17 +664,29 @@ class _ProductListBodyState extends State<_ProductListBody> {
     }
   }
 
+  void _setSort(ProductSort sort) {
+    if (sort == _sort) return;
+    // A different order is a different result set, so the window restarts
+    // with it — otherwise the first page would be the new order and the rest
+    // whatever the old one had already fetched.
+    setState(() {
+      _sort = sort;
+      _limit = _pageSize;
+      _mayHaveMore = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final db = widget.db;
-    final query = widget.query;
-    final category = widget.category;
-    final showBackupReminder = widget.showBackupReminder;
-    final onDismissBackupBanner = widget.onDismissBackupBanner;
+    final unfiltered = widget.query.isEmpty && widget.category == null;
 
     return StreamBuilder<List<Product>>(
-      stream: db.productDao
-          .watchAll(query: query, category: category, limit: _limit),
+      stream: widget.db.productDao.watchAll(
+        query: widget.query,
+        category: widget.category,
+        sort: _sort,
+        limit: _limit,
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -482,140 +695,64 @@ class _ProductListBodyState extends State<_ProductListBody> {
         // Fewer rows than asked for means the end has been reached.
         _mayHaveMore = products.length >= _limit;
 
-        if (products.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.inventory_2_outlined,
-                  size: 64,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  query.isEmpty && category == null
-                      ? 'No products yet'
-                      : 'No products match search/filter',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                if (query.isEmpty && category == null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Tap + to add your first product, or scan a barcode.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          );
-        }
+        if (products.isEmpty) return _EmptyCatalogue(filtered: !unfiltered);
 
         return Column(
           children: [
-            if (showBackupReminder && query.isEmpty && category == null)
-              _BackupReminderBanner(
-                db: db,
-                onDismiss: onDismissBackupBanner,
-              ),
-            if (query.isEmpty && category == null)
-              _InventoryValuationCard(db: db),
+            if (unfiltered) _InventoryValuationCard(db: widget.db),
+            _ListControls(
+              sort: _sort,
+              onSortChanged: _setSort,
+              grid: _grid,
+              onLayoutChanged: (grid) => setState(() => _grid = grid),
+            ),
             Expanded(
-              child: ListView.separated(
-                controller: _scrollController,
-                // One extra row for the "loading more" footer.
-                itemCount: products.length + (_mayHaveMore ? 1 : 0),
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  if (index >= products.length) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    );
-                  }
-                  final p = products[index];
-                  final lowStock = p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel;
-                  final isZero = p.stockQty <= 0;
-
-            final subtitleParts = [
-              if (p.category != null && p.category!.isNotEmpty) p.category!,
-              if (p.sku != null && p.sku!.isNotEmpty) p.sku!,
-              p.unit,
-              if (p.sellPrice > 0) 'MRP: ₹${p.sellPrice.toStringAsFixed(p.sellPrice == p.sellPrice.roundToDouble() ? 0 : 2)}',
-            ];
-
-            return ListTile(
-              title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(subtitleParts.join(' · ')),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (lowStock)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Icon(
-                        Icons.warning_amber,
-                        size: 20,
-                        color: isZero ? Colors.red : Colors.orange,
-                      ),
+              child: _grid
+                  ? _ProductGrid(
+                      products: products,
+                      controller: _scrollController,
+                      loadingMore: _mayHaveMore,
+                      onOpen: _open,
+                      onActions: _showActions,
+                    )
+                  : _ProductList(
+                      products: products,
+                      controller: _scrollController,
+                      loadingMore: _mayHaveMore,
+                      onOpen: _open,
+                      onActions: _showActions,
                     ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isZero
-                          ? Colors.red.withValues(alpha: 0.12)
-                          : (lowStock
-                              ? Colors.orange.withValues(alpha: 0.12)
-                              : Colors.green.withValues(alpha: 0.12)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${p.stockQty}',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: isZero
-                            ? Colors.red
-                            : (lowStock ? Colors.orange[800] : Colors.green[800]),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ProductDetailPage(productId: p.id),
-                ),
-              ),
-              onLongPress: () => _showActions(context, p),
-            );
-          },
-        ),
-      ),
-    ],
-  );
+            ),
+          ],
+        );
       },
     );
   }
 
-  void _showActions(BuildContext context, Product p) {
+  void _open(Product p) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ProductDetailPage(productId: p.id)),
+      );
+
+  void _showActions(Product p) {
+    final palette = context.palette;
     showModalBottomSheet(
       context: context,
+      showDragHandle: true,
       builder: (ctx) => SafeArea(
-        child: Wrap(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.add_circle_outline, color: Colors.green),
+              title: Text(
+                p.name,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text('${p.stockQty} ${p.unit} in stock'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.add_circle_outline, color: palette.success),
               title: const Text('Stock In'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -631,7 +768,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.remove_circle_outline, color: Colors.red),
+              leading: Icon(Icons.remove_circle_outline, color: palette.error),
               title: const Text('Stock Out'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -653,9 +790,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
                 Navigator.pop(ctx);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => ProductEditPage(product: p),
-                  ),
+                  MaterialPageRoute(builder: (_) => ProductEditPage(product: p)),
                 );
               },
             ),
@@ -666,13 +801,653 @@ class _ProductListBodyState extends State<_ProductListBody> {
   }
 }
 
-/// Collapsible Inventory Valuation Banner showing live Cost, MRP and Margin.
+/// Sort order on the left, list/grid switch on the right.
+class _ListControls extends StatelessWidget {
+  const _ListControls({
+    required this.sort,
+    required this.onSortChanged,
+    required this.grid,
+    required this.onLayoutChanged,
+  });
+
+  final ProductSort sort;
+  final ValueChanged<ProductSort> onSortChanged;
+  final bool grid;
+  final ValueChanged<bool> onLayoutChanged;
+
+  static String label(ProductSort sort) => switch (sort) {
+        ProductSort.nameAsc => 'Name (A–Z)',
+        ProductSort.recentlyUpdated => 'Recently Updated',
+        ProductSort.stockLowFirst => 'Lowest Stock',
+        ProductSort.valueHigh => 'Highest Value',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          PopupMenuButton<ProductSort>(
+            initialValue: sort,
+            tooltip: 'Sort order',
+            onSelected: onSortChanged,
+            position: PopupMenuPosition.under,
+            itemBuilder: (context) => [
+              for (final option in ProductSort.values)
+                PopupMenuItem(value: option, child: Text(label(option))),
+            ],
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
+              decoration: BoxDecoration(
+                color: palette.cardSurface,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: palette.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label(sort),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: palette.textSecondary,
+                    ),
+                  ),
+                  Icon(
+                    Icons.expand_more_rounded,
+                    size: 18,
+                    color: palette.textTertiary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          _LayoutToggle(grid: grid, onChanged: onLayoutChanged),
+        ],
+      ),
+    );
+  }
+}
+
+/// The two-button list/grid switch.
+class _LayoutToggle extends StatelessWidget {
+  const _LayoutToggle({required this.grid, required this.onChanged});
+
+  final bool grid;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    Widget button(IconData icon, bool isGrid, String tooltip) {
+      final selected = grid == isGrid;
+      return Tooltip(
+        message: tooltip,
+        child: Material(
+          color: selected ? palette.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
+          child: InkWell(
+            onTap: () => onChanged(isGrid),
+            borderRadius: BorderRadius.circular(7),
+            child: SizedBox(
+              width: 36,
+              height: 30,
+              child: Icon(
+                icon,
+                size: 18,
+                color: selected ? Colors.white : palette.textTertiary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: palette.elevatedSurface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button(Icons.view_list_rounded, false, 'List view'),
+          button(Icons.grid_view_rounded, true, 'Grid view'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shared paging footer for both layouts.
+class _LoadingMoreFooter extends StatelessWidget {
+  const _LoadingMoreFooter();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+}
+
+/// The catalogue as rows.
+class _ProductList extends StatelessWidget {
+  const _ProductList({
+    required this.products,
+    required this.controller,
+    required this.loadingMore,
+    required this.onOpen,
+    required this.onActions,
+  });
+
+  final List<Product> products;
+  final ScrollController controller;
+  final bool loadingMore;
+  final ValueChanged<Product> onOpen;
+  final ValueChanged<Product> onActions;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      itemCount: products.length + (loadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= products.length) return const _LoadingMoreFooter();
+        final p = products[index];
+        return _ProductRow(
+          product: p,
+          onTap: () => onOpen(p),
+          onActions: () => onActions(p),
+        );
+      },
+    );
+  }
+}
+
+/// The catalogue as tiles.
+class _ProductGrid extends StatelessWidget {
+  const _ProductGrid({
+    required this.products,
+    required this.controller,
+    required this.loadingMore,
+    required this.onOpen,
+    required this.onActions,
+  });
+
+  final List<Product> products;
+  final ScrollController controller;
+  final bool loadingMore;
+  final ValueChanged<Product> onOpen;
+  final ValueChanged<Product> onActions;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.82,
+      ),
+      itemCount: products.length + (loadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= products.length) return const _LoadingMoreFooter();
+        final p = products[index];
+        return _ProductTile(
+          product: p,
+          onTap: () => onOpen(p),
+          onActions: () => onActions(p),
+        );
+      },
+    );
+  }
+}
+
+/// The colour a stock level is shown in: out, low, or fine.
+({Color accent, Color surface}) _stockTone(BuildContext context, Product p) {
+  final palette = context.palette;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final accent = p.stockQty <= 0
+      ? palette.error
+      : (p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel
+          ? palette.warning
+          : palette.success);
+  return (
+    accent: accent,
+    surface: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+  );
+}
+
+/// The square that leads a product row or tile.
+///
+/// It shows `product.imagePath` when there is one, and otherwise a tinted
+/// initial drawn from the product's own category and name — which is what
+/// every product has today, since nothing writes that column yet.
+///
+/// The photo is a best effort, never a requirement: the file lives on this
+/// device, so it can have been deleted, moved by the OS, or restored onto a
+/// different phone than the one the database came from. Any failure to load
+/// falls straight back to the initial rather than leaving a broken box in
+/// the middle of the catalogue.
+class _ProductAvatar extends StatelessWidget {
+  const _ProductAvatar({required this.product, this.size = 44});
+
+  final Product product;
+  final double size;
+
+  static const _swatches = [
+    Color(0xFF1A73E8),
+    Color(0xFF7C3AED),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFFEC4899),
+    Color(0xFF0EA5E9),
+  ];
+
+  /// A stable colour per category, so a shelf reads as one group.
+  Color get _accent {
+    final key = (product.category ?? product.name).trim();
+    if (key.isEmpty) return _swatches.first;
+    final hash = key.codeUnits.fold<int>(0, (a, b) => a + b);
+    return _swatches[hash % _swatches.length];
+  }
+
+  String get _initial {
+    final name = product.name.trim();
+    return name.isEmpty ? '?' : name.characters.first.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = _accent;
+    final radius = BorderRadius.circular(size * 0.26);
+
+    final fallback = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.22 : 0.14),
+        borderRadius: radius,
+      ),
+      child: Text(
+        _initial,
+        style: TextStyle(
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.w700,
+          color: accent,
+        ),
+      ),
+    );
+
+    final path = product.imagePath?.trim();
+    if (path == null || path.isEmpty) return fallback;
+
+    // The initial sits underneath rather than inside an errorBuilder, so the
+    // square is never blank: reading the file is disk I/O that completes a
+    // frame or more after the row is laid out, and a missing file is only
+    // discovered at the end of it. The photo covers this when it arrives.
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          fallback,
+          ClipRRect(
+            borderRadius: radius,
+            child: Image.file(
+              File(path),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              // Decoded at the size it is drawn at. A 4MP shop photo in a
+              // 44px square would otherwise hold several megabytes of bitmap
+              // per row, times every row on screen.
+              cacheWidth:
+                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              // Fade in, or the initial visibly pops out from under it.
+              frameBuilder: (context, child, frame, wasSyncLoaded) {
+                if (wasSyncLoaded) return child;
+                return AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 180),
+                  child: child,
+                );
+              },
+              errorBuilder: (context, error, stackTrace) =>
+                  const SizedBox.shrink(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small outlined category label.
+class _CategoryTag extends StatelessWidget {
+  const _CategoryTag(this.category);
+
+  final String category;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: palette.elevatedSurface,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        category,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: palette.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// The stock quantity badge.
+class _StockBadge extends StatelessWidget {
+  const _StockBadge({required this.product, this.compact = false});
+
+  final Product product;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = _stockTone(context, product);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: tone.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '${product.stockQty}',
+        style: TextStyle(
+          fontSize: compact ? 12.5 : 14,
+          fontWeight: FontWeight.w700,
+          color: tone.accent,
+        ),
+      ),
+    );
+  }
+}
+
+/// Formats a price the way a price label does: no trailing `.00`.
+String _money(double value) => '₹${value.toStringAsFixed(
+      value == value.roundToDouble() ? 0 : 2,
+    )}';
+
+/// One product, as a row.
+class _ProductRow extends StatelessWidget {
+  const _ProductRow({
+    required this.product,
+    required this.onTap,
+    required this.onActions,
+  });
+
+  final Product product;
+  final VoidCallback onTap;
+  final VoidCallback onActions;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final p = product;
+    final details = [
+      if (p.sku != null && p.sku!.trim().isNotEmpty) 'SKU: ${p.sku}',
+      p.unit,
+    ].join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: palette.cardSurface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onActions,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: palette.border),
+            ),
+            padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
+            child: Row(
+              children: [
+                _ProductAvatar(product: p),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        details,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: palette.textTertiary,
+                        ),
+                      ),
+                      if (p.category != null && p.category!.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: _CategoryTag(p.category!),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _StockBadge(product: p),
+                    if (p.sellPrice > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'MRP ${_money(p.sellPrice)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: palette.textTertiary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_vert_rounded, size: 18),
+                  color: palette.textTertiary,
+                  tooltip: 'Stock actions',
+                  onPressed: onActions,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One product, as a grid tile.
+class _ProductTile extends StatelessWidget {
+  const _ProductTile({
+    required this.product,
+    required this.onTap,
+    required this.onActions,
+  });
+
+  final Product product;
+  final VoidCallback onTap;
+  final VoidCallback onActions;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final p = product;
+
+    return Material(
+      color: palette.cardSurface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onActions,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: palette.border),
+          ),
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ProductAvatar(product: p, size: 52),
+                  const Spacer(),
+                  _StockBadge(product: p, compact: true),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                p.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                  color: palette.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                p.unit,
+                style: TextStyle(fontSize: 11, color: palette.textTertiary),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  if (p.category != null && p.category!.trim().isNotEmpty)
+                    Flexible(child: _CategoryTag(p.category!)),
+                  const Spacer(),
+                  if (p.sellPrice > 0)
+                    Text(
+                      _money(p.sellPrice),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the catalogue has nothing to show.
+class _EmptyCatalogue extends StatelessWidget {
+  const _EmptyCatalogue({required this.filtered});
+
+  final bool filtered;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 56,
+              color: palette.primary.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              filtered ? 'No products match this search' : 'No products yet',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: palette.textPrimary,
+              ),
+            ),
+            if (!filtered)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Tap + to add your first product, or scan a barcode.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: palette.textTertiary),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Live inventory valuation, expanding to the retail value and margin behind
+/// it. Shown above the catalogue when nothing is filtered out, because the
+/// number only means anything when it covers everything.
 class _InventoryValuationCard extends StatefulWidget {
   const _InventoryValuationCard({required this.db});
+
   final AppDatabase db;
 
   @override
-  State<_InventoryValuationCard> createState() => _InventoryValuationCardState();
+  State<_InventoryValuationCard> createState() =>
+      _InventoryValuationCardState();
 }
 
 class _InventoryValuationCardState extends State<_InventoryValuationCard> {
@@ -680,61 +1455,105 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(14);
+
     return StreamBuilder<InventoryValuationSummary>(
       stream: widget.db.productDao.watchInventoryValuation(),
       builder: (context, snapshot) {
-        final val = snapshot.data;
-        if (val == null || val.totalProducts == 0) return const SizedBox.shrink();
+        final value = snapshot.data;
+        if (value == null || value.totalProducts == 0) {
+          return const SizedBox.shrink();
+        }
 
-        return Card(
-          margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          elevation: 0,
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.account_balance_wallet_outlined, size: 20, color: theme.colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        AppLocale.tr('inventory_valuation'),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '₹${val.totalCostValue.toStringAsFixed(0)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18),
-                    ],
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Material(
+            color: palette.primary.withValues(alpha: isDark ? 0.12 : 0.07),
+            borderRadius: radius,
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              borderRadius: radius,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: palette.primary.withValues(alpha: 0.22),
                   ),
-                  if (_expanded) ...[
-                    const Divider(height: 16),
+                ),
+                padding: const EdgeInsets.fromLTRB(12, 11, 14, 11),
+                child: Column(
+                  children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _metricCol(AppLocale.tr('retail_value'), '₹${val.totalRetailValue.toStringAsFixed(0)}'),
-                        _metricCol(AppLocale.tr('est_margin'), '+₹${val.potentialProfit.toStringAsFixed(0)} (${val.marginPercent.toStringAsFixed(1)}%)'),
-                        _metricCol(AppLocale.tr('total_units'), '${val.totalUnits}'),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: palette.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Text(
+                            '₹',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _Stat(
+                            label: AppLocale.tr('inventory_valuation'),
+                            value: _money(value.totalCostValue),
+                          ),
+                        ),
+                        _Stat(
+                          label: AppLocale.tr('total_units'),
+                          value: '${value.totalUnits}',
+                          alignEnd: true,
+                        ),
+                        Icon(
+                          _expanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          size: 20,
+                          color: palette.textTertiary,
+                        ),
                       ],
                     ),
+                    if (_expanded) ...[
+                      Divider(height: 20, color: palette.border),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _Stat(
+                              label: AppLocale.tr('retail_value'),
+                              value: _money(value.totalRetailValue),
+                            ),
+                          ),
+                          Expanded(
+                            child: _Stat(
+                              label: AppLocale.tr('est_margin'),
+                              value: '+${_money(value.potentialProfit)}'
+                                  ' (${value.marginPercent.toStringAsFixed(1)}%)',
+                            ),
+                          ),
+                          Expanded(
+                            child: _Stat(
+                              label: 'Products',
+                              value: '${value.totalProducts}',
+                              alignEnd: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -742,67 +1561,56 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
       },
     );
   }
+}
 
-  Widget _metricCol(String label, String value) {
+/// A small label-over-value pair.
+class _Stat extends StatelessWidget {
+  const _Stat({
+    required this.label,
+    required this.value,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final String value;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
     return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 10.5, color: palette.textTertiary),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: palette.textPrimary,
+          ),
+        ),
       ],
     );
   }
 }
 
-/// Subtle actionable reminder for regular backup hygiene.
-class _BackupReminderBanner extends StatelessWidget {
-  const _BackupReminderBanner({required this.db, this.onDismiss});
-  final AppDatabase db;
-  final VoidCallback? onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade300),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.shield_outlined, color: Colors.orange, size: 22),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Backup Recommended: Protect data against device damage.',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.brown),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => BackupPage()),
-            ),
-            child: const Text('Backup'),
-          ),
-          if (onDismiss != null)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16),
-              onPressed: onDismiss,
-              tooltip: 'Dismiss',
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Simplified Beta 1.0 Dashboard: Answers the 3 core operational questions:
-/// 1. What needs my attention? (Low-stock count & verified backup hygiene)
-/// 2. What stock needs updating? (Recent movement activity stream)
-/// 3. What can I do next? (Tactile 48dp Quick Action CTAs)
+/// The dashboard. It answers the three questions a shopkeeper opens the app
+/// with, in that order:
+///
+/// 1. What needs my attention? (the status card at the top)
+/// 2. What can I do right now? (the quick actions)
+/// 3. What just happened? (the recent movement stream)
 class _DashboardHomeBody extends StatelessWidget {
   const _DashboardHomeBody({
     required this.db,
@@ -822,159 +1630,98 @@ class _DashboardHomeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final palette = context.palette;
-    final isDark = theme.brightness == Brightness.dark;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        // ── 1. WHAT NEEDS MY ATTENTION? ──
-        if (showBackupReminder)
-          Card(
-            elevation: 0,
-            color: palette.warningContainer,
-            margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: palette.warning.withValues(alpha: 0.5)),
+        if (showBackupReminder) ...[
+          _StatusCard(
+            icon: Icons.shield_outlined,
+            accent: palette.warning,
+            title: AppLocale.tr('backup_reminder_title'),
+            subtitle: AppLocale.tr('backup_reminder_body'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BackupPage()),
             ),
-            child: ListTile(
-              leading: Icon(Icons.shield_outlined, color: palette.warning),
-              title: Text(
-                AppLocale.tr('backup_reminder_title'),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: isDark ? palette.textPrimary : const Color(0xFF78350F),
-                ),
-              ),
-              subtitle: Text(
-                AppLocale.tr('backup_reminder_body'),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? palette.textSecondary : const Color(0xFF92400E),
-                ),
-              ),
-              trailing: TextButton(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
-                child: Text(AppLocale.tr('backup_now'), style: TextStyle(color: palette.primary, fontWeight: FontWeight.bold)),
-              ),
-            ),
+            onDismiss: onDismissBackupBanner,
           ),
+          const SizedBox(height: 10),
+        ],
 
+        // ── 1. WHAT NEEDS MY ATTENTION? ──
         StreamBuilder<List<Product>>(
           stream: db.productDao.watchLowStock(),
           builder: (context, snapshot) {
-            final lowStock = snapshot.data ?? [];
-            if (lowStock.isNotEmpty) {
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 16),
-                color: palette.warningContainer,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: palette.warning),
-                ),
-                child: ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: palette.warning.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.warning_amber_rounded, color: palette.warning, size: 24),
-                  ),
-                  title: Text(
-                    '${lowStock.length} Products Need Reordering',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: isDark ? palette.textPrimary : const Color(0xFF78350F),
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Stock is below reorder threshold. Tap to review restock quantities.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? palette.textSecondary : const Color(0xFF92400E),
-                    ),
-                  ),
-                  trailing: Icon(
-                    Icons.arrow_forward_ios,
-                    size: 14,
-                    color: isDark ? palette.textSecondary : const Color(0xFF78350F),
-                  ),
-                  onTap: onNavigateToLowStock,
-                ),
+            final lowStock = snapshot.data ?? const <Product>[];
+            if (lowStock.isEmpty) {
+              return _StatusCard(
+                icon: Icons.check_circle_rounded,
+                accent: palette.success,
+                title: 'All stock levels optimal',
+                subtitle: 'Zero critical shortages',
+                onTap: onNavigateToLowStock,
               );
             }
-            return Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: palette.successContainer.withValues(alpha: isDark ? 0.35 : 0.7),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: palette.success.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline, color: palette.success, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'All stock levels optimal · Zero critical shortages',
-                      style: TextStyle(
-                        color: isDark ? palette.textPrimary : const Color(0xFF065F46),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            final outOfStock = lowStock.where((p) => p.stockQty <= 0).length;
+            return _StatusCard(
+              icon: Icons.warning_amber_rounded,
+              accent: outOfStock > 0 ? palette.error : palette.warning,
+              title: '${lowStock.length} '
+                  '${lowStock.length == 1 ? 'product needs' : 'products need'} '
+                  'reordering',
+              subtitle: outOfStock > 0
+                  ? '$outOfStock out of stock · tap to review restock quantities'
+                  : 'Below reorder threshold · tap to review restock quantities',
+              onTap: onNavigateToLowStock,
             );
           },
         ),
+        const SizedBox(height: 22),
 
-        // ── 2. WHAT CAN I DO NEXT? (PRIMARY ACTIONS) ──
-        _buildSectionTitle(theme, 'QUICK OPERATIONAL ACTIONS'),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildActionTile(
-                context,
-                icon: Icons.qr_code_scanner,
-                iconColor: Colors.white,
-                bgColor: isDark ? palette.elevatedSurface : palette.primary,
-                textColor: Colors.white,
-                title: 'Scan & Adjust',
-                subtitle: 'Single-SKU Barcode',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerPage())),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildActionTile(
-                context,
-                icon: Icons.fact_check_outlined,
-                iconColor: palette.brandSuccess,
-                bgColor: palette.successContainer.withValues(alpha: isDark ? 0.3 : 0.7),
-                textColor: isDark ? palette.textPrimary : const Color(0xFF064E3B),
-                title: 'Physical Audit',
-                subtitle: 'Cycle-Count Reconcile',
-                onTap: onNavigateToAudit,
-              ),
-            ),
-          ],
-        ),
+        // ── 2. WHAT CAN I DO RIGHT NOW? ──
+        const _SectionTitle('Quick Actions'),
         const SizedBox(height: 10),
-        _buildFullWidthAction(
-          context,
-          icon: Icons.add_circle_outline,
-          title: 'Add New Product',
-          subtitle: 'Enter barcode or manual SKU for unbarcoded Kirana goods',
+        // Intrinsic height so the two tiles match even when one subtitle
+        // wraps to a second line — stretch alone has no height to stretch to
+        // inside a scroll view.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _QuickActionTile(
+                  icon: Icons.qr_code_scanner_rounded,
+                  accent: palette.primary,
+                  title: 'Scan & Adjust',
+                  subtitle: 'Single-SKU Barcode',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ScannerPage()),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickActionTile(
+                  icon: Icons.check_box_outlined,
+                  accent: palette.secondary,
+                  title: 'Physical Audit',
+                  subtitle: 'Cycle-Count · Reconcile',
+                  onTap: onNavigateToAudit,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _WideActionCard(
+          icon: Icons.add_rounded,
+          title: AppLocale.tr('add_product') != 'add_product'
+              ? AppLocale.tr('add_product')
+              : 'Add New Product',
+          subtitle: 'Enter barcode or manual SKU for unbarcoded goods',
           onTap: () async {
             final canAdd = await LicenseService(db).canAddProduct();
             if (!context.mounted) return;
@@ -983,97 +1730,49 @@ class _DashboardHomeBody extends StatelessWidget {
               if (unlocked != true) return;
             }
             if (!context.mounted) return;
-            await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductEditPage()));
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProductEditPage()),
+            );
           },
         ),
         const SizedBox(height: 24),
 
-        // ── 3. WHAT STOCK NEEDS UPDATING? (RECENT ACTIVITY) ──
+        // ── 3. WHAT JUST HAPPENED? ──
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildSectionTitle(theme, 'RECENT STOCK ACTIVITY'),
+            const _SectionTitle('Recent Stock Activity'),
             TextButton(
               onPressed: onNavigateToProducts,
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-              child: const Text('View All', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: palette.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text(
+                'View All',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         StreamBuilder<List<Movement>>(
           stream: db.movementDao.watchRecent(limit: 5),
           builder: (context, snapshot) {
-            final movements = snapshot.data ?? [];
-            if (movements.isEmpty) {
-              return Card(
-                elevation: 0,
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                  child: Column(
-                    children: const [
-                      Icon(Icons.history_outlined, size: 36, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text('No movements logged yet', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      SizedBox(height: 2),
-                      Text(
-                        'Scan a barcode or add stock to see movement history here.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
+            final movements = snapshot.data ?? const <Movement>[];
+            if (movements.isEmpty) return const _NoActivityYet();
             return Column(
               children: [
                 for (final m in movements)
                   FutureBuilder<Product?>(
                     future: db.productDao.getById(m.productId),
-                    builder: (context, pSnap) {
-                      final pName = pSnap.data?.name ?? 'Product #${m.productId}';
-                      final isPositive = m.qtyDelta > 0;
-                      return Card(
-                        elevation: 0,
-                        margin: const EdgeInsets.only(bottom: 6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                        ),
-                        child: ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: CircleAvatar(
-                            radius: 14,
-                            backgroundColor: isPositive
-                                ? palette.successContainer.withValues(alpha: 0.5)
-                                : palette.errorContainer.withValues(alpha: 0.5),
-                            child: Icon(
-                              isPositive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-                              size: 14,
-                              color: isPositive ? palette.success : palette.error,
-                            ),
-                          ),
-                          title: Text(pName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                          subtitle: Text(
-                            '${readableMovementReason(m.reason)} · ${_formatTimestamp(m.createdAt)}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          trailing: Text(
-                            isPositive ? '+${m.qtyDelta}' : '${m.qtyDelta}',
-                            style: TextStyle(
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: isPositive ? palette.success : palette.error,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                    builder: (context, productSnapshot) => _ActivityRow(
+                      movement: m,
+                      productName:
+                          productSnapshot.data?.name ?? 'Product #${m.productId}',
+                    ),
                   ),
               ],
             );
@@ -1082,84 +1781,393 @@ class _DashboardHomeBody extends StatelessWidget {
       ],
     );
   }
+}
 
-  static String _formatTimestamp(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    }
-    return '${dt.day}/${dt.month}';
-  }
+/// A dashboard section heading.
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
 
-  static Widget _buildSectionTitle(ThemeData theme, String title) {
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
     return Text(
-      title,
+      text,
       style: TextStyle(
-        fontSize: 11,
+        fontSize: 15,
         fontWeight: FontWeight.w700,
-        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-        letterSpacing: 0.8,
+        letterSpacing: -0.2,
+        color: context.palette.textPrimary,
       ),
     );
   }
+}
 
-  static Widget _buildActionTile(
-    BuildContext context, {
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-    required Color textColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
+/// The card at the top of the dashboard: one line on whether anything needs
+/// doing, tinted by how urgent it is.
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.onDismiss,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(14);
+
     return Material(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(12),
+      color: accent.withValues(alpha: isDark ? 0.12 : 0.09),
+      borderRadius: radius,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: radius,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(color: accent.withValues(alpha: 0.28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Row(
             children: [
-              Icon(icon, color: iconColor, size: 26),
-              const SizedBox(height: 10),
-              Text(title, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 2),
-              Text(subtitle, style: TextStyle(color: textColor.withValues(alpha: 0.7), fontSize: 11)),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                child: Icon(icon, size: 19, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: palette.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onDismiss != null)
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  color: palette.textTertiary,
+                  tooltip: 'Dismiss',
+                  onPressed: onDismiss,
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: palette.textTertiary,
+                ),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  static Widget _buildFullWidthAction(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: ListTile(
-        leading: Icon(icon, color: theme.colorScheme.primary),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
-        trailing: const Icon(Icons.chevron_right, size: 20),
+/// One of the two tinted action tiles under "Quick Actions".
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(14);
+
+    return Material(
+      color: accent.withValues(alpha: isDark ? 0.13 : 0.08),
+      borderRadius: radius,
+      child: InkWell(
         onTap: onTap,
+        borderRadius: radius,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(color: accent.withValues(alpha: isDark ? 0.3 : 0.2)),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.24 : 0.16),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(icon, size: 21, color: accent),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: palette.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 11, color: palette.textTertiary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The full-width "Add New Product" card.
+class _WideActionCard extends StatelessWidget {
+  const _WideActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final radius = BorderRadius.circular(14);
+
+    return Material(
+      color: palette.cardSurface,
+      borderRadius: radius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(color: palette.border),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: palette.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 21, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: palette.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 22,
+                color: palette.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the recent movement stream.
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.movement, required this.productName});
+
+  final Movement movement;
+  final String productName;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isPositive = movement.qtyDelta > 0;
+    final accent = isPositive ? palette.success : palette.error;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette.cardSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              isPositive
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
+              size: 18,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  productName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${readableMovementReason(movement.reason)}'
+                  ' · ${_relativeTime(movement.createdAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _relativeTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} minute${diff.inMinutes == 1 ? '' : 's'} ago';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+    }
+    if (diff.inDays < 7) {
+      return '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+    }
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+}
+
+/// Shown in place of the activity stream before anything has moved.
+class _NoActivityYet extends StatelessWidget {
+  const _NoActivityYet();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 16),
+      decoration: BoxDecoration(
+        color: palette.cardSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.history_rounded, size: 34, color: palette.textDisabled),
+          const SizedBox(height: 10),
+          Text(
+            'No movements logged yet',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: palette.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Scan a barcode or add stock to see movement history here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+          ),
+        ],
       ),
     );
   }

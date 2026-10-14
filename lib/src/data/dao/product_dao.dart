@@ -5,6 +5,27 @@ import '../tables.dart';
 
 part 'product_dao.g.dart';
 
+/// How the product list is ordered.
+///
+/// Every option ends in an ascending id so the order is total. The list pages
+/// by re-querying a growing window rather than by offset, and two rows that
+/// compare equal could otherwise swap places between pages and be shown twice
+/// or not at all.
+enum ProductSort {
+  /// Alphabetical. The only order the partial name index can serve directly.
+  nameAsc,
+
+  /// Most recently touched first — what a shopkeeper usually wants after a
+  /// delivery or a stock count.
+  recentlyUpdated,
+
+  /// Emptiest shelf first.
+  stockLowFirst,
+
+  /// Most money sitting on the shelf first.
+  valueHigh,
+}
+
 /// Products are soft-deleted only. Every query here filters `deletedAt`,
 /// so a user who taps the wrong button can be restored later.
 @DriftAccessor(tables: [Products, Movements])
@@ -15,6 +36,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   Stream<List<Product>> watchAll({
     String query = '',
     String? category,
+    ProductSort sort = ProductSort.nameAsc,
     int limit = 100,
     int offset = 0,
   }) {
@@ -33,10 +55,29 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
         }
         return predicate;
       })
-      ..orderBy([(p) => OrderingTerm.asc(p.name)])
+      ..orderBy([..._ordering(sort), (p) => OrderingTerm.asc(p.id)])
       ..limit(limit, offset: offset);
 
     return q.watch();
+  }
+
+  List<OrderClauseGenerator<$ProductsTable>> _ordering(ProductSort sort) {
+    switch (sort) {
+      case ProductSort.nameAsc:
+        return [(p) => OrderingTerm.asc(p.name)];
+      case ProductSort.recentlyUpdated:
+        return [(p) => OrderingTerm.desc(p.updatedAt)];
+      case ProductSort.stockLowFirst:
+        return [
+          (p) => OrderingTerm.asc(p.stockQty),
+          (p) => OrderingTerm.asc(p.name),
+        ];
+      case ProductSort.valueHigh:
+        return [
+          (p) => OrderingTerm.desc(p.stockQty.cast<double>() * p.buyPrice),
+          (p) => OrderingTerm.asc(p.name),
+        ];
+    }
   }
 
   /// Get distinct non-empty categories from active products.

@@ -90,6 +90,20 @@ class Products extends Table {
   IntColumn get supplierId =>
       integer().nullable().references(Suppliers, #id, onDelete: KeyAction.setNull)();
 
+  /// Path to a product photo on this device, or null.
+  ///
+  /// Nothing writes to it yet — the catalogue draws a tinted initial from the
+  /// product's own category and name instead. The column is here because the
+  /// alternative is a second migration later for a feature already planned,
+  /// and an always-null column costs nothing in SQLite. Capture, storage and
+  /// clean-up are a separate piece of work.
+  ///
+  /// A path rather than a URL: this app is offline by design, and a photo it
+  /// cannot load without a network is a photo it cannot show. Readers must
+  /// treat a non-null value as a file that may since have been deleted, moved
+  /// by the OS, or restored onto a different device — always fall back.
+  TextColumn get imagePath => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get deletedAt => dateTime().nullable()();

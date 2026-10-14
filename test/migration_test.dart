@@ -27,6 +27,7 @@ import 'generated_migrations/schema_v1.dart' as v1;
 import 'generated_migrations/schema_v2.dart' as v2;
 import 'generated_migrations/schema_v3.dart' as v3;
 import 'generated_migrations/schema_v5.dart' as v5;
+import 'generated_migrations/schema_v6.dart' as v6;
 
 /// Drift stores `DateTimeColumn` as unix seconds; the generated historical
 /// schemas expose those columns as plain ints.
@@ -280,6 +281,55 @@ void main() {
       expect((await db.productDao.getById(1))!.stockQty, 65);
       expect(await db.locationDao.stockOf(1, locations.single.id), 65);
       expect(await db.movementDao.getAllForExport(), hasLength(3));
+
+      await db.close();
+    });
+
+    test('step 6 to 7 adds the photo column and leaves every row untouched',
+        () async {
+      // The column is nullable and nothing writes to it, so the only way this
+      // step can hurt anyone is by disturbing the rows already there.
+      final schema = await verifier.schemaAt(6);
+      final ts = DateTime.utc(2026, 9, 1, 9, 0);
+
+      final oldDb = v6.DatabaseAtV6(schema.newConnection());
+      await oldDb.into(oldDb.product).insert(
+            v6.ProductCompanion.insert(
+              name: 'Amul Ghee 1L',
+              sku: const Value('AMUL01'),
+              category: const Value('Dairy'),
+              sellPrice: const Value(620),
+              stockQty: const Value(6),
+              createdAt: _secs(ts),
+              updatedAt: _secs(ts),
+            ),
+          );
+      // With a ledger entry behind it: beforeOpen re-derives the cached
+      // quantity from SUM(qty_delta) after any upgrade, so a product with a
+      // cache and no movements legitimately comes back as zero.
+      await oldDb.into(oldDb.movement).insert(
+            v6.MovementCompanion.insert(
+              productId: 1,
+              qtyDelta: 6,
+              reason: 'opening_stock',
+              createdAt: _secs(ts),
+            ),
+          );
+      await oldDb.close();
+
+      final db = AppDatabase(schema.newConnection());
+      await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
+
+      expect(await _columnExists(db, 'product', 'image_path'), isTrue);
+
+      final product = (await db.productDao.getById(1))!;
+      expect(product.name, 'Amul Ghee 1L');
+      expect(product.sku, 'AMUL01');
+      expect(product.category, 'Dairy');
+      expect(product.sellPrice, 620);
+      expect(product.stockQty, 6);
+      // An existing product has no photo, and NULL is how that is spelled.
+      expect(product.imagePath, isNull);
 
       await db.close();
     });
