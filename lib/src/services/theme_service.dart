@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../data/database.dart';
+import '../theme/app_palette.dart';
+
+export '../theme/app_palette.dart';
 
 /// App theme manager supporting System, Light, and Dark modes.
 /// Persists the user's choice in SQLite and updates the app dynamically.
@@ -49,28 +52,58 @@ class ThemeService extends ChangeNotifier {
     }
   }
 
-  /// StockSafe custom Light Theme (high-contrast, emerald-green brand).
+  /// StockSafe Light Theme: Clean • Modern • Professional
+  /// Inspired by modern fintech apps like Google Pay - light, clean and easy on the eyes.
   static ThemeData get lightTheme {
-    const seedColor = Color(0xFF1B5E20); // Deep forest emerald
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: seedColor,
+    const palette = AppPalette.light;
+    final colorScheme = ColorScheme(
       brightness: Brightness.light,
+      primary: palette.primary,
+      onPrimary: Colors.white,
+      primaryContainer: palette.primaryLight,
+      onPrimaryContainer: palette.primaryDark,
+      secondary: palette.secondary,
+      onSecondary: Colors.white,
+      secondaryContainer: palette.secondaryLight,
+      onSecondaryContainer: palette.secondary,
+      tertiary: palette.brandSuccess,
+      onTertiary: Colors.white,
+      tertiaryContainer: palette.successContainer,
+      onTertiaryContainer: const Color(0xFF065F46),
+      error: palette.error,
+      onError: Colors.white,
+      errorContainer: palette.errorContainer,
+      onErrorContainer: const Color(0xFF7F1D1D),
+      surface: palette.cardSurface,
+      onSurface: palette.textPrimary,
+      onSurfaceVariant: palette.textSecondary,
+      outline: palette.border,
+      outlineVariant: palette.divider,
+      shadow: Colors.black.withValues(alpha: 0.05),
+      scrim: Colors.black54,
+      inverseSurface: palette.textPrimary,
+      onInverseSurface: palette.appBackground,
+      inversePrimary: const Color(0xFF93C5FD),
+      surfaceDim: palette.elevatedSurface,
+      surfaceBright: palette.cardSurface,
+      surfaceContainerLowest: palette.cardSurface,
+      surfaceContainerLow: palette.appBackground,
+      surfaceContainer: palette.elevatedSurface,
+      surfaceContainerHigh: palette.inputBackground,
+      surfaceContainerHighest: palette.border,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFFF8FAF9),
-      appBarTheme: const AppBarTheme(
+      scaffoldBackgroundColor: palette.appBackground,
+      dividerColor: palette.divider,
+      appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
-        // The clock and battery sit on our background, not the app bar's,
-        // because the app bar is transparent. Without this they stayed light
-        // when the light theme came in and were unreadable on a near-white
-        // page. `statusBarIconBrightness` is the Android knob; the iOS one is
-        // named for the content behind the bar, so they read as opposites.
-        systemOverlayStyle: SystemUiOverlayStyle(
+        foregroundColor: palette.textPrimary,
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
@@ -78,32 +111,126 @@ class ThemeService extends ChangeNotifier {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
+        color: palette.cardSurface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade300, width: 1),
+          side: BorderSide(color: palette.border, width: 1),
         ),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: palette.cardSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: palette.primaryLight,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return IconThemeData(color: palette.primary);
+          }
+          return IconThemeData(color: palette.textTertiary);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.primary);
+          }
+          return TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: palette.textTertiary);
+        }),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: palette.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: palette.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.primary,
+          side: BorderSide(color: palette.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: palette.elevatedSurface,
+        hintStyle: TextStyle(color: palette.textTertiary),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.primary, width: 1.5),
+        ),
+      ),
+      extensions: const [palette],
     );
   }
 
-  /// StockSafe custom Dark Theme (deep neutral slate for OLED battery savings & dark storerooms).
+  /// StockSafe Dark Theme: Premium • Modern • Easy on eyes
+  /// A refined dark theme with subtle surface contrast and professional color usage.
   static ThemeData get darkTheme {
-    const seedColor = Color(0xFF10B981); // Crisp emerald
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: seedColor,
+    const palette = AppPalette.dark;
+    final colorScheme = ColorScheme(
       brightness: Brightness.dark,
-      surface: const Color(0xFF1E2228),
+      primary: palette.primary,
+      onPrimary: const Color(0xFF0B1220),
+      primaryContainer: palette.primaryDark,
+      onPrimaryContainer: palette.primaryLight,
+      secondary: palette.secondary,
+      onSecondary: const Color(0xFF0B1220),
+      secondaryContainer: palette.secondaryDark,
+      onSecondaryContainer: const Color(0xFFEDE9FE),
+      tertiary: palette.brandSuccess,
+      onTertiary: const Color(0xFF0B1220),
+      tertiaryContainer: palette.successContainer,
+      onTertiaryContainer: const Color(0xFFD1FAE5),
+      error: palette.error,
+      onError: Colors.white,
+      errorContainer: palette.errorContainer,
+      onErrorContainer: const Color(0xFFFEE2E2),
+      surface: palette.cardSurface,
+      onSurface: palette.textPrimary,
+      onSurfaceVariant: palette.textSecondary,
+      outline: palette.border,
+      outlineVariant: palette.divider,
+      shadow: Colors.black,
+      scrim: Colors.black87,
+      inverseSurface: palette.textPrimary,
+      onInverseSurface: palette.appBackground,
+      inversePrimary: const Color(0xFF1A73E8),
+      surfaceDim: palette.appBackground,
+      surfaceBright: palette.elevatedSurface,
+      surfaceContainerLowest: palette.appBackground,
+      surfaceContainerLow: palette.cardSurface,
+      surfaceContainer: palette.elevatedSurface,
+      surfaceContainerHigh: palette.inputBackground,
+      surfaceContainerHighest: palette.border,
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFF121519),
-      appBarTheme: const AppBarTheme(
+      scaffoldBackgroundColor: palette.appBackground,
+      dividerColor: palette.divider,
+      appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
-        systemOverlayStyle: SystemUiOverlayStyle(
+        foregroundColor: palette.textPrimary,
+        systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: Brightness.light,
           statusBarBrightness: Brightness.dark,
@@ -111,12 +238,71 @@ class ThemeService extends ChangeNotifier {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: const Color(0xFF1B1F24),
+        color: palette.cardSurface,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFF2C323A), width: 1),
+          side: BorderSide(color: palette.border, width: 1),
         ),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: palette.cardSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: palette.primaryDark,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return IconThemeData(color: palette.primaryLight);
+          }
+          return IconThemeData(color: palette.textTertiary);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: palette.primaryLight);
+          }
+          return TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: palette.textTertiary);
+        }),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: palette.primary,
+          foregroundColor: const Color(0xFF0B1220),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: palette.primary,
+          foregroundColor: const Color(0xFF0B1220),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.primary,
+          side: BorderSide(color: palette.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: palette.inputBackground,
+        hintStyle: TextStyle(color: palette.textTertiary),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.primary, width: 1.5),
+        ),
+      ),
+      extensions: const [palette],
     );
   }
 }

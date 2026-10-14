@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_scope.dart';
 import '../services/app_localization.dart';
 import '../services/license_service.dart';
+import '../services/theme_service.dart';
 import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
@@ -24,6 +25,7 @@ class MorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final db = AppScope.read(context).db;
     final theme = Theme.of(context);
+    final palette = context.palette;
 
     return Scaffold(
       appBar: AppBar(
@@ -38,28 +40,30 @@ class MorePage extends StatelessWidget {
             builder: (context, snapshot) {
               final isPro = snapshot.data ?? false;
               if (isPro) {
-                return Card(
-                  elevation: 0,
-                  color: const Color(0xFF0F172A),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: palette.secondaryGradient,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: palette.secondary.withValues(alpha: 0.3)),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        const Icon(Icons.workspace_premium, color: Color(0xFF10B981), size: 32),
+                        Icon(Icons.workspace_premium, color: palette.secondary, size: 32),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
+                            children: [
                               Text(
                                 'StockSafe Pro Active',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                style: TextStyle(color: palette.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
                               ),
-                              SizedBox(height: 2),
+                              const SizedBox(height: 2),
                               Text(
                                 'Lifetime unlimited products & offline features',
-                                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                style: TextStyle(color: palette.textSecondary, fontSize: 12),
                               ),
                             ],
                           ),
@@ -69,37 +73,42 @@ class MorePage extends StatelessWidget {
                   ),
                 );
               }
-              return Card(
-                elevation: 0,
-                color: const Color(0xFF1E293B),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: InkWell(
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: palette.primaryGradient,
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => PaywallSheet.show(context),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.stars, color: Colors.amber, size: 32),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'Upgrade to Pro — ₹499 Lifetime',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Track as many products as you like - the free tier stops at 100',
-                                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                              ),
-                            ],
+                  border: Border.all(color: palette.primary.withValues(alpha: 0.3)),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => PaywallSheet.show(context),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.stars, color: palette.secondary, size: 32),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Upgrade to Pro — ₹499 Lifetime',
+                                  style: TextStyle(color: palette.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Track as many products as you like - the free tier stops at 100',
+                                  style: TextStyle(color: palette.textSecondary, fontSize: 12),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.chevron_right, color: Colors.white70),
-                      ],
+                          Icon(Icons.chevron_right, color: palette.textPrimary),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -113,7 +122,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.warning_amber_rounded,
-            iconColor: Colors.amber.shade700,
+            iconColor: palette.warning,
             title: AppLocale.tr('low_stock'),
             subtitle: 'Velocity-based restock recommendations & alerts',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LowStockPage())),
@@ -121,7 +130,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.local_shipping_outlined,
-            iconColor: const Color(0xFF3B82F6),
+            iconColor: palette.primary,
             title: AppLocale.tr('suppliers'),
             subtitle: 'Vendor directory, WhatsApp PO dispatch & purchase orders',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SuppliersPage())),
@@ -133,7 +142,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.qr_code_2_rounded,
-            iconColor: const Color(0xFF10B981),
+            iconColor: palette.brandSuccess,
             title: AppLocale.tr('barcode_label_printing'),
             subtitle: 'Generate sticker sheets (A4 or thermal rolls) with Code 128 / QR',
             onTap: () async {
@@ -146,7 +155,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.auto_awesome,
-            iconColor: Colors.purple.shade400,
+            iconColor: palette.secondary,
             title: AppLocale.tr('ask_ai'),
             subtitle: 'Offline inventory questions, valuation & stock queries',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AskStockSafePage())),
@@ -158,7 +167,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.support_agent_outlined,
-            iconColor: const Color(0xFF6366F1),
+            iconColor: palette.info,
             title: 'Report a problem',
             subtitle: 'Send a diagnostic report — counts only, never your product data',
             onTap: () => Navigator.push(
@@ -171,7 +180,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.security_rounded,
-            iconColor: const Color(0xFF10B981),
+            iconColor: palette.brandSuccess,
             title: AppLocale.tr('backup_data') != 'backup_data' ? AppLocale.tr('backup_data') : 'Backup & Data Recovery',
             subtitle: 'Cryptographic SHA-256 snapshots, CSV catalog import & export',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
@@ -179,7 +188,7 @@ class MorePage extends StatelessWidget {
           _buildToolTile(
             context,
             icon: Icons.settings_outlined,
-            iconColor: Colors.blueGrey,
+            iconColor: palette.textTertiary,
             title: AppLocale.tr('settings'),
             subtitle: 'Store profile, English/Tamil language, database health',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
