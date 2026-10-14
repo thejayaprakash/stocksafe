@@ -2,6 +2,7 @@ import 'dart:ui' show PlatformDispatcher;
 
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/app_scope.dart';
@@ -87,6 +88,26 @@ class StockSafeApp extends StatelessWidget {
               theme: ThemeService.lightTheme,
               darkTheme: ThemeService.darkTheme,
               themeMode: ThemeService.instance.mode,
+              // The status bar belongs to whatever is behind it, and on the
+              // home dashboard that is our own background rather than an app
+              // bar - AppBarTheme.systemOverlayStyle never reaches it. In the
+              // light theme the clock and battery stayed light on a near-white
+              // page and could not be read. Applied here so it holds on every
+              // screen, with or without an app bar.
+              builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+                value: Theme.of(context).brightness == Brightness.dark
+                    ? const SystemUiOverlayStyle(
+                        statusBarColor: Colors.transparent,
+                        statusBarIconBrightness: Brightness.light,
+                        statusBarBrightness: Brightness.dark,
+                      )
+                    : const SystemUiOverlayStyle(
+                        statusBarColor: Colors.transparent,
+                        statusBarIconBrightness: Brightness.dark,
+                        statusBarBrightness: Brightness.light,
+                      ),
+                child: child!,
+              ),
               home: const HomePage(),
             );
           },

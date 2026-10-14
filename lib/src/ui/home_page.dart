@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'movement_reason.dart';
 import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
@@ -1007,7 +1008,7 @@ class _DashboardHomeBody extends StatelessWidget {
                           ),
                           title: Text(pName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                           subtitle: Text(
-                            '${m.reason} · ${_formatTimestamp(m.createdAt)}',
+                            '${readableMovementReason(m.reason)} · ${_formatTimestamp(m.createdAt)}',
                             style: const TextStyle(fontSize: 11),
                           ),
                           trailing: Text(

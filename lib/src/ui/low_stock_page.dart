@@ -48,7 +48,13 @@ class _LowStockPageState extends State<LowStockPage> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Column(
+    // Scaffold for the same reason as SettingsPage: this is pushed as a
+    // route from the home dashboard and from More, and a route returning a
+    // bare Column has no background, no safe area and no way back. Its tab
+    // bar was drawing underneath the status bar.
+    return Scaffold(
+      appBar: AppBar(title: const Text('Stock alerts')),
+      body: Column(
       children: [
         Material(
           color: theme.colorScheme.surface,
@@ -76,6 +82,7 @@ class _LowStockPageState extends State<LowStockPage> with SingleTickerProviderSt
           ),
         ),
       ],
+      ),
     );
   }
 

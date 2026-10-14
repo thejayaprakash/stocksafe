@@ -92,7 +92,7 @@ class MorePage extends StatelessWidget {
                               ),
                               SizedBox(height: 2),
                               Text(
-                                'Unlock 200+ products, label printing & reports',
+                                'Track as many products as you like - the free tier stops at 100',
                                 style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                               ),
                             ],
