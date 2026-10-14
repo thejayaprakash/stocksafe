@@ -285,7 +285,7 @@ void main() {
       await db.close();
     });
 
-    test('step 6 to 7 adds the photo column and leaves every row untouched',
+    test('step 6 to 7 adds its columns and leaves every row untouched',
         () async {
       // The column is nullable and nothing writes to it, so the only way this
       // step can hurt anyone is by disturbing the rows already there.
@@ -321,6 +321,7 @@ void main() {
       await verifier.migrateAndValidate(db, DatabaseMigrations.currentVersion);
 
       expect(await _columnExists(db, 'product', 'image_path'), isTrue);
+      expect(await _columnExists(db, 'product', 'is_favourite'), isTrue);
 
       final product = (await db.productDao.getById(1))!;
       expect(product.name, 'Amul Ghee 1L');
@@ -330,6 +331,9 @@ void main() {
       expect(product.stockQty, 6);
       // An existing product has no photo, and NULL is how that is spelled.
       expect(product.imagePath, isNull);
+      // And it is not a favourite, which the column's default says without
+      // the migration having to write a single row.
+      expect(product.isFavourite, isFalse);
 
       await db.close();
     });

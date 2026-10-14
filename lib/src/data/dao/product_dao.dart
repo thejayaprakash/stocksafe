@@ -46,6 +46,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     String? category,
     int? supplierId,
     ProductStockStatus status = ProductStockStatus.any,
+    bool favouritesOnly = false,
     ProductSort sort = ProductSort.nameAsc,
     int limit = 100,
     int offset = 0,
@@ -56,6 +57,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
             category: category,
             supplierId: supplierId,
             status: status,
+            favouritesOnly: favouritesOnly,
           ))
       ..orderBy([..._ordering(sort), (p) => OrderingTerm.asc(p.id)])
       ..limit(limit, offset: offset);
@@ -73,6 +75,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     required String? category,
     required int? supplierId,
     required ProductStockStatus status,
+    bool favouritesOnly = false,
   }) {
     var predicate = products.deletedAt.isNull();
     if (category != null && category.isNotEmpty) {
@@ -80,6 +83,9 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     }
     if (supplierId != null) {
       predicate = predicate & products.supplierId.equals(supplierId);
+    }
+    if (favouritesOnly) {
+      predicate = predicate & products.isFavourite.equals(true);
     }
     predicate = predicate & _statusPredicate(products, status);
     if (query.isNotEmpty) {
@@ -163,6 +169,32 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     }
   }
 
+  /// Pins or unpins one product.
+  ///
+  /// Returns the value now stored, so a caller that toggled optimistically
+  /// can settle on the truth rather than its own guess.
+  Future<bool> setFavourite(int id, bool isFavourite) async {
+    await (update(products)..where((p) => p.id.equals(id))).write(
+      ProductsCompanion(
+        isFavourite: Value(isFavourite),
+        // Deliberately not touching updatedAt: pinning a product is a view
+        // preference, and letting it reorder "Recently Updated" would push
+        // whatever the shopkeeper just favourited to the top of a list that
+        // is supposed to mean "recently changed".
+      ),
+    );
+    return isFavourite;
+  }
+
+  /// How many products are pinned, for the Favourites chip.
+  Stream<int> watchFavouriteCount() {
+    final count = countAll(
+      filter: products.deletedAt.isNull() & products.isFavourite.equals(true),
+    );
+    final q = selectOnly(products)..addColumns([count]);
+    return q.watchSingle().map((row) => row.read(count) ?? 0);
+  }
+
   /// The ids of every product the given filters match.
   ///
   /// For "select all", which has to mean everything behind the filters and
@@ -175,6 +207,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     String? category,
     int? supplierId,
     ProductStockStatus status = ProductStockStatus.any,
+    bool favouritesOnly = false,
   }) async {
     final rows = await (selectOnly(products)
           ..addColumns([products.id])
@@ -183,6 +216,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
             category: category,
             supplierId: supplierId,
             status: status,
+            favouritesOnly: favouritesOnly,
           ))
           ..orderBy([OrderingTerm.asc(products.id)]))
         .get();

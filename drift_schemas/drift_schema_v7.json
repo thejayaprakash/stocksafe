@@ -281,6 +281,20 @@
             "dsl_features": []
           },
           {
+            "name": "is_favourite",
+            "getter_name": "isFavourite",
+            "moor_type": "bool",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"is_favourite\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"is_favourite\" IN (0, 1))"
+            },
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "dateTime",
@@ -1190,7 +1204,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"product\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"name\" TEXT NOT NULL, \"sku\" TEXT NULL, \"barcode\" TEXT NULL, \"category\" TEXT NULL, \"unit\" TEXT NOT NULL DEFAULT 'pcs', \"buy_price\" REAL NOT NULL DEFAULT 0.0, \"sell_price\" REAL NOT NULL DEFAULT 0.0, \"low_stock_level\" INTEGER NOT NULL DEFAULT 0, \"stock_qty\" INTEGER NOT NULL DEFAULT 0, \"supplier_id\" INTEGER NULL REFERENCES supplier (id) ON DELETE SET NULL, \"image_path\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"deleted_at\" INTEGER NULL);"
+          "sql": "CREATE TABLE IF NOT EXISTS \"product\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"name\" TEXT NOT NULL, \"sku\" TEXT NULL, \"barcode\" TEXT NULL, \"category\" TEXT NULL, \"unit\" TEXT NOT NULL DEFAULT 'pcs', \"buy_price\" REAL NOT NULL DEFAULT 0.0, \"sell_price\" REAL NOT NULL DEFAULT 0.0, \"low_stock_level\" INTEGER NOT NULL DEFAULT 0, \"stock_qty\" INTEGER NOT NULL DEFAULT 0, \"supplier_id\" INTEGER NULL REFERENCES supplier (id) ON DELETE SET NULL, \"image_path\" TEXT NULL, \"is_favourite\" INTEGER NOT NULL DEFAULT 0 CHECK (\"is_favourite\" IN (0, 1)), \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"deleted_at\" INTEGER NULL);"
         }
       ]
     },

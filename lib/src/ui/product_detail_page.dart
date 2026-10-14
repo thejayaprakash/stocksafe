@@ -13,6 +13,7 @@ import '../services/theme_service.dart';
 import 'money_format.dart';
 import 'widgets/app_tiles.dart';
 import 'widgets/external_app.dart';
+import 'widgets/favourite_button.dart';
 import 'widgets/product_avatar.dart';
 
 /// Product detail: current stock (derived) plus full movement history.
@@ -45,6 +46,11 @@ class ProductDetailPage extends StatelessWidget {
             // No title: the product's name is the first thing in the body, at
             // a size it deserves, and repeating it in the bar truncates it.
             actions: [
+              FavouriteButton(
+                product: product,
+                size: 23,
+                padding: const EdgeInsets.all(10),
+              ),
               IconButton(
                 icon: const Icon(Icons.qr_code_2),
                 tooltip: 'Print Barcode Labels',

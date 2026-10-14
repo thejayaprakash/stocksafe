@@ -1305,6 +1305,7 @@ final class Schema7 extends i0.VersionedSchema {
           _column_9,
           _column_39,
           _column_43,
+          _column_44,
           _column_10,
           _column_11,
           _column_12,
@@ -1470,6 +1471,8 @@ class Shape12 extends i0.VersionedTable {
       columnsByName['supplier_id']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<String> get imagePath =>
       columnsByName['image_path']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get isFavourite =>
+      columnsByName['is_favourite']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get createdAt =>
       columnsByName['created_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get updatedAt =>
@@ -1481,6 +1484,11 @@ class Shape12 extends i0.VersionedTable {
 i1.GeneratedColumn<String> _column_43(String aliasedName) =>
     i1.GeneratedColumn<String>('image_path', aliasedName, true,
         type: i1.DriftSqlType.string, $customConstraints: 'NULL');
+i1.GeneratedColumn<int> _column_44(String aliasedName) =>
+    i1.GeneratedColumn<int>('is_favourite', aliasedName, false,
+        type: i1.DriftSqlType.int,
+        $customConstraints: 'NOT NULL DEFAULT 0 CHECK (is_favourite IN (0, 1))',
+        defaultValue: const i1.CustomExpression('0'));
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
   required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,

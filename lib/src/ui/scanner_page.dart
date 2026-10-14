@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,7 +28,8 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> {
+class _ScannerPageState extends State<ScannerPage>
+    with WidgetsBindingObserver {
   /// The live database, read through the scope rather than passed in.
   /// Uses [AppScope.read] so it is safe to call from initState; widgets that
   /// must rebuild when the connection is replaced should call AppScope.of in
@@ -48,6 +51,10 @@ class _ScannerPageState extends State<ScannerPage> {
   /// second tap cannot open two pickers.
   bool _busyWithGallery = false;
 
+  /// True while the camera is deliberately stopped — because the app went to
+  /// the background, or because the picker is in front of us.
+  bool _cameraSuspended = false;
+
   /// Feedback on every successful scan.
   ///
   /// The dev plan is explicit that this is worth more goodwill than any
@@ -59,9 +66,44 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Releases the camera. Without it the torch can stay lit and the
+    // preview keeps a hold on the device after the page is gone, which the
+    // next app to want the camera then cannot get.
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Android can take the camera away while the app is in the background,
+    // and a preview left running is a black rectangle on return. Stop on
+    // the way out, start again on the way back, and do neither while the
+    // gallery picker is in front of us — that suspension is ours to undo.
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (_cameraSuspended && !_busyWithGallery) {
+          _cameraSuspended = false;
+          unawaited(_controller.start());
+        }
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        if (!_cameraSuspended) {
+          _cameraSuspended = true;
+          unawaited(_controller.stop());
+        }
+    }
   }
 
   int get _totalScannedUnits =>
@@ -487,8 +529,13 @@ class _ScannerPageState extends State<ScannerPage> {
   Future<void> _scanFromGallery() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busyWithGallery = true);
+    // The picker is another activity in front of this one, so the camera is
+    // stopped for its duration rather than left running behind it.
+    await _controller.stop();
     try {
       final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      // Cancelling is a normal outcome, not an error: nothing is said, and
+      // the camera comes back in `finally`.
       if (picked == null) return;
 
       final capture = await _controller.analyzeImage(picked.path);
@@ -529,7 +576,22 @@ class _ScannerPageState extends State<ScannerPage> {
         const SnackBar(content: Text('Could not read that picture')),
       );
     } finally {
-      if (mounted) setState(() => _busyWithGallery = false);
+      if (mounted) {
+        setState(() => _busyWithGallery = false);
+        // Only if the app is actually in front. Coming back from the picker
+        // straight into the background would otherwise restart a camera
+        // that the lifecycle handler had just stopped.
+        if (!_cameraSuspended) {
+          try {
+            await _controller.start();
+          } catch (error) {
+            DiagnosticService.instance.log(
+              'Could not restart the camera after the gallery: $error',
+              level: 'WARN',
+            );
+          }
+        }
+      }
     }
   }
 
