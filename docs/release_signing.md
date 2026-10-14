@@ -83,6 +83,38 @@ Gradle prints hundreds of lines, CI scrolled past the warning, and the workflow
 then uploaded the artifact under the name `StockSafe-release-apk` — which read
 like something you could ship.
 
+## Building a release that can validate vouchers
+
+`LicenseKey._secret` is a `String.fromEnvironment`, resolved at **compile**
+time. It is not read from `android/key.properties`, not from the environment at
+runtime, and not from anywhere else — only from `--dart-define` on the build
+command.
+
+So this:
+
+```bash
+flutter build appbundle --release
+```
+
+produces a perfectly valid, correctly signed, uploadable artifact **in which
+every voucher is forgeable**, because the fallback secret is a constant printed
+in the public source. Nothing about that build looks wrong, which is what makes
+it worth a script:
+
+```powershell
+.\tool\build_release.ps1          # app bundle, for Play
+.\tool\build_release.ps1 -Apk     # apk, for testers
+```
+
+It reads the secret from `C:\keys\stocksafe-voucher-secret.txt`, refuses to
+build if that file is missing or still holds the development placeholder, and
+runs the launch gate against the same value afterwards.
+
+The value must match the `STOCKSAFE_VOUCHER_SECRET` repository secret, or
+vouchers minted in CI will not validate against the build you shipped.
+
+---
+
 ## Losing the key
 
 Since August 2021 every new app on Play must use **Play App Signing**: Google

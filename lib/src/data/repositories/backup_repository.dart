@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../backup_archive_service.dart';
 import '../backup_service.dart';
+import '../../services/license_service.dart';
 import 'database_host.dart';
 
 /// Backup and restore, with access to the database lifecycle.
@@ -121,6 +122,8 @@ class BackupRepository {
     await _host.withDatabaseClosed(() async {
       await service.swapInSnapshot(snapshotPath);
     });
+
+    await _clearRestoredEntitlement();
   }
 
   /// Copies the live database aside without restoring anything.
@@ -213,5 +216,19 @@ class BackupRepository {
     } finally {
       if (await staged.exists()) await staged.delete();
     }
+
+    await _clearRestoredEntitlement();
   }
+
+  /// Both restore paths swap in a whole database file, and the Pro unlock is
+  /// four rows inside it. Carrying those across would mean a backup grants the
+  /// entitlement it was taken with — so one customer's zip, forwarded on
+  /// WhatsApp, unlocks the app for everyone who imports it.
+  ///
+  /// Runs after the connection has been reopened, so it writes to the restored
+  /// database rather than the one being replaced. Inventory is untouched; only
+  /// the licence rows are cleared, and the owner re-activates with the voucher
+  /// or Play purchase they already have.
+  Future<void> _clearRestoredEntitlement() =>
+      LicenseService(_host.db).clearEntitlement();
 }
