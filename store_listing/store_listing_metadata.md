@@ -15,14 +15,16 @@
 ## 2. Full Description (English · ~2,800 chars)
 
 ```text
-StockSafe is a fast, 100% offline stock and inventory manager built specifically for small retail shops, kirana stores, supermarkets, and independent businesses.
+StockSafe is a fast, offline-first stock and inventory manager built specifically for small retail shops, kirana stores, supermarkets, and independent businesses. Every day-to-day feature works with no internet at all.
 
 Most inventory apps store your current stock as a single editable number. One software glitch or accidental tap, and your product counts vanish. StockSafe is built on an immutable, double-entry movement ledger: every inward shipment, sale, return, or audit adjustment is permanently recorded. Your inventory can never be lost or corrupted.
 
 WHY SHOPKEEPERS CHOOSE STOCKSAFE:
 
 1. 100% OFFLINE & PRIVATE (NO CLOUD REQUIRED)
-Operate seamlessly in basements, dark storerooms, or areas with zero internet. Your data is stored strictly on your phone in a secure local database. No accounts, no logins, no cloud subscriptions.
+Operate seamlessly in basements, dark storerooms, or areas with zero internet. Scanning, stock movements, stocktakes, printing, backups and reports all work fully offline. Your data is stored strictly on your phone. No accounts, no logins, no cloud subscriptions, and no StockSafe server anywhere.
+
+The only thing that needs a connection is buying or restoring the one-time Pro unlock, because that goes through Google Play. Shops without a Google account can unlock with an offline activation voucher instead.
 
 2. FAST BARCODE SCANNING & CONTINUOUS MODE
 Scan barcodes instantly using your phone camera (ML Kit powered). Use Continuous Batch Scan mode to scan whole cartons without ever taking your eyes off the stock. Includes instant vibration and audio beep feedback.

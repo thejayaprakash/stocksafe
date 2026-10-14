@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../data/database.dart';
+import 'billing_service.dart';
 import 'license_key.dart';
 
 /// Licensing, Free-Tier Limits, and Monetization Engine for StockSafe.
@@ -134,6 +135,38 @@ class LicenseService {
   /// simulated success.
   Future<bool> restorePurchases() async {
     return isProUnlocked();
+  }
+
+  /// Buys the lifetime unlock through Google Play, and unlocks only if Play
+  /// says the purchase completed.
+  ///
+  /// [BillingOutcome.pending] does NOT unlock. UPI and net-banking settle
+  /// asynchronously, so a purchase can sit pending for hours: unlocking there
+  /// would give the app to anyone who starts a payment and walks away, and
+  /// refusing would tell a shopkeeper who has paid that it failed. The caller
+  /// shows a third message, and Play sends another event when it settles.
+  Future<BillingResult> purchasePro(BillingService billing) async {
+    final result = await billing.buyPro();
+    if (result.grantsUnlock) {
+      await unlockLifetime(method: 'play_billing', code: result.orderId);
+    }
+    return result;
+  }
+
+  /// Asks Play what this Google account already owns.
+  ///
+  /// This is what makes a reinstall or a new phone free: the entitlement lives
+  /// with the account, not the device, so there is nothing for the shopkeeper
+  /// to keep and nothing for us to store.
+  Future<BillingResult> restoreFromPlay(BillingService billing) async {
+    if (await isProUnlocked()) {
+      return const BillingResult(BillingOutcome.restored);
+    }
+    final result = await billing.restore();
+    if (result.grantsUnlock) {
+      await unlockLifetime(method: 'play_restore', code: result.orderId);
+    }
+    return result;
   }
 
   /// Validates and activates an offline voucher or license key.
