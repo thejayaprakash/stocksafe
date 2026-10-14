@@ -24,6 +24,17 @@
 # reads both fields, so leaving them different fails at signing time with an
 # error that does not say why.
 
+# This file is for SIGNING ONLY. Gradle reads exactly four keys from it:
+# storeFile, storePassword, keyAlias and keyPassword. Anything else here is
+# silently ignored.
+#
+# In particular STOCKSAFE_VOUCHER_SECRET does NOT belong here. It is a
+# String.fromEnvironment resolved at compile time, so it only reaches the app
+# through --dart-define on the build command. Putting it in this file produces
+# a build that looks correct and ships the development placeholder, in which
+# every voucher is forgeable. Use tool/build_release.ps1, which passes it for
+# you from C:\keys\stocksafe-voucher-secret.txt.
+
 storeFile=C:/keys/stocksafe-upload.p12
 storePassword=
 keyAlias=stocksafe

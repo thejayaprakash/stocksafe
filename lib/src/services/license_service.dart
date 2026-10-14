@@ -168,6 +168,29 @@ class LicenseService {
     await _db.settingDao.set(keyUnlockMethod, '');
     await _db.settingDao.set(keyLicenseCode, '');
   }
+
+  /// Drops the entitlement, leaving inventory untouched.
+  ///
+  /// Called after a restore or an import, because the unlock is four rows in
+  /// `setting` — and `setting` lives inside `stocksafe.sqlite`, which
+  /// `BackupArchiveService` copies into the zip verbatim and which restore
+  /// swaps in wholesale.
+  ///
+  /// Without this, a backup taken while Pro was active grants Pro to whoever
+  /// restores it. One customer's zip forwarded on WhatsApp unlocks the app for
+  /// everyone who imports it — and hands over that shop's catalogue with it.
+  /// Nothing in the file is bound to a device or an account, so there is no
+  /// way to tell the owner's own restore from a stranger's.
+  ///
+  /// The owner is not locked out. Their voucher still activates, and a Play
+  /// purchase restores from the store. Entitlement comes from Play or from a
+  /// voucher, never from a file someone was sent.
+  Future<void> clearEntitlement() async {
+    await _db.settingDao.set(keyProUnlocked, 'false');
+    await _db.settingDao.set(keyUnlockedAt, '');
+    await _db.settingDao.set(keyUnlockMethod, '');
+    await _db.settingDao.set(keyLicenseCode, '');
+  }
 }
 
 /// Snapshot of current license and usage state.

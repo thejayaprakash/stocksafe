@@ -166,16 +166,36 @@ void main() {
       expect(ref, matches(RegExp(r'^SS-261013-[0-9A-F]{8}$')));
     });
 
-    test('does not collide across a realistic number of reports', () {
+    test('draws from the full eight-character space', () {
+      // The deterministic half of the guarantee, and the one that catches a
+      // regression: shortening the suffix fails here immediately. Collision
+      // probability is a consequence of this, so this is what to assert.
+      for (var i = 0; i < 200; i++) {
+        expect(
+          SupportBundle.newReference(DateTime(2026, 10, 13)),
+          matches(RegExp(r'^SS-261013-[0-9A-F]{8}$')),
+        );
+      }
+    });
+
+    test('collisions stay within what the birthday bound allows', () {
       final seen = <String>{};
       for (var i = 0; i < 5000; i++) {
         seen.add(SupportBundle.newReference(DateTime(2026, 10, 13)));
       }
-      // Same-day references share a prefix, so only the suffix varies. At
-      // 16^8 the birthday bound puts the chance of any collision here at
-      // roughly 0.3%; at 16^6 it was closer to even money, which is why the
-      // suffix is eight characters.
-      expect(seen.length, 5000);
+
+      // Asserting zero collisions here was wrong, and flaked. Same-day
+      // references share a prefix, so only the 16^8 suffix varies, and the
+      // birthday bound gives ~0.003 expected collisions in 5000 draws — about
+      // a 0.3% chance of at least one. Over a suite that runs on every push
+      // that is roughly one spurious red in 300, which teaches people to
+      // re-run rather than read.
+      //
+      // Zero was never a property of the code; it was a probable outcome
+      // asserted as a certainty. The property worth pinning is that the
+      // generator is not degenerate — a broken or seeded RNG collapses the
+      // space and fails this by a wide margin, while honest luck cannot.
+      expect(seen.length, greaterThanOrEqualTo(4995));
     });
   });
 
