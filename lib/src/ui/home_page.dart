@@ -6,6 +6,7 @@ import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
+import '../services/theme_service.dart';
 import '../services/voice_assistant_service.dart';
 import 'ask_stocksafe_page.dart';
 import 'backup_page.dart';
@@ -202,7 +203,7 @@ class _HomePageState extends State<HomePage> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.auto_awesome, color: Colors.amber),
+          icon: Icon(Icons.auto_awesome, color: Theme.of(context).palette.secondary),
           tooltip: AppLocale.tr('ask_ai'),
           onPressed: () => Navigator.push(
             context,
@@ -210,7 +211,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         IconButton(
-          icon: const Icon(Icons.security_rounded, color: Color(0xFF10B981)),
+          icon: Icon(Icons.security_rounded, color: Theme.of(context).palette.brandSuccess),
           tooltip: 'Backup & Restore',
           onPressed: () => Navigator.push(
             context,
@@ -822,6 +823,8 @@ class _DashboardHomeBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.palette;
+    final isDark = theme.brightness == Brightness.dark;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -829,21 +832,33 @@ class _DashboardHomeBody extends StatelessWidget {
         // ── 1. WHAT NEEDS MY ATTENTION? ──
         if (showBackupReminder)
           Card(
-            color: Colors.amber.shade100,
+            elevation: 0,
+            color: palette.warningContainer,
             margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: palette.warning.withValues(alpha: 0.5)),
+            ),
             child: ListTile(
-              leading: const Icon(Icons.shield_outlined, color: Colors.brown),
+              leading: Icon(Icons.shield_outlined, color: palette.warning),
               title: Text(
                 AppLocale.tr('backup_reminder_title'),
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isDark ? palette.textPrimary : const Color(0xFF78350F),
+                ),
               ),
               subtitle: Text(
                 AppLocale.tr('backup_reminder_body'),
-                style: const TextStyle(fontSize: 11, color: Colors.brown),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? palette.textSecondary : const Color(0xFF92400E),
+                ),
               ),
               trailing: TextButton(
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
-                child: Text(AppLocale.tr('backup_now')),
+                child: Text(AppLocale.tr('backup_now'), style: TextStyle(color: palette.primary, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
@@ -856,26 +871,40 @@ class _DashboardHomeBody extends StatelessWidget {
               return Card(
                 elevation: 0,
                 margin: const EdgeInsets.only(bottom: 16),
-                color: const Color(0xFFFEF3C7),
+                color: palette.warningContainer,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.amber.shade400),
+                  side: BorderSide(color: palette.warning),
                 ),
                 child: ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.amber.shade200, shape: BoxShape.circle),
-                    child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309), size: 24),
+                    decoration: BoxDecoration(
+                      color: palette.warning.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.warning_amber_rounded, color: palette.warning, size: 24),
                   ),
                   title: Text(
                     '${lowStock.length} Products Need Reordering',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF78350F)),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isDark ? palette.textPrimary : const Color(0xFF78350F),
+                    ),
                   ),
                   subtitle: Text(
                     'Stock is below reorder threshold. Tap to review restock quantities.',
-                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? palette.textSecondary : const Color(0xFF92400E),
+                    ),
                   ),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Color(0xFF78350F)),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: isDark ? palette.textSecondary : const Color(0xFF78350F),
+                  ),
                   onTap: onNavigateToLowStock,
                 ),
               );
@@ -884,18 +913,22 @@ class _DashboardHomeBody extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.08),
+                color: palette.successContainer.withValues(alpha: isDark ? 0.35 : 0.7),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                border: Border.all(color: palette.success.withValues(alpha: 0.3)),
               ),
               child: Row(
-                children: const [
-                  Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 18),
-                  SizedBox(width: 8),
+                children: [
+                  Icon(Icons.check_circle_outline, color: palette.success, size: 18),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'All stock levels optimal · Zero critical shortages',
-                      style: TextStyle(color: Color(0xFF065F46), fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: isDark ? palette.textPrimary : const Color(0xFF065F46),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -914,7 +947,7 @@ class _DashboardHomeBody extends StatelessWidget {
                 context,
                 icon: Icons.qr_code_scanner,
                 iconColor: Colors.white,
-                bgColor: const Color(0xFF0F172A),
+                bgColor: isDark ? palette.elevatedSurface : palette.primary,
                 textColor: Colors.white,
                 title: 'Scan & Adjust',
                 subtitle: 'Single-SKU Barcode',
@@ -926,9 +959,9 @@ class _DashboardHomeBody extends StatelessWidget {
               child: _buildActionTile(
                 context,
                 icon: Icons.fact_check_outlined,
-                iconColor: const Color(0xFF047857),
-                bgColor: const Color(0xFFECFDF5),
-                textColor: const Color(0xFF064E3B),
+                iconColor: palette.brandSuccess,
+                bgColor: palette.successContainer.withValues(alpha: isDark ? 0.3 : 0.7),
+                textColor: isDark ? palette.textPrimary : const Color(0xFF064E3B),
                 title: 'Physical Audit',
                 subtitle: 'Cycle-Count Reconcile',
                 onTap: onNavigateToAudit,
@@ -1016,12 +1049,12 @@ class _DashboardHomeBody extends StatelessWidget {
                           leading: CircleAvatar(
                             radius: 14,
                             backgroundColor: isPositive
-                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                                ? palette.successContainer.withValues(alpha: 0.5)
+                                : palette.errorContainer.withValues(alpha: 0.5),
                             child: Icon(
                               isPositive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
                               size: 14,
-                              color: isPositive ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                              color: isPositive ? palette.success : palette.error,
                             ),
                           ),
                           title: Text(pName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
@@ -1035,7 +1068,7 @@ class _DashboardHomeBody extends StatelessWidget {
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isPositive ? const Color(0xFF047857) : const Color(0xFFB91C1C),
+                              color: isPositive ? palette.success : palette.error,
                             ),
                           ),
                         ),
