@@ -1,6 +1,15 @@
 # Google Play Console — Data Safety Form Submission Guide
 
-This guide provides exact answers to the **Data Safety** questionnaire in Google Play Console for **StockSafe: Inventory Manager**. Because StockSafe is completely offline and does not transmit data, completing this form is straightforward and guarantees rapid review approval.
+This guide provides exact answers to the **Data Safety** questionnaire in Google Play Console for **StockSafe: Inventory Manager**.
+
+StockSafe is offline-first: the shop's data lives on the device and is never
+transmitted. Two things do reach the network, and both are Google's own code
+rather than ours — the bundled ML Kit diagnostics library, and **Google Play
+Billing**, which handles buying and restoring the Pro unlock.
+
+Neither carries the user's business data. Note that the purchase itself is
+processed by Google as the seller of record: the app stores only the resulting
+order id, on the device, and transmits it nowhere.
 
 ---
 
@@ -49,7 +58,7 @@ https://thejayaprakash.github.io/stocksafe/privacy_policy.html
 ---
 
 ### Summary for Play Store Reviewer Notes:
-> "StockSafe is an offline-first inventory management application for independent retail shops. All product catalog information, stock movements, supplier records, and audit sessions are stored strictly on the user's physical device in local SQLite. There is no account, no backend server and no ad network, and none of the user's business data is transmitted anywhere.
+> "StockSafe is an offline-first inventory management application for independent retail shops. All product catalog information, stock movements, supplier records, and audit sessions are stored strictly on the user's physical device in local SQLite. There is no backend server and no ad network, and none of the user's business data is transmitted anywhere. The app reaches the network for exactly two reasons, both Google's own code: the bundled ML Kit diagnostics library, and Google Play Billing for purchasing or restoring the one-time Pro unlock.
 >
 > The app bundles Google ML Kit for on-device barcode scanning and label OCR. Recognition runs locally and no image is uploaded by us, but ML Kit brings Google's datatransport diagnostics library, which merges the INTERNET and ACCESS_NETWORK_STATE permissions into the app and may report its own device and performance diagnostics to Google. We declare that under App info and performance. We do not receive it, and no inventory data forms part of it."
 

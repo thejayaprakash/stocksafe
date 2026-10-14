@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/database.dart';
 import '../../services/app_localization.dart';
+import '../../services/billing_service.dart';
 import '../../services/license_service.dart';
 import '../../app_scope.dart';
 
@@ -38,6 +39,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
   AppDatabase get _db => AppScope.read(context).db;
 
   late final LicenseService _licenseService;
+  late final BillingService _billing;
   bool _isLoading = false;
   int _activeCount = 0;
   // Shown only until the real limit loads from LicenseService a frame later.
@@ -49,6 +51,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
   void initState() {
     super.initState();
     _licenseService = LicenseService(_db);
+    _billing = BillingService();
     _loadState();
   }
 
@@ -63,23 +66,70 @@ class _PaywallSheetState extends State<PaywallSheet> {
     }
   }
 
-  /// There is no billing integration yet, so there is nothing to charge and
-  /// nothing to verify.
+  /// Buys through Google Play, and unlocks only on what Play confirms.
   ///
-  /// This used to call unlockLifetime() directly: the button took no money
-  /// and granted Pro to anyone who pressed it. Granting an entitlement that
-  /// was never bought is worse than saying it is not ready — it trains
-  /// testers to expect a free unlock and would fail Play review for showing
-  /// a purchase flow that is not Play Billing.
+  /// Every outcome gets its own sentence. A shopkeeper who paid by UPI and a
+  /// shopkeeper whose card was declined are in completely different positions,
+  /// and one message for both leaves the first one convinced the app took
+  /// their money and gave nothing back.
+  @override
+  void dispose() {
+    // Cancels the purchase stream subscription. Without this, every open of
+    // the paywall leaves another listener attached to the plugin's broadcast
+    // stream for the life of the process.
+    _billing.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleUnlock() async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await _licenseService.purchasePro(_billing);
+      if (!mounted) return;
+
+      if (result.grantsUnlock) {
+        _say(AppLocale.tr('pro_unlocked_success'), good: true);
+        widget.onUnlocked?.call();
+        return;
+      }
+
+      switch (result.outcome) {
+        case BillingOutcome.pending:
+          // UPI and net-banking settle asynchronously. Saying "failed" here is
+          // wrong and alarming; saying "done" would give the app away.
+          _say(
+            'Payment started. UPI and bank payments can take a while to '
+            'confirm — Pro unlocks automatically once your bank completes it. '
+            'You can keep using StockSafe meanwhile.',
+            seconds: 9,
+          );
+        case BillingOutcome.cancelled:
+          break; // They chose to stop. Nothing to report.
+        case BillingOutcome.unavailable:
+          _say(
+            result.message ??
+                'In-app purchase is not available on this device. If you have '
+                'an activation voucher, use "Enter activation code".',
+            seconds: 7,
+          );
+        case BillingOutcome.failed:
+          _say(result.message ?? 'The store could not complete that purchase.');
+        case BillingOutcome.nothingToRestore:
+        case BillingOutcome.purchased:
+        case BillingOutcome.restored:
+          break; // Handled above.
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _say(String message, {bool good = false, int seconds = 5}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text(
-          'In-app purchase is not available in this build yet. '
-          'If you have an activation voucher, use "Enter activation code".',
-        ),
-        duration: const Duration(seconds: 5),
-        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+        content: Text(message),
+        duration: Duration(seconds: seconds),
+        backgroundColor: good ? Colors.green.shade700 : null,
       ),
     );
   }
@@ -87,10 +137,10 @@ class _PaywallSheetState extends State<PaywallSheet> {
   Future<void> _handleRestore() async {
     setState(() => _isLoading = true);
     try {
-      final success = await _licenseService.restorePurchases();
+      final result = await _licenseService.restoreFromPlay(_billing);
       if (!mounted) return;
 
-      if (success) {
+      if (result.grantsUnlock) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(AppLocale.tr('purchases_restored')),
@@ -99,12 +149,14 @@ class _PaywallSheetState extends State<PaywallSheet> {
         );
         widget.onUnlocked?.call();
       } else {
-        // Honest: restorePurchases() now reports only what this device
-        // actually holds, instead of granting Pro to anyone who taps it.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No purchase found on this device to restore.'),
-          ),
+        // Play is the authority here, not this device: the entitlement lives
+        // with the Google account, which is what makes a reinstall or a new
+        // phone free.
+        _say(
+          result.outcome == BillingOutcome.unavailable
+              ? (result.message ?? 'The Play Store is not available here.')
+              : 'No previous purchase was found for this Google account.',
+          seconds: 6,
         );
       }
     } finally {
