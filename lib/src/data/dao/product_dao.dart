@@ -26,6 +26,14 @@ enum ProductSort {
   valueHigh,
 }
 
+/// Which shelves the catalogue is narrowed to.
+///
+/// "Low" deliberately excludes zero: a product that has run out and one that
+/// is about to are different problems, and a shopkeeper filtering for "low"
+/// is looking for the things still worth reordering before they run dry.
+/// [ProductStockStatus.outOfStock] covers the rest.
+enum ProductStockStatus { any, inStock, low, outOfStock }
+
 /// Products are soft-deleted only. Every query here filters `deletedAt`,
 /// so a user who taps the wrong button can be restored later.
 @DriftAccessor(tables: [Products, Movements])
@@ -36,6 +44,8 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   Stream<List<Product>> watchAll({
     String query = '',
     String? category,
+    int? supplierId,
+    ProductStockStatus status = ProductStockStatus.any,
     ProductSort sort = ProductSort.nameAsc,
     int limit = 100,
     int offset = 0,
@@ -46,6 +56,10 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
         if (category != null && category.isNotEmpty) {
           predicate = predicate & p.category.equals(category);
         }
+        if (supplierId != null) {
+          predicate = predicate & p.supplierId.equals(supplierId);
+        }
+        predicate = predicate & _statusPredicate(p, status);
         if (query.isNotEmpty) {
           final like = '%${_escapeLike(query)}%';
           predicate = predicate &
@@ -59,6 +73,58 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
       ..limit(limit, offset: offset);
 
     return q.watch();
+  }
+
+  /// The stock-level half of the where clause.
+  ///
+  /// `lowStockLevel` is 0 when the shopkeeper never set a threshold, and 0 is
+  /// not a threshold — without excluding it every product in the shop counts
+  /// as low the moment it is not in stock.
+  Expression<bool> _statusPredicate(
+    $ProductsTable p,
+    ProductStockStatus status,
+  ) {
+    switch (status) {
+      case ProductStockStatus.any:
+        return const Constant(true);
+      case ProductStockStatus.inStock:
+        return p.stockQty.isBiggerThanValue(0);
+      case ProductStockStatus.low:
+        return p.stockQty.isBiggerThanValue(0) &
+            p.lowStockLevel.isBiggerThanValue(0) &
+            p.stockQty.isSmallerOrEqual(p.lowStockLevel);
+      case ProductStockStatus.outOfStock:
+        return p.stockQty.isSmallerOrEqualValue(0);
+    }
+  }
+
+  /// How many products each status covers right now, for the filter chips.
+  ///
+  /// Counted in one pass rather than four queries: the chips are all on
+  /// screen together and a shop with a large catalogue would otherwise scan
+  /// the table once per chip on every keystroke.
+  Stream<ProductStatusCounts> watchStatusCounts() {
+    return (select(products)..where((p) => p.deletedAt.isNull()))
+        .watch()
+        .map((rows) {
+      var inStock = 0;
+      var low = 0;
+      var out = 0;
+      for (final p in rows) {
+        if (p.stockQty <= 0) {
+          out++;
+        } else {
+          inStock++;
+          if (p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel) low++;
+        }
+      }
+      return ProductStatusCounts(
+        all: rows.length,
+        inStock: inStock,
+        low: low,
+        outOfStock: out,
+      );
+    });
   }
 
   List<OrderClauseGenerator<$ProductsTable>> _ordering(ProductSort sort) {
@@ -261,4 +327,29 @@ class InventoryValuationSummary {
     required this.potentialProfit,
     required this.marginPercent,
   });
+}
+
+/// How many products sit behind each filter chip.
+class ProductStatusCounts {
+  const ProductStatusCounts({
+    required this.all,
+    required this.inStock,
+    required this.low,
+    required this.outOfStock,
+  });
+
+  final int all;
+  final int inStock;
+
+  /// In stock, but at or below a threshold the shopkeeper actually set.
+  final int low;
+
+  final int outOfStock;
+
+  int forStatus(ProductStockStatus status) => switch (status) {
+        ProductStockStatus.any => all,
+        ProductStockStatus.inStock => inStock,
+        ProductStockStatus.low => low,
+        ProductStockStatus.outOfStock => outOfStock,
+      };
 }

@@ -1,8 +1,8 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'money_format.dart';
 import 'movement_reason.dart';
 import 'pro_gate.dart';
 import '../services/app_localization.dart';
@@ -20,6 +20,7 @@ import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
 import 'widgets/floating_wave_nav_bar.dart';
+import 'widgets/product_avatar.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
 import '../app_scope.dart';
@@ -630,6 +631,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
   bool _mayHaveMore = true;
 
   ProductSort _sort = ProductSort.recentlyUpdated;
+  ProductStockStatus _status = ProductStockStatus.any;
   bool _grid = false;
 
   @override
@@ -664,6 +666,17 @@ class _ProductListBodyState extends State<_ProductListBody> {
     }
   }
 
+  void _setStatus(ProductStockStatus status) {
+    if (status == _status) return;
+    // A different filter is a different result set, so the paging window
+    // restarts with it, exactly as a different sort order does.
+    setState(() {
+      _status = status;
+      _limit = _pageSize;
+      _mayHaveMore = true;
+    });
+  }
+
   void _setSort(ProductSort sort) {
     if (sort == _sort) return;
     // A different order is a different result set, so the window restarts
@@ -678,54 +691,78 @@ class _ProductListBodyState extends State<_ProductListBody> {
 
   @override
   Widget build(BuildContext context) {
-    final unfiltered = widget.query.isEmpty && widget.category == null;
+    final unfiltered = widget.query.isEmpty &&
+        widget.category == null &&
+        _status == ProductStockStatus.any;
 
-    return StreamBuilder<List<Product>>(
-      stream: widget.db.productDao.watchAll(
-        query: widget.query,
-        category: widget.category,
-        sort: _sort,
-        limit: _limit,
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final products = snapshot.data ?? const <Product>[];
-        // Fewer rows than asked for means the end has been reached.
-        _mayHaveMore = products.length >= _limit;
-
-        if (products.isEmpty) return _EmptyCatalogue(filtered: !unfiltered);
-
-        return Column(
-          children: [
-            if (unfiltered) _InventoryValuationCard(db: widget.db),
-            _ListControls(
+    // The status chips stay on screen whatever the list below them shows.
+    // Filtering down to nothing and losing the control that did it leaves
+    // the user with an empty screen and no way back.
+    return Column(
+      children: [
+        _StatusFilterBar(
+          db: widget.db,
+          status: _status,
+          onChanged: _setStatus,
+        ),
+        Expanded(
+          child: StreamBuilder<List<Product>>(
+            stream: widget.db.productDao.watchAll(
+              query: widget.query,
+              category: widget.category,
+              status: _status,
               sort: _sort,
-              onSortChanged: _setSort,
-              grid: _grid,
-              onLayoutChanged: (grid) => setState(() => _grid = grid),
+              limit: _limit,
             ),
-            Expanded(
-              child: _grid
-                  ? _ProductGrid(
-                      products: products,
-                      controller: _scrollController,
-                      loadingMore: _mayHaveMore,
-                      onOpen: _open,
-                      onActions: _showActions,
-                    )
-                  : _ProductList(
-                      products: products,
-                      controller: _scrollController,
-                      loadingMore: _mayHaveMore,
-                      onOpen: _open,
-                      onActions: _showActions,
-                    ),
-            ),
-          ],
-        );
-      },
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final products = snapshot.data ?? const <Product>[];
+              // Fewer rows than asked for means the end has been reached.
+              _mayHaveMore = products.length >= _limit;
+
+              if (products.isEmpty) {
+                return _EmptyCatalogue(
+                  filtered: !unfiltered,
+                  onClearFilters: unfiltered
+                      ? null
+                      : () => _setStatus(ProductStockStatus.any),
+                );
+              }
+
+              return Column(
+                children: [
+                  if (unfiltered) _InventoryValuationCard(db: widget.db),
+                  _ListControls(
+                    sort: _sort,
+                    onSortChanged: _setSort,
+                    grid: _grid,
+                    onLayoutChanged: (grid) => setState(() => _grid = grid),
+                  ),
+                  Expanded(
+                    child: _grid
+                        ? _ProductGrid(
+                            products: products,
+                            controller: _scrollController,
+                            loadingMore: _mayHaveMore,
+                            onOpen: _open,
+                            onActions: _showActions,
+                          )
+                        : _ProductList(
+                            products: products,
+                            controller: _scrollController,
+                            loadingMore: _mayHaveMore,
+                            onOpen: _open,
+                            onActions: _showActions,
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -795,6 +832,151 @@ class _ProductListBodyState extends State<_ProductListBody> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// In Stock / Low Stock / Out of Stock, each carrying its own count.
+class _StatusFilterBar extends StatelessWidget {
+  const _StatusFilterBar({
+    required this.db,
+    required this.status,
+    required this.onChanged,
+  });
+
+  final AppDatabase db;
+  final ProductStockStatus status;
+  final ValueChanged<ProductStockStatus> onChanged;
+
+  static const _options = [
+    (ProductStockStatus.any, 'All', null),
+    (ProductStockStatus.inStock, 'In Stock', Icons.check_circle_outline),
+    (ProductStockStatus.low, 'Low Stock', Icons.warning_amber_rounded),
+    (
+      ProductStockStatus.outOfStock,
+      'Out of Stock',
+      Icons.remove_circle_outline,
+    ),
+  ];
+
+  Color _accentFor(ProductStockStatus value, AppPalette palette) =>
+      switch (value) {
+        ProductStockStatus.any => palette.primary,
+        ProductStockStatus.inStock => palette.success,
+        ProductStockStatus.low => palette.warning,
+        ProductStockStatus.outOfStock => palette.error,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return StreamBuilder<ProductStatusCounts>(
+      stream: db.productDao.watchStatusCounts(),
+      builder: (context, snapshot) {
+        final counts = snapshot.data;
+
+        return SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            children: [
+              for (final (value, label, icon) in _options)
+                _StatusChip(
+                  label: label,
+                  icon: icon,
+                  // Null while the first count is in flight, rather than a
+                  // zero that would read as "none of these exist".
+                  count: counts?.forStatus(value),
+                  accent: _accentFor(value, palette),
+                  selected: status == value,
+                  onTap: () => onChanged(value),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One status chip.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.icon,
+    required this.count,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData? icon;
+  final int? count;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(18);
+    final foreground = selected ? accent : palette.textSecondary;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected
+            ? accent.withValues(alpha: isDark ? 0.22 : 0.13)
+            : palette.cardSurface,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(
+                color: selected
+                    ? accent.withValues(alpha: 0.5)
+                    : palette.border,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 15, color: foreground),
+                  const SizedBox(width: 5),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: foreground,
+                  ),
+                ),
+                if (count != null) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: foreground.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1034,114 +1216,6 @@ class _ProductGrid extends StatelessWidget {
   );
 }
 
-/// The square that leads a product row or tile.
-///
-/// It shows `product.imagePath` when there is one, and otherwise a tinted
-/// initial drawn from the product's own category and name — which is what
-/// every product has today, since nothing writes that column yet.
-///
-/// The photo is a best effort, never a requirement: the file lives on this
-/// device, so it can have been deleted, moved by the OS, or restored onto a
-/// different phone than the one the database came from. Any failure to load
-/// falls straight back to the initial rather than leaving a broken box in
-/// the middle of the catalogue.
-class _ProductAvatar extends StatelessWidget {
-  const _ProductAvatar({required this.product, this.size = 44});
-
-  final Product product;
-  final double size;
-
-  static const _swatches = [
-    Color(0xFF1A73E8),
-    Color(0xFF7C3AED),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFFEC4899),
-    Color(0xFF0EA5E9),
-  ];
-
-  /// A stable colour per category, so a shelf reads as one group.
-  Color get _accent {
-    final key = (product.category ?? product.name).trim();
-    if (key.isEmpty) return _swatches.first;
-    final hash = key.codeUnits.fold<int>(0, (a, b) => a + b);
-    return _swatches[hash % _swatches.length];
-  }
-
-  String get _initial {
-    final name = product.name.trim();
-    return name.isEmpty ? '?' : name.characters.first.toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = _accent;
-    final radius = BorderRadius.circular(size * 0.26);
-
-    final fallback = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: isDark ? 0.22 : 0.14),
-        borderRadius: radius,
-      ),
-      child: Text(
-        _initial,
-        style: TextStyle(
-          fontSize: size * 0.42,
-          fontWeight: FontWeight.w700,
-          color: accent,
-        ),
-      ),
-    );
-
-    final path = product.imagePath?.trim();
-    if (path == null || path.isEmpty) return fallback;
-
-    // The initial sits underneath rather than inside an errorBuilder, so the
-    // square is never blank: reading the file is disk I/O that completes a
-    // frame or more after the row is laid out, and a missing file is only
-    // discovered at the end of it. The photo covers this when it arrives.
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          fallback,
-          ClipRRect(
-            borderRadius: radius,
-            child: Image.file(
-              File(path),
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              // Decoded at the size it is drawn at. A 4MP shop photo in a
-              // 44px square would otherwise hold several megabytes of bitmap
-              // per row, times every row on screen.
-              cacheWidth:
-                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
-              // Fade in, or the initial visibly pops out from under it.
-              frameBuilder: (context, child, frame, wasSyncLoaded) {
-                if (wasSyncLoaded) return child;
-                return AnimatedOpacity(
-                  opacity: frame == null ? 0 : 1,
-                  duration: const Duration(milliseconds: 180),
-                  child: child,
-                );
-              },
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// A small outlined category label.
 class _CategoryTag extends StatelessWidget {
   const _CategoryTag(this.category);
@@ -1197,11 +1271,6 @@ class _StockBadge extends StatelessWidget {
   }
 }
 
-/// Formats a price the way a price label does: no trailing `.00`.
-String _money(double value) => '₹${value.toStringAsFixed(
-      value == value.roundToDouble() ? 0 : 2,
-    )}';
-
 /// One product, as a row.
 class _ProductRow extends StatelessWidget {
   const _ProductRow({
@@ -1240,7 +1309,7 @@ class _ProductRow extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
             child: Row(
               children: [
-                _ProductAvatar(product: p),
+                ProductAvatar(product: p),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1284,7 +1353,7 @@ class _ProductRow extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          'MRP ${_money(p.sellPrice)}',
+                          'MRP ${formatRupees(p.sellPrice)}',
                           style: TextStyle(
                             fontSize: 11,
                             color: palette.textTertiary,
@@ -1344,7 +1413,7 @@ class _ProductTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ProductAvatar(product: p, size: 52),
+                  ProductAvatar(product: p, size: 52),
                   const Spacer(),
                   _StockBadge(product: p, compact: true),
                 ],
@@ -1374,7 +1443,7 @@ class _ProductTile extends StatelessWidget {
                   const Spacer(),
                   if (p.sellPrice > 0)
                     Text(
-                      _money(p.sellPrice),
+                      formatRupees(p.sellPrice),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -1393,9 +1462,12 @@ class _ProductTile extends StatelessWidget {
 
 /// Shown when the catalogue has nothing to show.
 class _EmptyCatalogue extends StatelessWidget {
-  const _EmptyCatalogue({required this.filtered});
+  const _EmptyCatalogue({required this.filtered, this.onClearFilters});
 
   final bool filtered;
+
+  /// Offered when the catalogue is non-empty but the filters hide all of it.
+  final VoidCallback? onClearFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,6 +1500,15 @@ class _EmptyCatalogue extends StatelessWidget {
                   'Tap + to add your first product, or scan a barcode.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12.5, color: palette.textTertiary),
+                ),
+              ),
+            if (onClearFilters != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: TextButton.icon(
+                  onPressed: onClearFilters,
+                  icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                  label: const Text('Clear filters'),
                 ),
               ),
           ],
@@ -1508,7 +1589,7 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
                         Expanded(
                           child: _Stat(
                             label: AppLocale.tr('inventory_valuation'),
-                            value: _money(value.totalCostValue),
+                            value: formatRupees(value.totalCostValue),
                           ),
                         ),
                         _Stat(
@@ -1532,13 +1613,13 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
                           Expanded(
                             child: _Stat(
                               label: AppLocale.tr('retail_value'),
-                              value: _money(value.totalRetailValue),
+                              value: formatRupees(value.totalRetailValue),
                             ),
                           ),
                           Expanded(
                             child: _Stat(
                               label: AppLocale.tr('est_margin'),
-                              value: '+${_money(value.potentialProfit)}'
+                              value: '+${formatRupees(value.potentialProfit)}'
                                   ' (${value.marginPercent.toStringAsFixed(1)}%)',
                             ),
                           ),
