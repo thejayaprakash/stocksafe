@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../data/database.dart';
+import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/barcode_label_service.dart';
 import '../app_scope.dart';
@@ -38,7 +39,7 @@ class _BarcodeLabelPrintPageState extends State<BarcodeLabelPrintPage> {
   late int _count = widget.initialCount;
   LabelSheetFormat _format = LabelSheetFormat.a4_24;
   BarcodeSymbology _symbology = BarcodeSymbology.code128;
-  String _shopName = 'STOCKSAFE KIRANA';
+  String _shopName = shopNamePlaceholder;
   int _startOffset = 0;
   bool _showPrice = true;
   bool _showPackDate = true;
@@ -56,7 +57,7 @@ class _BarcodeLabelPrintPageState extends State<BarcodeLabelPrintPage> {
   }
 
   Future<void> _loadShopName() async {
-    final saved = await _db.settingDao.get('shop_name');
+    final saved = await _db.settingDao.get(shopNameSettingKey);
     if (saved != null && saved.trim().isNotEmpty && mounted) {
       setState(() {
         _shopName = saved.trim();

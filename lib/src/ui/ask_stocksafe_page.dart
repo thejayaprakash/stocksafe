@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../data/database.dart';
 import 'product_detail_page.dart';
+import 'pro_gate.dart';
 import 'widgets/voice_assistant_dialog.dart';
 import '../app_scope.dart';
 
@@ -68,6 +69,8 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
   }
 
   Future<void> _openVoiceQuery() async {
+    if (!await requirePro(context, _db)) return;
+    if (!mounted) return;
     final result = await VoiceAssistantDialog.show(context);
     if (result != null && result.rawTranscript.trim().isNotEmpty) {
       _queryController.text = result.rawTranscript;

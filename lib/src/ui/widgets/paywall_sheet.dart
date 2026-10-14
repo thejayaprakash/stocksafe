@@ -308,11 +308,6 @@ class _PaywallSheetState extends State<PaywallSheet> {
               subtitle: AppLocale.tr('feature_unlimited_desc'),
             ),
             _FeatureRow(
-              icon: Icons.print,
-              title: AppLocale.tr('feature_thermal_escpos'),
-              subtitle: AppLocale.tr('feature_thermal_desc'),
-            ),
-            _FeatureRow(
               icon: Icons.qr_code_2,
               title: AppLocale.tr('feature_barcode_stickers'),
               subtitle: AppLocale.tr('feature_barcode_desc'),
@@ -321,6 +316,11 @@ class _PaywallSheetState extends State<PaywallSheet> {
               icon: Icons.graphic_eq,
               title: AppLocale.tr('feature_voice_assistant'),
               subtitle: AppLocale.tr('feature_voice_desc'),
+            ),
+            _FeatureRow(
+              icon: Icons.storefront,
+              title: AppLocale.tr('feature_own_branding'),
+              subtitle: AppLocale.tr('feature_own_branding_desc'),
             ),
 
             const SizedBox(height: 12),

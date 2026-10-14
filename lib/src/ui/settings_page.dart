@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/database.dart';
+import 'pro_gate.dart';
+import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
@@ -213,16 +215,20 @@ class _SettingsPageState extends State<SettingsPage> {
           title: Text(AppLocale.tr('barcode_label_printing')),
           subtitle: const Text('Generate PDF sticker sheets (Code 128 / QR) for loose goods'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
-          ),
+          onTap: () async {
+            if (!await requirePro(context, _db)) return;
+            if (!context.mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
+            );
+          },
         ),
         ListTile(
           leading: const Icon(Icons.storefront_outlined),
           title: const Text('Store Name (Receipts & Labels)'),
           subtitle: FutureBuilder<String?>(
-            future: _db.settingDao.get('shop_name'),
+            future: _db.settingDao.get(shopNameSettingKey),
             builder: (_, s) => Text(s.data ?? 'STOCKSAFE KIRANA'),
           ),
           trailing: const Icon(Icons.chevron_right),
@@ -513,7 +519,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editStoreName(BuildContext context) async {
-    final current = await _db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+    final current = await _db.settingDao.get(shopNameSettingKey) ?? shopNamePlaceholder;
     if (!context.mounted) return;
     final controller = TextEditingController(text: current);
 
@@ -542,7 +548,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     if (updated != null && updated.isNotEmpty) {
-      await _db.settingDao.set('shop_name', updated);
+      await _db.settingDao.set(shopNameSettingKey, updated);
       if (mounted) setState(() {});
     }
   }

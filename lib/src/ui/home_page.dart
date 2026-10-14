@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
@@ -93,6 +94,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openVoiceAssistant() async {
+    if (!await requirePro(context, _db)) return;
+    if (!mounted) return;
     final result = await VoiceAssistantDialog.show(context);
     if (result == null || !mounted) return;
 

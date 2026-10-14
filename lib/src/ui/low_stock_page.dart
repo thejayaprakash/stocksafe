@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/database.dart';
+import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/esc_pos_service.dart';
 import '../services/restock_analytics_service.dart';
@@ -453,26 +454,33 @@ class _LowStockPageState extends State<LowStockPage> with SingleTickerProviderSt
       ));
     }
 
-    final shopName = await _db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+    if (!mounted) return;
+    final identity = await resolvePrintIdentity(context, _db);
+    if (identity == null) return;
+
 
     final bytes58 = EscPosService.buildLowStockReorderSlipBytes(
       entries: entries,
-      shopName: shopName,
+      shopName: identity.shopName,
+      proUnlocked: identity.proUnlocked,
       paperWidth: ThermalPaperWidth.mm58,
     );
     final bytes80 = EscPosService.buildLowStockReorderSlipBytes(
       entries: entries,
-      shopName: shopName,
+      shopName: identity.shopName,
+      proUnlocked: identity.proUnlocked,
       paperWidth: ThermalPaperWidth.mm80,
     );
     final text58 = EscPosService.buildLowStockReorderText(
       entries: entries,
-      shopName: shopName,
+      shopName: identity.shopName,
+      proUnlocked: identity.proUnlocked,
       paperWidth: ThermalPaperWidth.mm58,
     );
     final text80 = EscPosService.buildLowStockReorderText(
       entries: entries,
-      shopName: shopName,
+      shopName: identity.shopName,
+      proUnlocked: identity.proUnlocked,
       paperWidth: ThermalPaperWidth.mm80,
     );
 

@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../data/backup_service.dart';
 import '../data/database.dart';
+import 'print_identity.dart';
 import '../services/diagnostic_service.dart';
 import '../services/esc_pos_service.dart';
 import 'widgets/thermal_slip_preview_sheet.dart';
@@ -340,30 +341,37 @@ Future<void> _printAuditDiscrepancySlip(
     itemsWithProd.add(StockAuditItemWithProduct(item: it, product: prod));
   }
 
-  final shopName = await db.settingDao.get('shop_name') ?? 'STOCKSAFE KIRANA';
+  if (!context.mounted) return;
+  final identity = await resolvePrintIdentity(context, db);
+  if (identity == null) return; // no shop name given, nothing to print
+
 
   final b58 = EscPosService.buildAuditDiscrepancySlipBytes(
     session: session,
     items: itemsWithProd,
-    shopName: shopName,
+    shopName: identity.shopName,
+    proUnlocked: identity.proUnlocked,
     paperWidth: ThermalPaperWidth.mm58,
   );
   final b80 = EscPosService.buildAuditDiscrepancySlipBytes(
     session: session,
     items: itemsWithProd,
-    shopName: shopName,
+    shopName: identity.shopName,
+    proUnlocked: identity.proUnlocked,
     paperWidth: ThermalPaperWidth.mm80,
   );
   final t58 = EscPosService.buildAuditDiscrepancyText(
     session: session,
     items: itemsWithProd,
-    shopName: shopName,
+    shopName: identity.shopName,
+    proUnlocked: identity.proUnlocked,
     paperWidth: ThermalPaperWidth.mm58,
   );
   final t80 = EscPosService.buildAuditDiscrepancyText(
     session: session,
     items: itemsWithProd,
-    shopName: shopName,
+    shopName: identity.shopName,
+    proUnlocked: identity.proUnlocked,
     paperWidth: ThermalPaperWidth.mm80,
   );
 
