@@ -51,28 +51,45 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     int offset = 0,
   }) {
     final q = select(products)
-      ..where((p) {
-        var predicate = p.deletedAt.isNull();
-        if (category != null && category.isNotEmpty) {
-          predicate = predicate & p.category.equals(category);
-        }
-        if (supplierId != null) {
-          predicate = predicate & p.supplierId.equals(supplierId);
-        }
-        predicate = predicate & _statusPredicate(p, status);
-        if (query.isNotEmpty) {
-          final like = '%${_escapeLike(query)}%';
-          predicate = predicate &
-              (p.name.lower().like(like, escapeChar: r'\') |
-                  p.sku.lower().like(like, escapeChar: r'\') |
-                  p.barcode.lower().like(like, escapeChar: r'\'));
-        }
-        return predicate;
-      })
+      ..where((p) => _filters(
+            query: query,
+            category: category,
+            supplierId: supplierId,
+            status: status,
+          ))
       ..orderBy([..._ordering(sort), (p) => OrderingTerm.asc(p.id)])
       ..limit(limit, offset: offset);
 
     return q.watch();
+  }
+
+  /// Everything but the ordering and the window.
+  ///
+  /// Shared so the list and [idsMatching] cannot disagree about what the
+  /// filters mean — "select all" picking up a product the user cannot see is
+  /// the kind of bug that only shows up after a bulk delete.
+  Expression<bool> _filters({
+    required String query,
+    required String? category,
+    required int? supplierId,
+    required ProductStockStatus status,
+  }) {
+    var predicate = products.deletedAt.isNull();
+    if (category != null && category.isNotEmpty) {
+      predicate = predicate & products.category.equals(category);
+    }
+    if (supplierId != null) {
+      predicate = predicate & products.supplierId.equals(supplierId);
+    }
+    predicate = predicate & _statusPredicate(products, status);
+    if (query.isNotEmpty) {
+      final like = '%${_escapeLike(query)}%';
+      predicate = predicate &
+          (products.name.lower().like(like, escapeChar: r'\') |
+              products.sku.lower().like(like, escapeChar: r'\') |
+              products.barcode.lower().like(like, escapeChar: r'\'));
+    }
+    return predicate;
   }
 
   /// The stock-level half of the where clause.
@@ -146,6 +163,32 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     }
   }
 
+  /// The ids of every product the given filters match.
+  ///
+  /// For "select all", which has to mean everything behind the filters and
+  /// not merely the page the list has scrolled far enough to load. Only the
+  /// id column is read: the selection needs nothing else, and a catalogue of
+  /// several thousand products should not be hydrated into memory to tick
+  /// some boxes.
+  Future<List<int>> idsMatching({
+    String query = '',
+    String? category,
+    int? supplierId,
+    ProductStockStatus status = ProductStockStatus.any,
+  }) async {
+    final rows = await (selectOnly(products)
+          ..addColumns([products.id])
+          ..where(_filters(
+            query: query,
+            category: category,
+            supplierId: supplierId,
+            status: status,
+          ))
+          ..orderBy([OrderingTerm.asc(products.id)]))
+        .get();
+    return rows.map((row) => row.read(products.id)).whereType<int>().toList();
+  }
+
   /// Get distinct non-empty categories from active products.
   Future<List<String>> getCategories() async {
     final catCol = products.category;
@@ -209,6 +252,63 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     final now = DateTime.now();
     await (update(products)..where((p) => p.id.equals(id)))
         .write(ProductsCompanion(deletedAt: Value(now), updatedAt: Value(now)));
+  }
+
+  /// Soft-deletes several products at once.
+  ///
+  /// One transaction, so a bulk delete that fails halfway leaves the
+  /// catalogue exactly as it was rather than half-removed. Nothing is
+  /// dropped: `deletedAt` is set, the ledger behind each product is
+  /// untouched, and [restore] brings any of them back.
+  Future<void> softDeleteMany(Iterable<int> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final now = DateTime.now();
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(deletedAt: Value(now), updatedAt: Value(now)),
+      );
+    });
+  }
+
+  /// Moves several products into one category.
+  ///
+  /// A null or blank [category] clears it, which is how a mis-imported
+  /// category gets undone.
+  Future<void> setCategoryMany(Iterable<int> ids, String? category) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final trimmed = category?.trim();
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(
+          category: Value(
+            trimmed == null || trimmed.isEmpty ? null : trimmed,
+          ),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
+  }
+
+  /// Sets the same selling price on several products.
+  ///
+  /// Only the sell price: the buy price is what each product actually cost,
+  /// which is per-product history and never the same across a selection.
+  Future<void> setSellPriceMany(Iterable<int> ids, double sellPrice) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    if (sellPrice < 0) {
+      throw ArgumentError.value(sellPrice, 'sellPrice', 'must not be negative');
+    }
+    await transaction(() async {
+      await (update(products)..where((p) => p.id.isIn(list))).write(
+        ProductsCompanion(
+          sellPrice: Value(sellPrice),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
   }
 
   Future<void> restore(int id) =>

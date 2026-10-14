@@ -12,6 +12,38 @@ part 'movement_dao.g.dart';
 class MovementDao extends DatabaseAccessor<AppDatabase> with _$MovementDaoMixin {
   MovementDao(super.db);
 
+  /// Applies the same movement to several products in one transaction.
+  ///
+  /// All or nothing. A bulk adjustment that failed partway would leave the
+  /// shopkeeper with no way to know which half of their selection had moved,
+  /// and the ledger is the record they are meant to be able to trust.
+  ///
+  /// [qtyDelta] is signed and applied per product, not split between them:
+  /// "-1 on each of these six" is the operation a shelf sweep produces.
+  Future<void> recordMovementForAll({
+    required Iterable<int> productIds,
+    required int qtyDelta,
+    required String reason,
+    String? note,
+  }) async {
+    final ids = productIds.toSet().toList();
+    if (ids.isEmpty) return;
+    if (qtyDelta == 0) {
+      throw ArgumentError.value(qtyDelta, 'qtyDelta', 'must be non-zero');
+    }
+
+    await transaction(() async {
+      for (final id in ids) {
+        await recordMovement(
+          productId: id,
+          qtyDelta: qtyDelta,
+          reason: reason,
+          note: note,
+        );
+      }
+    });
+  }
+
   /// Records a stock movement and refreshes the product's cached qty
   /// in the same transaction. The cache update is derived from
   /// SUM(qty_delta) so it can never drift from the ledger.

@@ -19,6 +19,7 @@ import 'scanner_page.dart';
 import 'settings_page.dart';
 import 'stock_audit_page.dart';
 import 'stock_movement_page.dart';
+import 'widgets/bulk_actions.dart';
 import 'widgets/floating_wave_nav_bar.dart';
 import 'widgets/product_avatar.dart';
 import 'widgets/paywall_sheet.dart';
@@ -45,6 +46,20 @@ class _HomePageState extends State<HomePage> {
   int _tabIndex = 0;
   String _query = '';
   String? _selectedCategory;
+
+  /// Catalogue view state. It lives here rather than in the list body so the
+  /// app bar can switch into selection mode and "select all" can re-run the
+  /// very query the list is showing — selecting everything the filters
+  /// match, not merely the page that happens to be loaded.
+  ProductStockStatus _status = ProductStockStatus.any;
+  ProductSort _sort = ProductSort.recentlyUpdated;
+  bool _grid = false;
+
+  final Set<int> _selected = <int>{};
+  bool _selectionMode = false;
+
+  /// How many products the current filters match, for "Select all (n)".
+  int _matchingCount = 0;
   final TextEditingController _searchController = TextEditingController();
   bool _backupBannerDismissed = false;
   bool _isBackupOverdue = false;
@@ -156,7 +171,130 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _enterSelection(int productId) {
+    setState(() {
+      _selectionMode = true;
+      _selected
+        ..clear()
+        ..add(productId);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selected.clear();
+    });
+  }
+
+  void _toggleSelected(int productId) {
+    setState(() {
+      if (!_selected.remove(productId)) _selected.add(productId);
+      // Unticking the last product leaves selection mode rather than a bar
+      // of actions that would all do nothing.
+      if (_selected.isEmpty) _selectionMode = false;
+    });
+  }
+
+  Future<void> _toggleSelectAll() async {
+    if (_selected.length >= _matchingCount && _matchingCount > 0) {
+      setState(() => _selected.clear());
+      if (_selected.isEmpty) setState(() => _selectionMode = false);
+      return;
+    }
+    // Everything the filters match, which is not the same as everything on
+    // screen: the list pages as it scrolls.
+    final all = await _db.productDao.idsMatching(
+      query: _query,
+      category: _selectedCategory,
+      status: _status,
+    );
+    if (!mounted) return;
+    setState(() => _selected
+      ..clear()
+      ..addAll(all));
+  }
+
+  /// Runs a bulk action, then reports what it did and leaves selection mode.
+  Future<void> _runBulk(
+    Future<void> Function(List<int> ids) action,
+    String Function(int count) describe,
+  ) async {
+    final ids = _selected.toList();
+    if (ids.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await action(ids);
+      if (!mounted) return;
+      _exitSelection();
+      showBulkResult(context, describe(ids.length));
+    } catch (error) {
+      DiagnosticService.instance.log(
+        'Bulk action over ${ids.length} products failed: $error',
+        level: 'ERROR',
+      );
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not finish that: $error')),
+      );
+    }
+  }
+
+  Future<void> _bulkAdjustStock() async {
+    final adjustment = await askBulkAdjustment(context, _selected.length);
+    if (adjustment == null || !mounted) return;
+    await _runBulk(
+      (ids) => _db.movementDao.recordMovementForAll(
+        productIds: ids,
+        qtyDelta: adjustment.qtyDelta,
+        reason: adjustment.reason,
+      ),
+      (count) => adjustment.qtyDelta > 0
+          ? 'Added ${adjustment.qtyDelta} to $count products'
+          : 'Removed ${-adjustment.qtyDelta} from $count products',
+    );
+  }
+
+  Future<void> _bulkUpdatePrice() async {
+    final price = await askBulkPrice(context, _selected.length);
+    if (price == null || !mounted) return;
+    await _runBulk(
+      (ids) => _db.productDao.setSellPriceMany(ids, price),
+      (count) => 'Price set on $count products',
+    );
+  }
+
+  Future<void> _bulkChangeCategory() async {
+    final choice = await askBulkCategory(context, _db, _selected.length);
+    if (choice == null || !mounted) return;
+    await _runBulk(
+      (ids) => _db.productDao.setCategoryMany(ids, choice.category),
+      (count) => choice.category == null
+          ? 'Category cleared on $count products'
+          : 'Moved $count products to ${choice.category}',
+    );
+  }
+
+  Future<void> _bulkDelete() async {
+    final confirmed = await confirmBulkDelete(context, _selected.length);
+    if (!confirmed || !mounted) return;
+    await _runBulk(
+      (ids) => _db.productDao.softDeleteMany(ids),
+      (count) => 'Deleted $count products',
+    );
+  }
+
   PreferredSizeWidget? _buildAppBar() {
+    if (_selectionMode) {
+      return SelectionAppBar(
+        count: _selected.length,
+        total: _matchingCount,
+        allSelected:
+            _matchingCount > 0 && _selected.length >= _matchingCount,
+        onCancel: _exitSelection,
+        onToggleAll: _toggleSelectAll,
+      );
+    }
+
     if (_tabIndex >= 3) return null; // StockAuditPage and MorePage manage their own AppBars
 
     if (_tabIndex == 1) {
@@ -167,6 +305,13 @@ class _HomePageState extends State<HomePage> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 21),
         ),
         actions: [
+          _HeaderIconButton(
+            icon: selectionModeIcon,
+            tooltip: 'Select products',
+            onPressed: _matchingCount == 0
+                ? null
+                : () => setState(() => _selectionMode = true),
+          ),
           _HeaderIconButton(
             icon: Icons.qr_code_scanner_rounded,
             tooltip: 'Scan a barcode',
@@ -279,7 +424,15 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: _buildAppBar(),
       body: _buildBody(),
-      bottomNavigationBar: FloatingWaveNavBar(
+      bottomNavigationBar: _selectionMode
+          ? BulkActionBar(
+              count: _selected.length,
+              onAdjustStock: _bulkAdjustStock,
+              onUpdatePrice: _bulkUpdatePrice,
+              onChangeCategory: _bulkChangeCategory,
+              onDelete: _bulkDelete,
+            )
+          : FloatingWaveNavBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (i) {
           if (i == 2) {
@@ -319,7 +472,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      floatingActionButton: _buildFab(context),
+      floatingActionButton: _selectionMode ? null : _buildFab(context),
     );
   }
 
@@ -342,6 +495,24 @@ class _HomePageState extends State<HomePage> {
           db: _db,
           query: _query,
           category: _selectedCategory,
+          status: _status,
+          sort: _sort,
+          grid: _grid,
+          selectionMode: _selectionMode,
+          selectedIds: _selected,
+          onStatusChanged: (status) => setState(() => _status = status),
+          onSortChanged: (sort) => setState(() => _sort = sort),
+          onLayoutChanged: (grid) => setState(() => _grid = grid),
+          onToggleSelected: _toggleSelected,
+          onEnterSelection: _enterSelection,
+          onMatchingCountChanged: (count) {
+            // Reported from the stream during build, so the update waits for
+            // the frame to finish rather than calling setState inside it.
+            if (count == _matchingCount) return;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _matchingCount = count);
+            });
+          },
         );
       case 3:
         return const StockAuditPage();
@@ -399,9 +570,14 @@ class _HeaderIconButton extends StatelessWidget {
     this.showBadge = false,
   });
 
+
   final IconData icon;
   final String tooltip;
-  final VoidCallback onPressed;
+
+  /// Null disables the button, which is how the catalogue hides "select
+  /// products" while there is nothing to select.
+  final VoidCallback? onPressed;
+
   final bool showBadge;
 
   @override
@@ -423,7 +599,13 @@ class _HeaderIconButton extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Icon(icon, size: 21, color: palette.textSecondary),
+                  Icon(
+                    icon,
+                    size: 21,
+                    color: onPressed == null
+                        ? palette.textDisabled
+                        : palette.textSecondary,
+                  ),
                   if (showBadge)
                     Positioned(
                       top: 10,
@@ -598,12 +780,38 @@ class _ProductListBody extends StatefulWidget {
   const _ProductListBody({
     required this.db,
     required this.query,
+    required this.status,
+    required this.sort,
+    required this.grid,
+    required this.selectionMode,
+    required this.selectedIds,
+    required this.onStatusChanged,
+    required this.onSortChanged,
+    required this.onLayoutChanged,
+    required this.onToggleSelected,
+    required this.onEnterSelection,
+    required this.onMatchingCountChanged,
     this.category,
   });
 
   final AppDatabase db;
   final String query;
   final String? category;
+  final ProductStockStatus status;
+  final ProductSort sort;
+  final bool grid;
+
+  final bool selectionMode;
+  final Set<int> selectedIds;
+
+  final ValueChanged<ProductStockStatus> onStatusChanged;
+  final ValueChanged<ProductSort> onSortChanged;
+  final ValueChanged<bool> onLayoutChanged;
+  final ValueChanged<int> onToggleSelected;
+  final ValueChanged<int> onEnterSelection;
+
+  /// How many products the filters currently match, for "Select all (n)".
+  final ValueChanged<int> onMatchingCountChanged;
 
   @override
   State<_ProductListBody> createState() => _ProductListBodyState();
@@ -630,24 +838,47 @@ class _ProductListBodyState extends State<_ProductListBody> {
   final ScrollController _scrollController = ScrollController();
   bool _mayHaveMore = true;
 
-  ProductSort _sort = ProductSort.recentlyUpdated;
-  ProductStockStatus _status = ProductStockStatus.any;
-  bool _grid = false;
+  /// The live query, held rather than rebuilt in `build`.
+  ///
+  /// Calling `watchAll(...)` from `build` hands StreamBuilder a new stream
+  /// object every time anything on the page rebuilds. It drops the old
+  /// subscription, opens a fresh one, and passes through `waiting` with no
+  /// data on the way — so the catalogue flickers back to a spinner on every
+  /// unrelated rebuild, and a rebuild triggered by that spinner never
+  /// settles. Recreated only when the query itself changes.
+  Stream<List<Product>>? _products;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _openQuery();
+  }
+
+  /// Opens the query for the current filters, sort and window.
+  void _openQuery() {
+    _products = widget.db.productDao.watchAll(
+      query: widget.query,
+      category: widget.category,
+      status: widget.status,
+      sort: widget.sort,
+      limit: _limit,
+    );
   }
 
   @override
   void didUpdateWidget(covariant _ProductListBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // A new search or filter is a new result set; start the window again.
+    // A new search, filter or order is a new result set, so the paging
+    // window starts again. Without this the first page would be in the new
+    // order and the rest whatever the old one had already fetched.
     if (oldWidget.query != widget.query ||
-        oldWidget.category != widget.category) {
+        oldWidget.category != widget.category ||
+        oldWidget.status != widget.status ||
+        oldWidget.sort != widget.sort) {
       _limit = _pageSize;
       _mayHaveMore = true;
+      _openQuery();
     }
   }
 
@@ -662,38 +893,18 @@ class _ProductListBodyState extends State<_ProductListBody> {
     if (!_mayHaveMore || !_scrollController.hasClients) return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 400) {
-      setState(() => _limit += _pageSize);
+      setState(() {
+        _limit += _pageSize;
+        _openQuery();
+      });
     }
-  }
-
-  void _setStatus(ProductStockStatus status) {
-    if (status == _status) return;
-    // A different filter is a different result set, so the paging window
-    // restarts with it, exactly as a different sort order does.
-    setState(() {
-      _status = status;
-      _limit = _pageSize;
-      _mayHaveMore = true;
-    });
-  }
-
-  void _setSort(ProductSort sort) {
-    if (sort == _sort) return;
-    // A different order is a different result set, so the window restarts
-    // with it — otherwise the first page would be the new order and the rest
-    // whatever the old one had already fetched.
-    setState(() {
-      _sort = sort;
-      _limit = _pageSize;
-      _mayHaveMore = true;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final unfiltered = widget.query.isEmpty &&
         widget.category == null &&
-        _status == ProductStockStatus.any;
+        widget.status == ProductStockStatus.any;
 
     // The status chips stay on screen whatever the list below them shows.
     // Filtering down to nothing and losing the control that did it leaves
@@ -702,46 +913,46 @@ class _ProductListBodyState extends State<_ProductListBody> {
       children: [
         _StatusFilterBar(
           db: widget.db,
-          status: _status,
-          onChanged: _setStatus,
+          status: widget.status,
+          onChanged: widget.onStatusChanged,
         ),
         Expanded(
           child: StreamBuilder<List<Product>>(
-            stream: widget.db.productDao.watchAll(
-              query: widget.query,
-              category: widget.category,
-              status: _status,
-              sort: _sort,
-              limit: _limit,
-            ),
+            stream: _products,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
               final products = snapshot.data ?? const <Product>[];
               // Fewer rows than asked for means the end has been reached.
               _mayHaveMore = products.length >= _limit;
+              widget.onMatchingCountChanged(products.length);
 
               if (products.isEmpty) {
                 return _EmptyCatalogue(
                   filtered: !unfiltered,
                   onClearFilters: unfiltered
                       ? null
-                      : () => _setStatus(ProductStockStatus.any),
+                      : () => widget.onStatusChanged(ProductStockStatus.any),
                 );
               }
 
               return Column(
                 children: [
-                  if (unfiltered) _InventoryValuationCard(db: widget.db),
-                  _ListControls(
-                    sort: _sort,
-                    onSortChanged: _setSort,
-                    grid: _grid,
-                    onLayoutChanged: (grid) => setState(() => _grid = grid),
-                  ),
+                  // Hidden while selecting: the valuation covers the whole
+                  // shop and says nothing about the rows being picked.
+                  if (unfiltered && !widget.selectionMode)
+                    _InventoryValuationCard(db: widget.db),
+                  if (!widget.selectionMode)
+                    _ListControls(
+                      sort: widget.sort,
+                      onSortChanged: widget.onSortChanged,
+                      grid: widget.grid,
+                      onLayoutChanged: widget.onLayoutChanged,
+                    ),
                   Expanded(
-                    child: _grid
+                    child: widget.grid && !widget.selectionMode
                         ? _ProductGrid(
                             products: products,
                             controller: _scrollController,
@@ -753,8 +964,12 @@ class _ProductListBodyState extends State<_ProductListBody> {
                             products: products,
                             controller: _scrollController,
                             loadingMore: _mayHaveMore,
+                            selectionMode: widget.selectionMode,
+                            selectedIds: widget.selectedIds,
                             onOpen: _open,
                             onActions: _showActions,
+                            onToggleSelected: widget.onToggleSelected,
+                            onEnterSelection: widget.onEnterSelection,
                           ),
                   ),
                 ],
@@ -1133,6 +1348,10 @@ class _ProductList extends StatelessWidget {
     required this.loadingMore,
     required this.onOpen,
     required this.onActions,
+    this.selectionMode = false,
+    this.selectedIds = const <int>{},
+    this.onToggleSelected,
+    this.onEnterSelection,
   });
 
   final List<Product> products;
@@ -1140,6 +1359,11 @@ class _ProductList extends StatelessWidget {
   final bool loadingMore;
   final ValueChanged<Product> onOpen;
   final ValueChanged<Product> onActions;
+
+  final bool selectionMode;
+  final Set<int> selectedIds;
+  final ValueChanged<int>? onToggleSelected;
+  final ValueChanged<int>? onEnterSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -1152,8 +1376,18 @@ class _ProductList extends StatelessWidget {
         final p = products[index];
         return _ProductRow(
           product: p,
-          onTap: () => onOpen(p),
+          selectionMode: selectionMode,
+          selected: selectedIds.contains(p.id),
+          // While selecting, a tap picks the row rather than leaving the
+          // screen — opening a product mid-selection would throw the
+          // selection away.
+          onTap: selectionMode
+              ? () => onToggleSelected?.call(p.id)
+              : () => onOpen(p),
           onActions: () => onActions(p),
+          onLongPress: selectionMode
+              ? () => onToggleSelected?.call(p.id)
+              : () => onEnterSelection?.call(p.id),
         );
       },
     );
@@ -1277,11 +1511,17 @@ class _ProductRow extends StatelessWidget {
     required this.product,
     required this.onTap,
     required this.onActions,
+    this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
   });
 
   final Product product;
   final VoidCallback onTap;
   final VoidCallback onActions;
+  final VoidCallback? onLongPress;
+  final bool selectionMode;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -1292,23 +1532,34 @@ class _ProductRow extends StatelessWidget {
       p.unit,
     ].join(' · ');
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: palette.cardSurface,
+        color: selected
+            ? palette.primary.withValues(alpha: isDark ? 0.16 : 0.08)
+            : palette.cardSurface,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          onLongPress: onActions,
+          onLongPress: onLongPress ?? onActions,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: palette.border),
+              border: Border.all(
+                color: selected ? palette.primary : palette.border,
+              ),
             ),
-            padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
+            padding: EdgeInsets.fromLTRB(selectionMode ? 2 : 10, 10, 6, 10),
             child: Row(
               children: [
+                if (selectionMode)
+                  SelectionCheckbox(
+                    selected: selected,
+                    onChanged: (_) => onTap(),
+                  ),
                 ProductAvatar(product: p),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1362,12 +1613,13 @@ class _ProductRow extends StatelessWidget {
                       ),
                   ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.more_vert_rounded, size: 18),
-                  color: palette.textTertiary,
-                  tooltip: 'Stock actions',
-                  onPressed: onActions,
-                ),
+                if (!selectionMode)
+                  IconButton(
+                    icon: const Icon(Icons.more_vert_rounded, size: 18),
+                    color: palette.textTertiary,
+                    tooltip: 'Stock actions',
+                    onPressed: onActions,
+                  ),
               ],
             ),
           ),
