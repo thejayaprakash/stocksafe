@@ -9,6 +9,7 @@ import 'src/app_scope.dart';
 import 'src/data/database.dart';
 import 'src/services/app_localization.dart';
 import 'src/services/diagnostic_service.dart';
+import 'src/services/product_image_service.dart';
 import 'src/services/theme_service.dart';
 import 'src/ui/home_page.dart';
 
@@ -20,10 +21,15 @@ Future<void> main() async {
   // Persist errors before anything else can throw. The buffer was in-memory
   // only, so a crash destroyed the one record worth having.
   try {
-    await DiagnosticService.instance
-        .attachLogFile(await getApplicationSupportDirectory());
+    final support = await getApplicationSupportDirectory();
+    await DiagnosticService.instance.attachLogFile(support);
+    // Product photos are stored relative to this directory, and widgets
+    // resolve them during build, which cannot await. Done here so the base
+    // is known before the first frame.
+    await ProductImageService.initialise(override: support);
   } catch (_) {
-    // Diagnostics must never be the reason the app fails to start.
+    // Diagnostics must never be the reason the app fails to start, and a
+    // missing image directory only costs the photos, not the catalogue.
   }
 
   // Errors raised inside the Flutter framework.
