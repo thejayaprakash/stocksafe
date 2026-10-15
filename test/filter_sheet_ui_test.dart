@@ -33,6 +33,17 @@ Future<void> withCatalogue(
     );
   }
 
+  // One product with no category at all. Clearing the filter shows it, so
+  // the "All categories" row has to count it.
+  await db.productDao.insertProduct(
+    ProductsCompanion.insert(
+      name: 'Uncategorised thing',
+      stockQty: const Value(5),
+      createdAt: now,
+      updatedAt: now,
+    ),
+  );
+
   try {
     await tester.pumpWidget(StockSafeApp(createDatabase: () => db));
     await tester.pumpAndSettle();
@@ -65,6 +76,18 @@ void main() {
       }
       expect(find.byType(Checkbox), findsNWidgets(4),
           reason: 'All categories, plus one row per category');
+
+      // Five products, four of them categorised. "All categories" clears
+      // the filter and therefore shows all five, so it must say five — it
+      // used to sum the rows beneath it and promise four.
+      expect(
+        find.descendant(
+          of: find.widgetWithText(InkWell, 'All categories'),
+          matching: find.text('5'),
+        ),
+        findsOneWidget,
+        reason: 'the All row must count uncategorised products too',
+      );
     });
   });
 

@@ -111,6 +111,16 @@ class _FilterSheetState extends State<_FilterSheet> {
   /// spinner on every tick.
   late final Stream<Map<String, int>> _categoryCounts =
       widget.db.productDao.watchCategoryCounts();
+
+  /// Every live product, including the ones with no category at all.
+  ///
+  /// The "All categories" row has to show this rather than the sum of the
+  /// rows beneath it. Clearing the filter shows uncategorised products too,
+  /// so a total that left them out promised one number and delivered
+  /// another — visible as "All categories 5" directly beneath a chip
+  /// reading "All 9".
+  late final Stream<int> _liveProductCount =
+      widget.db.productDao.watchStatusCounts().map((counts) => counts.all);
   late final Stream<List<Supplier>> _suppliers =
       widget.db.supplierDao.watchAll();
 
@@ -161,6 +171,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                   const SizedBox(height: 8),
                   _CategoryPicker(
                     counts: _categoryCounts,
+                    liveProductCount: _liveProductCount,
                     selected: _filters.categories,
                     onChanged: (categories) => setState(
                       () => _filters = _filters.copyWith(categories: categories),
@@ -236,11 +247,13 @@ class _Heading extends StatelessWidget {
 class _CategoryPicker extends StatelessWidget {
   const _CategoryPicker({
     required this.counts,
+    required this.liveProductCount,
     required this.selected,
     required this.onChanged,
   });
 
   final Stream<Map<String, int>> counts;
+  final Stream<int> liveProductCount;
   final Set<String> selected;
   final ValueChanged<Set<String>> onChanged;
 
@@ -271,17 +284,24 @@ class _CategoryPicker extends StatelessWidget {
           );
         }
 
-        final total = counts.values.fold<int>(0, (a, b) => a + b);
+        // The sum of the rows below is not the answer: products with no
+        // category are shown when the filter is cleared but belong to none
+        // of them.
+        final categorised = counts.values.fold<int>(0, (a, b) => a + b);
 
         return Column(
           children: [
-            _CheckRow(
-              label: 'All categories',
-              count: total,
-              // Nothing ticked is the same thing as everything shown, and
-              // the row says so rather than leaving the list looking unset.
-              checked: selected.isEmpty,
-              onTap: () => onChanged(const {}),
+            StreamBuilder<int>(
+              stream: liveProductCount,
+              builder: (context, totalSnapshot) => _CheckRow(
+                label: 'All categories',
+                count: totalSnapshot.data ?? categorised,
+                // Nothing ticked is the same thing as everything shown, and
+                // the row says so rather than leaving the list looking
+                // unset.
+                checked: selected.isEmpty,
+                onTap: () => onChanged(const {}),
+              ),
             ),
             for (final entry in counts.entries)
               _CheckRow(
