@@ -44,6 +44,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   Stream<List<Product>> watchAll({
     String query = '',
     String? category,
+    Set<String> categories = const {},
     int? supplierId,
     ProductStockStatus status = ProductStockStatus.any,
     bool favouritesOnly = false,
@@ -55,6 +56,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
       ..where((p) => _filters(
             query: query,
             category: category,
+            categories: categories,
             supplierId: supplierId,
             status: status,
             favouritesOnly: favouritesOnly,
@@ -75,11 +77,25 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     required String? category,
     required int? supplierId,
     required ProductStockStatus status,
+    Set<String> categories = const {},
     bool favouritesOnly = false,
   }) {
     var predicate = products.deletedAt.isNull();
-    if (category != null && category.isNotEmpty) {
-      predicate = predicate & products.category.equals(category);
+
+    // `category` and `categories` are one filter with two spellings: the
+    // single one is what a tapped chip passes, the set is what the filter
+    // sheet passes. Combined rather than one overriding the other, so a
+    // caller cannot silently lose a filter it set.
+    final wanted = <String>{
+      if (category != null && category.trim().isNotEmpty) category.trim(),
+      ...categories.map((c) => c.trim()).where((c) => c.isNotEmpty),
+    };
+    if (wanted.length == 1) {
+      predicate = predicate & products.category.equals(wanted.first);
+    } else if (wanted.length > 1) {
+      // Several categories is a union: "show me Dairy and Spices", not
+      // "show me rows that are somehow both".
+      predicate = predicate & products.category.isIn(wanted.toList());
     }
     if (supplierId != null) {
       predicate = predicate & products.supplierId.equals(supplierId);
@@ -205,6 +221,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
   Future<List<int>> idsMatching({
     String query = '',
     String? category,
+    Set<String> categories = const {},
     int? supplierId,
     ProductStockStatus status = ProductStockStatus.any,
     bool favouritesOnly = false,
@@ -214,6 +231,7 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
           ..where(_filters(
             query: query,
             category: category,
+            categories: categories,
             supplierId: supplierId,
             status: status,
             favouritesOnly: favouritesOnly,
@@ -236,6 +254,28 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
         .where((c) => c.trim().isNotEmpty)
         .toList()
       ..sort();
+  }
+
+  /// Each category and how many live products carry it.
+  ///
+  /// One pass rather than a query per row of the filter sheet: the counts
+  /// are all shown together, and a shop with a long category list would
+  /// otherwise scan the table once per line.
+  Stream<Map<String, int>> watchCategoryCounts() {
+    return (select(products)..where((p) => p.deletedAt.isNull()))
+        .watch()
+        .map((rows) {
+      final counts = <String, int>{};
+      for (final product in rows) {
+        final category = product.category?.trim();
+        if (category == null || category.isEmpty) continue;
+        counts[category] = (counts[category] ?? 0) + 1;
+      }
+      // Alphabetical, so the sheet does not reshuffle as stock moves.
+      return Map.fromEntries(
+        counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+      );
+    });
   }
 
   /// Stream distinct categories.
