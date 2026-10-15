@@ -23,6 +23,7 @@ import 'widgets/bulk_actions.dart';
 import 'widgets/favourite_button.dart';
 import 'widgets/floating_wave_nav_bar.dart';
 import 'widgets/product_avatar.dart';
+import 'widgets/product_filter_sheet.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
 import '../app_scope.dart';
@@ -46,14 +47,16 @@ class _HomePageState extends State<HomePage> {
 
   int _tabIndex = 0;
   String _query = '';
-  String? _selectedCategory;
 
   /// Catalogue view state. It lives here rather than in the list body so the
   /// app bar can switch into selection mode and "select all" can re-run the
   /// very query the list is showing — selecting everything the filters
   /// match, not merely the page that happens to be loaded.
-  ProductStockStatus _status = ProductStockStatus.any;
-  bool _favouritesOnly = false;
+  /// Everything the catalogue is narrowed by, apart from the search text
+  /// and the sort order. One value so the filter sheet can be handed the
+  /// whole set and give back whatever the user settled on.
+  ProductFilters _filters = const ProductFilters();
+
   ProductSort _sort = ProductSort.recentlyUpdated;
   bool _grid = false;
 
@@ -173,6 +176,17 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _openFilterSheet() async {
+    final chosen = await showProductFilterSheet(
+      context: context,
+      db: _db,
+      current: _filters,
+    );
+    // Null means the sheet was dismissed, which must change nothing.
+    if (chosen == null || !mounted) return;
+    setState(() => _filters = chosen);
+  }
+
   void _enterSelection(int productId) {
     setState(() {
       _selectionMode = true;
@@ -208,9 +222,10 @@ class _HomePageState extends State<HomePage> {
     // screen: the list pages as it scrolls.
     final all = await _db.productDao.idsMatching(
       query: _query,
-      category: _selectedCategory,
-      status: _status,
-      favouritesOnly: _favouritesOnly,
+      categories: _filters.categories,
+      supplierId: _filters.supplierId,
+      status: _filters.status,
+      favouritesOnly: _filters.favouritesOnly,
     );
     if (!mounted) return;
     setState(() => _selected
@@ -339,9 +354,16 @@ class _HomePageState extends State<HomePage> {
               ),
               _CategoryFilterBar(
                 db: _db,
-                selectedCategory: _selectedCategory,
-                onCategorySelected: (cat) =>
-                    setState(() => _selectedCategory = cat),
+                selected: _filters.categories,
+                onToggle: (category) {
+                  final next = Set<String>.from(_filters.categories);
+                  if (category == null) {
+                    next.clear();
+                  } else if (!next.remove(category)) {
+                    next.add(category);
+                  }
+                  setState(() => _filters = _filters.copyWith(categories: next));
+                },
               ),
               const SizedBox(height: 8),
             ],
@@ -497,16 +519,13 @@ class _HomePageState extends State<HomePage> {
         return _ProductListBody(
           db: _db,
           query: _query,
-          category: _selectedCategory,
-          status: _status,
-          favouritesOnly: _favouritesOnly,
+          filters: _filters,
           sort: _sort,
           grid: _grid,
           selectionMode: _selectionMode,
           selectedIds: _selected,
-          onStatusChanged: (status) => setState(() => _status = status),
-          onFavouritesOnlyChanged: (only) =>
-              setState(() => _favouritesOnly = only),
+          onFiltersChanged: (filters) => setState(() => _filters = filters),
+          onOpenFilterSheet: _openFilterSheet,
           onSortChanged: (sort) => setState(() => _sort = sort),
           onLayoutChanged: (grid) => setState(() => _grid = grid),
           onToggleSelected: _toggleSelected,
@@ -693,13 +712,17 @@ class _ProductSearchField extends StatelessWidget {
 class _CategoryFilterBar extends StatelessWidget {
   const _CategoryFilterBar({
     required this.db,
-    required this.selectedCategory,
-    required this.onCategorySelected,
+    required this.selected,
+    required this.onToggle,
   });
 
   final AppDatabase db;
-  final String? selectedCategory;
-  final ValueChanged<String?> onCategorySelected;
+
+  /// Empty means every category, which is what the "All" chip shows.
+  final Set<String> selected;
+
+  /// Null toggles "All", clearing the set.
+  final ValueChanged<String?> onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -717,16 +740,14 @@ class _CategoryFilterBar extends StatelessWidget {
             children: [
               _CategoryChip(
                 label: AppLocale.tr('all_categories'),
-                selected: selectedCategory == null,
-                onTap: () => onCategorySelected(null),
+                selected: selected.isEmpty,
+                onTap: () => onToggle(null),
               ),
               for (final cat in categories)
                 _CategoryChip(
                   label: cat,
-                  selected: selectedCategory == cat,
-                  onTap: () => onCategorySelected(
-                    selectedCategory == cat ? null : cat,
-                  ),
+                  selected: selected.contains(cat),
+                  onTap: () => onToggle(cat),
                 ),
             ],
           ),
@@ -786,35 +807,31 @@ class _ProductListBody extends StatefulWidget {
   const _ProductListBody({
     required this.db,
     required this.query,
-    required this.status,
-    required this.favouritesOnly,
+    required this.filters,
     required this.sort,
     required this.grid,
     required this.selectionMode,
     required this.selectedIds,
-    required this.onStatusChanged,
-    required this.onFavouritesOnlyChanged,
+    required this.onFiltersChanged,
+    required this.onOpenFilterSheet,
     required this.onSortChanged,
     required this.onLayoutChanged,
     required this.onToggleSelected,
     required this.onEnterSelection,
     required this.onMatchingCountChanged,
-    this.category,
   });
 
   final AppDatabase db;
   final String query;
-  final String? category;
-  final ProductStockStatus status;
-  final bool favouritesOnly;
+  final ProductFilters filters;
   final ProductSort sort;
   final bool grid;
 
   final bool selectionMode;
   final Set<int> selectedIds;
 
-  final ValueChanged<ProductStockStatus> onStatusChanged;
-  final ValueChanged<bool> onFavouritesOnlyChanged;
+  final ValueChanged<ProductFilters> onFiltersChanged;
+  final VoidCallback onOpenFilterSheet;
   final ValueChanged<ProductSort> onSortChanged;
   final ValueChanged<bool> onLayoutChanged;
   final ValueChanged<int> onToggleSelected;
@@ -869,9 +886,10 @@ class _ProductListBodyState extends State<_ProductListBody> {
   void _openQuery() {
     _products = widget.db.productDao.watchAll(
       query: widget.query,
-      category: widget.category,
-      status: widget.status,
-      favouritesOnly: widget.favouritesOnly,
+      categories: widget.filters.categories,
+      supplierId: widget.filters.supplierId,
+      status: widget.filters.status,
+      favouritesOnly: widget.filters.favouritesOnly,
       sort: widget.sort,
       limit: _limit,
     );
@@ -884,9 +902,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
     // window starts again. Without this the first page would be in the new
     // order and the rest whatever the old one had already fetched.
     if (oldWidget.query != widget.query ||
-        oldWidget.category != widget.category ||
-        oldWidget.status != widget.status ||
-        oldWidget.favouritesOnly != widget.favouritesOnly ||
+        oldWidget.filters != widget.filters ||
         oldWidget.sort != widget.sort) {
       _limit = _pageSize;
       _mayHaveMore = true;
@@ -914,10 +930,7 @@ class _ProductListBodyState extends State<_ProductListBody> {
 
   @override
   Widget build(BuildContext context) {
-    final unfiltered = widget.query.isEmpty &&
-        widget.category == null &&
-        widget.status == ProductStockStatus.any &&
-        !widget.favouritesOnly;
+    final unfiltered = widget.query.isEmpty && widget.filters.isEmpty;
 
     // The status chips stay on screen whatever the list below them shows.
     // Filtering down to nothing and losing the control that did it leaves
@@ -926,10 +939,14 @@ class _ProductListBodyState extends State<_ProductListBody> {
       children: [
         _StatusFilterBar(
           db: widget.db,
-          status: widget.status,
-          favouritesOnly: widget.favouritesOnly,
-          onChanged: widget.onStatusChanged,
-          onFavouritesOnlyChanged: widget.onFavouritesOnlyChanged,
+          status: widget.filters.status,
+          favouritesOnly: widget.filters.favouritesOnly,
+          onChanged: (status) => widget.onFiltersChanged(
+            widget.filters.copyWith(status: status),
+          ),
+          onFavouritesOnlyChanged: (only) => widget.onFiltersChanged(
+            widget.filters.copyWith(favouritesOnly: only),
+          ),
         ),
         Expanded(
           child: StreamBuilder<List<Product>>(
@@ -947,12 +964,9 @@ class _ProductListBodyState extends State<_ProductListBody> {
               if (products.isEmpty) {
                 return _EmptyCatalogue(
                   filtered: !unfiltered,
-                  onClearFilters: unfiltered
+                  onClearFilters: widget.filters.isEmpty
                       ? null
-                      : () {
-                          widget.onStatusChanged(ProductStockStatus.any);
-                          widget.onFavouritesOnlyChanged(false);
-                        },
+                      : () => widget.onFiltersChanged(const ProductFilters()),
                 );
               }
 
@@ -968,6 +982,8 @@ class _ProductListBodyState extends State<_ProductListBody> {
                       onSortChanged: widget.onSortChanged,
                       grid: widget.grid,
                       onLayoutChanged: widget.onLayoutChanged,
+                      activeFilterCount: widget.filters.activeCount,
+                      onOpenFilterSheet: widget.onOpenFilterSheet,
                     ),
                   Expanded(
                     child: widget.grid && !widget.selectionMode
@@ -1243,12 +1259,16 @@ class _ListControls extends StatelessWidget {
     required this.onSortChanged,
     required this.grid,
     required this.onLayoutChanged,
+    required this.activeFilterCount,
+    required this.onOpenFilterSheet,
   });
 
   final ProductSort sort;
   final ValueChanged<ProductSort> onSortChanged;
   final bool grid;
   final ValueChanged<bool> onLayoutChanged;
+  final int activeFilterCount;
+  final VoidCallback onOpenFilterSheet;
 
   static String label(ProductSort sort) => switch (sort) {
         ProductSort.nameAsc => 'Name (A–Z)',
@@ -1300,6 +1320,11 @@ class _ListControls extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+          const SizedBox(width: 8),
+          FilterButton(
+            activeCount: activeFilterCount,
+            onPressed: onOpenFilterSheet,
           ),
           const Spacer(),
           _LayoutToggle(grid: grid, onChanged: onLayoutChanged),
