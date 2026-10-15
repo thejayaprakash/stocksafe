@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
+import '../../services/product_image_service.dart';
 
 /// The square that leads a product row or tile.
 ///
@@ -76,8 +75,10 @@ class ProductAvatar extends StatelessWidget {
       ),
     );
 
-    final path = product.imagePath?.trim();
-    if (path == null || path.isEmpty) return fallback;
+    // Stored relative to the app's support directory, so a database
+    // restored onto another phone still finds its photos.
+    final file = ProductImageService.resolve(product.imagePath);
+    if (file == null) return fallback;
 
     // The initial sits underneath rather than inside an errorBuilder, so the
     // square is never blank: reading the file is disk I/O that completes a
@@ -93,7 +94,7 @@ class ProductAvatar extends StatelessWidget {
           ClipRRect(
             borderRadius: radius,
             child: Image.file(
-              File(path),
+              file,
               width: size,
               height: size,
               fit: BoxFit.cover,

@@ -5,7 +5,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../backup_archive_service.dart';
 import '../backup_service.dart';
+import '../../services/diagnostic_service.dart';
 import '../../services/license_service.dart';
+import '../../services/product_image_service.dart';
 import 'database_host.dart';
 
 /// Backup and restore, with access to the database lifecycle.
@@ -148,6 +150,11 @@ class BackupRepository {
     };
     final schemaVersion = _host.db.schemaVersion;
 
+    // The database stores a path to each photo, not the picture, so an
+    // archive without them restores a catalogue whose products have all
+    // silently lost their images.
+    final images = await ProductImageService.allImages();
+
     final snapshotPath = await service.createSnapshot();
     final destination = File(p.join(
       (into ?? await getTemporaryDirectory()).path,
@@ -160,6 +167,7 @@ class BackupRepository {
         destination: destination,
         schemaVersion: schemaVersion,
         rowCounts: counts,
+        images: images,
       );
     }
 
@@ -175,6 +183,7 @@ class BackupRepository {
         destination: destination,
         schemaVersion: schemaVersion,
         rowCounts: counts,
+        images: images,
       );
     });
   }
@@ -213,11 +222,45 @@ class BackupRepository {
       await _host.withDatabaseClosed(() async {
         await service.swapInSnapshot(staged.path);
       });
+      // Photos after the database, and only once the swap has succeeded.
+      // Writing them first would leave a failed import with the new photos
+      // and the old catalogue.
+      await _restoreImages(inspection);
     } finally {
       if (await staged.exists()) await staged.delete();
     }
 
     await _clearRestoredEntitlement();
+  }
+
+  /// Writes the archive's photos back into the app's image directory.
+  ///
+  /// Existing files of the same name are overwritten, which is what the
+  /// restored database expects to find. A photo that cannot be written is
+  /// logged rather than thrown: the catalogue falls back to a tinted
+  /// initial for it, and losing one picture must not fail an import that
+  /// has already replaced the database.
+  Future<void> _restoreImages(ArchiveInspection inspection) async {
+    if (inspection.images.isEmpty) return;
+    var failed = 0;
+    for (final entry in inspection.images.entries) {
+      try {
+        await ProductImageService.restoreImage(entry.key, entry.value);
+      } catch (error) {
+        failed++;
+        DiagnosticService.instance.log(
+          'Could not restore product photo ${entry.key}: $error',
+          level: 'WARN',
+        );
+      }
+    }
+    if (failed > 0) {
+      DiagnosticService.instance.log(
+        '$failed of ${inspection.images.length} product photos could not be '
+        'restored',
+        level: 'WARN',
+      );
+    }
   }
 
   /// Both restore paths swap in a whole database file, and the Pro unlock is

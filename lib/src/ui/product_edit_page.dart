@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import '../services/diagnostic_service.dart';
 import '../services/label_ocr_service.dart';
 import '../services/expiry_parser.dart';
 import '../services/license_service.dart';
+import '../services/product_image_service.dart';
 import '../services/theme_service.dart';
 import 'money_format.dart';
 import 'widgets/paywall_sheet.dart';
@@ -68,6 +71,23 @@ class _ProductEditPageState extends State<ProductEditPage> {
   );
   int? _supplierId;
 
+  final ProductImageService _images = ProductImageService();
+
+  /// The photo as it stands in the form, which is not what is on disk until
+  /// the form is saved.
+  late String? _imagePath = widget.product?.imagePath;
+
+  /// A photo captured during this edit but not yet committed.
+  ///
+  /// Tracked so that backing out of the form deletes the file instead of
+  /// leaving it behind, and so that replacing a photo twice does not leave
+  /// the intermediate one orphaned.
+  final List<String> _unsavedImages = [];
+
+  /// The photo the product had when the form opened, deleted only once a
+  /// save has actually replaced it.
+  late final String? _originalImagePath = widget.product?.imagePath;
+
   bool _isOcrProcessing = false;
 
   /// Batch and expiry read off a label, waiting for the product to exist.
@@ -100,6 +120,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _sellPrice.dispose();
     _lowStock.dispose();
     _ocrService.dispose();
+    // Fire and forget: a form abandoned after taking a photo should not
+    // leave the file behind, and there is nothing to wait for.
+    unawaited(_discardUnusedImages(saved: false));
     super.dispose();
   }
 
@@ -150,6 +173,11 @@ class _ProductEditPageState extends State<ProductEditPage> {
               ),
 
             const SizedBox(height: 16),
+
+            _PhotoField(
+              storedPath: _imagePath,
+              onTap: _pickPhoto,
+            ),
 
             _Field(
               label: 'Product Name',
@@ -477,6 +505,90 @@ class _ProductEditPageState extends State<ProductEditPage> {
   }
 
 
+  Future<void> _pickPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            if (_imagePath != null)
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: context.palette.error,
+                ),
+                title: const Text('Remove photo'),
+                onTap: () => Navigator.pop(ctx, null),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+
+    if (source == null) {
+      // Either "remove", or the sheet was dismissed. Only the first should
+      // clear the photo, and the sheet returns null for both — so removal
+      // is only honoured when there was something to remove.
+      if (_imagePath != null) setState(() => _imagePath = null);
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final stored = await _images.capture(
+        source: source,
+        // A new product has no id yet; the name only affects the file name.
+        productId: widget.product?.id ?? 0,
+      );
+      if (stored == null || !mounted) return;
+      _unsavedImages.add(stored);
+      setState(() => _imagePath = stored);
+    } catch (error) {
+      DiagnosticService.instance.log(
+        'Capturing a product photo failed: $error',
+        level: 'WARN',
+      );
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not get that photo')),
+      );
+    }
+  }
+
+  /// Deletes files this edit created but did not keep.
+  ///
+  /// Called on save for the superseded ones, and on dispose for all of them
+  /// if the form was abandoned. A photo nobody can reach is still taking up
+  /// the user's storage.
+  Future<void> _discardUnusedImages({required bool saved}) async {
+    final keep = saved ? _imagePath : null;
+    for (final path in _unsavedImages) {
+      if (path == keep) continue;
+      await _images.delete(path);
+    }
+    _unsavedImages.clear();
+
+    // The photo being replaced only goes once the replacement is committed.
+    if (saved &&
+        _originalImagePath != null &&
+        _originalImagePath != _imagePath) {
+      await _images.delete(_originalImagePath);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -538,6 +650,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
           sellPrice: Value(sellPrice),
           lowStockLevel: Value(lowStock),
           supplierId: Value(_supplierId),
+          imagePath: Value(_imagePath),
         ),
       );
       await _recordScannedBatch(widget.product!.id);
@@ -561,6 +674,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
           sellPrice: Value(sellPrice),
           lowStockLevel: Value(lowStock),
           supplierId: Value(_supplierId),
+          imagePath: Value(_imagePath),
           createdAt: now,
           updatedAt: now,
         ),
@@ -568,6 +682,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
       await _recordScannedBatch(newId);
     }
 
+    await _discardUnusedImages(saved: true);
     if (mounted) Navigator.pop(context);
   }
 
@@ -755,6 +870,92 @@ class _SaveBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The photo control at the top of the form.
+///
+/// Shows the picture when there is one and a prompt when there is not,
+/// because an empty square with a camera icon reads the same either way to
+/// someone who has just taken a photo and wants to know whether it stuck.
+class _PhotoField extends StatelessWidget {
+  const _PhotoField({required this.storedPath, required this.onTap});
+
+  final String? storedPath;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final file = ProductImageService.resolve(storedPath);
+    final radius = BorderRadius.circular(12);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        children: [
+          Material(
+            color: palette.elevatedSurface,
+            borderRadius: radius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(
+                width: 86,
+                height: 86,
+                child: file == null
+                    ? Icon(
+                        Icons.add_a_photo_outlined,
+                        size: 26,
+                        color: palette.textTertiary,
+                      )
+                    : Image.file(
+                        file,
+                        fit: BoxFit.cover,
+                        // A photo just replaced has the same dimensions as
+                        // the last one, and Flutter's image cache is keyed
+                        // on the file — without a key the old picture stays
+                        // on screen and the save looks like it failed.
+                        key: ValueKey(storedPath),
+                        errorBuilder: (context, error, stack) => Icon(
+                          Icons.broken_image_outlined,
+                          size: 26,
+                          color: palette.textTertiary,
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file == null ? 'Add a photo' : 'Photo added',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  file == null
+                      ? 'Optional. Helps spot the right packet on the shelf.'
+                      : 'Tap to replace or remove it.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.3,
+                    color: palette.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

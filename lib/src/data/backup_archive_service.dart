@@ -27,8 +27,17 @@ class BackupArchiveService {
   static const String manifestEntry = 'manifest.json';
   static const String readmeEntry = 'README.txt';
 
+  /// Product photos live under this prefix inside the archive.
+  static const String imagePrefix = 'images/';
+
   /// Bumped only if the archive layout changes in a way older builds cannot
   /// read. Independent of the database schema version.
+  ///
+  /// Still 1 with photos added: an older build reading a v2-era archive
+  /// finds the database and manifest exactly where it expects them and
+  /// ignores the extra entries, and a newer build reading an older archive
+  /// simply finds no photos. Neither case is a failure, so refusing one
+  /// would be a lie.
   static const int archiveFormatVersion = 1;
 
   static final DateFormat _fileDateFmt = DateFormat('yyyy-MM-dd_HHmmss');
@@ -48,6 +57,7 @@ class BackupArchiveService {
     required File destination,
     required int schemaVersion,
     Map<String, int> rowCounts = const {},
+    List<File> images = const [],
   }) async {
     if (!await databaseFile.exists()) {
       throw ArgumentError('No database to archive: ${databaseFile.path}');
@@ -56,16 +66,33 @@ class BackupArchiveService {
     final bytes = await databaseFile.readAsBytes();
     final checksum = sha256.convert(bytes).toString();
 
+    final archive = Archive()..add(ArchiveFile.bytes(databaseEntry, bytes));
+
+    // Photos go in with the database. The database stores a path, not the
+    // picture, so an archive without them restores a catalogue where every
+    // product has lost its photo — silently, because the path is still
+    // there. A product photo is the user's data like any other row.
+    var imageBytes = 0;
+    var imagesAdded = 0;
+    for (final image in images) {
+      if (!await image.exists()) continue;
+      final data = await image.readAsBytes();
+      archive.add(ArchiveFile.bytes('$imagePrefix${_basename(image.path)}', data));
+      imageBytes += data.length;
+      imagesAdded++;
+    }
+
     final manifest = <String, dynamic>{
       'archiveFormatVersion': archiveFormatVersion,
       'schemaVersion': schemaVersion,
       'createdAt': DateTime.now().toIso8601String(),
       'sha256': checksum,
       'rowCounts': rowCounts,
+      'imageCount': imagesAdded,
+      'imageBytes': imageBytes,
     };
 
-    final archive = Archive()
-      ..add(ArchiveFile.bytes(databaseEntry, bytes))
+    archive
       ..add(ArchiveFile.string(
         manifestEntry,
         const JsonEncoder.withIndent('  ').convert(manifest),
@@ -86,6 +113,7 @@ Created:        ${manifest['createdAt']}
 Database schema: v${manifest['schemaVersion']}
 Products:       ${(manifest['rowCounts'] as Map)['product'] ?? 'unknown'}
 Movements:      ${(manifest['rowCounts'] as Map)['movement'] ?? 'unknown'}
+Product photos: ${manifest['imageCount'] ?? 0}
 
 To restore: open StockSafe, go to Backup, and choose "Import backup file".
 
@@ -190,6 +218,17 @@ that you have to store the file somewhere only you can reach.
       return ArchiveInspection.invalid('This backup records no schema version.');
     }
 
+    // Read from the archive rather than trusted from the manifest: the
+    // count is shown to the user before they replace their data, and it
+    // should describe what is actually in the file.
+    final imageEntries = <String, List<int>>{};
+    for (final file in archive.files) {
+      if (!file.isFile || !file.name.startsWith(imagePrefix)) continue;
+      final data = file.readBytes();
+      if (data == null) continue;
+      imageEntries[_basename(file.name)] = data;
+    }
+
     return ArchiveInspection.valid(
       schemaVersion: schemaVersion,
       createdAt: DateTime.tryParse(manifest['createdAt'] as String? ?? ''),
@@ -198,6 +237,7 @@ that you have to store the file somewhere only you can reach.
           e.key.toString(): (e.value as num).toInt(),
       },
       databaseBytes: dbBytes,
+      images: imageEntries,
     );
   }
 
@@ -214,6 +254,15 @@ that you have to store the file somewhere only you can reach.
     await destination.writeAsBytes(bytes, flush: true);
     return destination;
   }
+
+  /// The last path segment, whatever separators an archive happens to use.
+  ///
+  /// Zip entry names are attacker-controlled in the sense that matters
+  /// here: a user can be sent any file. An entry called
+  /// `images/../../../something` must not escape the images directory, and
+  /// taking only the basename is what stops it.
+  static String _basename(String path) =>
+      path.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).last;
 
   /// Local file header of a zip: `PK\x03\x04`. An empty zip starts `PK\x05\x06`.
   static bool _hasZipHeader(Uint8List bytes) {
@@ -242,6 +291,7 @@ class ArchiveInspection {
     this.createdAt,
     this.rowCounts = const {},
     this.databaseBytes,
+    this.images = const {},
   });
 
   factory ArchiveInspection.invalid(String reason) =>
@@ -252,6 +302,7 @@ class ArchiveInspection {
     required DateTime? createdAt,
     required Map<String, int> rowCounts,
     required Uint8List databaseBytes,
+    Map<String, List<int>> images = const {},
   }) =>
       ArchiveInspection._(
         isValid: true,
@@ -259,6 +310,7 @@ class ArchiveInspection {
         createdAt: createdAt,
         rowCounts: rowCounts,
         databaseBytes: databaseBytes,
+        images: images,
       );
 
   final bool isValid;
@@ -272,8 +324,12 @@ class ArchiveInspection {
   final Map<String, int> rowCounts;
   final Uint8List? databaseBytes;
 
+  /// Product photos found in the archive, by file name.
+  final Map<String, List<int>> images;
+
   int get productCount => rowCounts['product'] ?? 0;
   int get movementCount => rowCounts['movement'] ?? 0;
+  int get imageCount => images.length;
 
   /// Whether this build understands the archive's schema. A backup from a
   /// newer release carries columns this one has no migration for.
@@ -287,8 +343,11 @@ class ArchiveInspection {
     final when = createdAt == null
         ? 'unknown date'
         : DateFormat.yMMMd().add_jm().format(createdAt!);
-    return '$productCount products and $movementCount stock movements, '
-        'backed up $when.';
+    final photos = imageCount == 0
+        ? ''
+        : ', $imageCount ${imageCount == 1 ? 'photo' : 'photos'}';
+    return '$productCount products and $movementCount stock movements'
+        '$photos, backed up $when.';
   }
 }
 
