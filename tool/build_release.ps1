@@ -19,7 +19,9 @@
 [CmdletBinding()]
 param(
     [switch]$Apk,
-    [string]$SecretFile = 'C:\keys\stocksafe-voucher-secret.txt'
+    [string]$SecretFile = 'C:\keys\stocksafe-voucher-secret.txt',
+    [string]$AdmobAppId = $env:ADMOB_APP_ID,
+    [string]$RewardedAdUnitId = $env:ADMOB_REWARDED_AD_UNIT_ID
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,7 +59,15 @@ Write-Host ''
 # The secret is passed as an argument, so it lands in this process's command
 # line but not in your shell history — PowerShell records the script call, not
 # the expansion.
-& flutter build $target --release "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret"
+$adArgs = @()
+if ($RewardedAdUnitId) {
+    $adArgs += "--dart-define=ADMOB_REWARDED_AD_UNIT_ID=$RewardedAdUnitId"
+}
+if ($AdmobAppId) {
+    $adArgs += "-PadmobAppId=$AdmobAppId"
+}
+
+& flutter build $target --release "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret" @adArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ''

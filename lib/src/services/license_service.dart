@@ -2,37 +2,37 @@ import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../data/database.dart';
+import '../data/dao/reward_dao.dart';
 import 'billing_service.dart';
 import 'license_key.dart';
+import 'reward_config.dart';
 
 /// Licensing, Free-Tier Limits, and Monetization Engine for StockSafe.
 ///
-/// Rules (from dev plan):
-/// 1. Free tier allows up to 100 active products.
-/// 2. One-time payment (₹499 / $5.99) unlocks lifetime unlimited products.
-/// 3. Never put a paywall in front of data already entered:
+/// Rules:
+/// 1. Free tier base allows 50 active products (configurable via [RewardConfig.defaultBaseFreeCapacity]).
+/// 2. Voluntary rewarded ads grant +2 product capacity slots valid for 7 days (up to 5 ads/day = 10 slots).
+/// 3. One-time payment (₹499 / $5.99) unlocks lifetime unlimited products.
+/// 4. Never put a paywall in front of data already entered:
 ///    Viewing, search, stock movements, audit, CSV export, and backups
 ///    remain 100% free and functional forever.
 class LicenseService {
-  LicenseService(this._db);
+  LicenseService(this._db, [RewardDao? rewardDao])
+      : _rewardDao = rewardDao ?? RewardDao(_db);
 
   final AppDatabase _db;
+  final RewardDao _rewardDao;
 
-  /// Products a shop may hold before the one-time unlock is required.
-  ///
-  /// Raised from 50 to 100. A kirana carrying 100-300 SKUs hit the old ceiling
-  /// partway through its first stocktake — before it had entered enough of its
-  /// catalogue to see whether the app was worth paying for. A paywall that
-  /// lands mid-onboarding is measuring patience, not value.
-  ///
-  /// This is the default. SettingDao.freeLimitKey overrides it, so a changed
-  /// limit reaches existing installs without an app update.
-  static const int defaultFreeLimit = 100;
+  /// Products a shop may hold before rewarded ads or one-time unlock is required.
+  /// Centralized in [RewardConfig.defaultBaseFreeCapacity].
+  static const int defaultFreeLimit = RewardConfig.defaultBaseFreeCapacity;
 
   static const String keyProUnlocked = 'is_pro_unlocked';
   static const String keyUnlockedAt = 'pro_unlocked_at';
   static const String keyUnlockMethod = 'pro_unlock_method';
   static const String keyLicenseCode = 'pro_license_code';
+
+  RewardDao get rewardDao => _rewardDao;
 
   /// Whether the user has unlocked the lifetime unlimited version.
   Future<bool> isProUnlocked() async {
@@ -40,7 +40,7 @@ class LicenseService {
     return val == 'true';
   }
 
-  /// Get the current free product limit (default 50).
+  /// Get the base free product limit (default 50).
   Future<int> getFreeLimit() async {
     final val = await _db.settingDao.get(SettingDao.freeLimitKey);
     if (val != null) {
@@ -50,17 +50,33 @@ class LicenseService {
     return defaultFreeLimit;
   }
 
+  /// Total active verified reward slots currently valid.
+  Future<int> getActiveRewardSlots({DateTime? asOf}) async {
+    return _rewardDao.getActiveRewardSlots(asOf: asOf);
+  }
+
+  /// Effective product capacity = Base Free Capacity + Active Verified Reward Slots.
+  /// Returns -1 if Pro is unlocked (unlimited).
+  Future<int> getEffectiveCapacity({DateTime? asOf}) async {
+    final unlocked = await isProUnlocked();
+    if (unlocked) return -1;
+
+    final base = await getFreeLimit();
+    final bonus = await getActiveRewardSlots(asOf: asOf);
+    return base + bonus;
+  }
+
   /// Check if the user is allowed to add another product.
   /// Allowed if:
   /// - User has unlocked Pro, OR
-  /// - Active product count is less than the free limit.
+  /// - Active product count is less than the effective capacity (base + active reward slots).
   Future<bool> canAddProduct() async {
     final unlocked = await isProUnlocked();
     if (unlocked) return true;
 
     final activeCount = await _db.productDao.countActive();
-    final limit = await getFreeLimit();
-    return activeCount < limit;
+    final effectiveCapacity = await getEffectiveCapacity();
+    return activeCount < effectiveCapacity;
   }
 
   /// Returns remaining products the user can add before hitting paywall.
@@ -70,17 +86,12 @@ class LicenseService {
     if (unlocked) return -1;
 
     final activeCount = await _db.productDao.countActive();
-    final limit = await getFreeLimit();
-    final remaining = limit - activeCount;
+    final effectiveCapacity = await getEffectiveCapacity();
+    final remaining = effectiveCapacity - activeCount;
     return remaining > 0 ? remaining : 0;
   }
 
   /// Watch current licence status reactively.
-  ///
-  /// Driven by the database rather than a timer. This was a `while (true)`
-  /// loop running three queries every second, forever, with no cancellation —
-  /// battery and CPU spent re-reading values that change a handful of times
-  /// in the life of an install.
   Stream<LicenseStatus> watchLicenseStatus() {
     return _db
         .customSelect(
@@ -100,13 +111,17 @@ class LicenseService {
           readsFrom: {_db.settings, _db.products},
         )
         .watchSingle()
-        .map((row) {
+        .asyncMap((row) async {
       final configured = int.tryParse(row.read<String?>('free_limit') ?? '');
+      final rewardSlots = await getActiveRewardSlots();
+
       return LicenseStatus(
         isPro: row.read<String?>('pro_flag') == 'true',
         activeProductCount: row.read<int>('active_count'),
-        freeLimit:
-            (configured != null && configured > 0) ? configured : defaultFreeLimit,
+        freeLimit: (configured != null && configured > 0)
+            ? configured
+            : defaultFreeLimit,
+        rewardSlots: rewardSlots,
         unlockMethod: row.read<String?>('unlock_method'),
       );
     });
@@ -124,27 +139,11 @@ class LicenseService {
   }
 
   /// Restore a previous purchase.
-  ///
-  /// Returns true only when this device already holds an unlock. It used to
-  /// call unlockLifetime() unconditionally, so tapping "Restore Purchases" on
-  /// a fresh install granted Pro to anyone — and Play *requires* that button
-  /// to exist, so the bypass was one tap away for every user.
-  ///
-  /// Until Play Billing is integrated (roadmap E.1) there is no receipt to
-  /// query, so an honest answer is "nothing to restore" rather than a
-  /// simulated success.
   Future<bool> restorePurchases() async {
     return isProUnlocked();
   }
 
-  /// Buys the lifetime unlock through Google Play, and unlocks only if Play
-  /// says the purchase completed.
-  ///
-  /// [BillingOutcome.pending] does NOT unlock. UPI and net-banking settle
-  /// asynchronously, so a purchase can sit pending for hours: unlocking there
-  /// would give the app to anyone who starts a payment and walks away, and
-  /// refusing would tell a shopkeeper who has paid that it failed. The caller
-  /// shows a third message, and Play sends another event when it settles.
+  /// Buys the lifetime unlock through Google Play.
   Future<BillingResult> purchasePro(BillingService billing) async {
     final result = await billing.buyPro();
     if (result.grantsUnlock) {
@@ -154,10 +153,6 @@ class LicenseService {
   }
 
   /// Asks Play what this Google account already owns.
-  ///
-  /// This is what makes a reinstall or a new phone free: the entitlement lives
-  /// with the account, not the device, so there is nothing for the shopkeeper
-  /// to keep and nothing for us to store.
   Future<BillingResult> restoreFromPlay(BillingService billing) async {
     if (await isProUnlocked()) {
       return const BillingResult(BillingOutcome.restored);
@@ -170,12 +165,7 @@ class LicenseService {
   }
 
   /// Validates and activates an offline voucher or license key.
-  /// Allows Kirana stores with no Google Play account or in offline environments
-  /// to unlock the app with a valid 16-character alphanumeric key.
   Future<bool> validateAndActivateOfflineKey(String key) async {
-    // Signature-checked. The previous version accepted any string beginning
-    // STOCKSAFE with twelve or more characters, plus three hardcoded codes
-    // that are readable in the APK because R8 is disabled.
     if (LicenseKey.isValid(key)) {
       await unlockLifetime(
         method: 'offline_voucher',
@@ -184,9 +174,6 @@ class LicenseService {
       return true;
     }
 
-    // Debug builds keep a fixed code so the paywall can be exercised without
-    // minting a voucher. kDebugMode is compiled out of release entirely, so
-    // this cannot be reached by a shipped build.
     if (kDebugMode && LicenseKey.normalise(key) == 'DEBUGUNLOCK') {
       await unlockLifetime(method: 'debug_code', code: 'DEBUGUNLOCK');
       return true;
@@ -200,29 +187,17 @@ class LicenseService {
     await _db.settingDao.set(keyProUnlocked, 'false');
     await _db.settingDao.set(keyUnlockMethod, '');
     await _db.settingDao.set(keyLicenseCode, '');
+    await _rewardDao.clearAll();
   }
 
   /// Drops the entitlement, leaving inventory untouched.
-  ///
-  /// Called after a restore or an import, because the unlock is four rows in
-  /// `setting` — and `setting` lives inside `stocksafe.sqlite`, which
-  /// `BackupArchiveService` copies into the zip verbatim and which restore
-  /// swaps in wholesale.
-  ///
-  /// Without this, a backup taken while Pro was active grants Pro to whoever
-  /// restores it. One customer's zip forwarded on WhatsApp unlocks the app for
-  /// everyone who imports it — and hands over that shop's catalogue with it.
-  /// Nothing in the file is bound to a device or an account, so there is no
-  /// way to tell the owner's own restore from a stranger's.
-  ///
-  /// The owner is not locked out. Their voucher still activates, and a Play
-  /// purchase restores from the store. Entitlement comes from Play or from a
-  /// voucher, never from a file someone was sent.
+  /// Also clears local reward entitlements on restore to prevent transfer.
   Future<void> clearEntitlement() async {
     await _db.settingDao.set(keyProUnlocked, 'false');
     await _db.settingDao.set(keyUnlockedAt, '');
     await _db.settingDao.set(keyUnlockMethod, '');
     await _db.settingDao.set(keyLicenseCode, '');
+    await _rewardDao.clearAll();
   }
 }
 
@@ -232,15 +207,24 @@ class LicenseStatus {
     required this.isPro,
     required this.activeProductCount,
     required this.freeLimit,
+    this.rewardSlots = 0,
     this.unlockMethod,
   });
 
   final bool isPro;
   final int activeProductCount;
   final int freeLimit;
+  final int rewardSlots;
   final String? unlockMethod;
 
-  int get remaining => isPro ? -1 : (freeLimit - activeProductCount).clamp(0, freeLimit);
-  bool get isAtLimit => !isPro && activeProductCount >= freeLimit;
-  double get usageFraction => isPro ? 0.0 : (activeProductCount / freeLimit).clamp(0.0, 1.0);
+  int get effectiveCapacity => isPro ? -1 : freeLimit + rewardSlots;
+  int get remaining => isPro
+      ? -1
+      : (effectiveCapacity - activeProductCount).clamp(0, effectiveCapacity);
+  bool get isAtLimit => !isPro && activeProductCount >= effectiveCapacity;
+  double get usageFraction => isPro
+      ? 0.0
+      : (effectiveCapacity > 0
+          ? (activeProductCount / effectiveCapacity).clamp(0.0, 1.0)
+          : 1.0);
 }

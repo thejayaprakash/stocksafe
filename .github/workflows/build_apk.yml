@@ -99,8 +99,13 @@ jobs:
       # "StockSafe-release-apk", which read like something you could ship.
       - name: Build tester APK & App Bundle (debug-signed, NOT publishable)
         run: |
-          flutter build apk --release -PallowDebugSigning=true
-          flutter build appbundle --release -PallowDebugSigning=true
+          flutter build apk --release -PallowDebugSigning=true \
+            --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
+          flutter build appbundle --release -PallowDebugSigning=true \
+            --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
+        env:
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || vars.ADMOB_APP_ID }}
+          ADMOB_REWARDED_AD_UNIT_ID: ${{ secrets.ADMOB_REWARDED_AD_UNIT_ID || vars.ADMOB_REWARDED_AD_UNIT_ID }}
 
       - name: Upload tester APK artifact
         uses: actions/upload-artifact@v4
@@ -145,6 +150,9 @@ jobs:
       - name: Launch gate (identity, signing, voucher secret)
         run: |
           flutter test --tags release \
-            --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET"
+            --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET" \
+            --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
         env:
           STOCKSAFE_VOUCHER_SECRET: ${{ secrets.STOCKSAFE_VOUCHER_SECRET }}
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || vars.ADMOB_APP_ID }}
+          ADMOB_REWARDED_AD_UNIT_ID: ${{ secrets.ADMOB_REWARDED_AD_UNIT_ID || vars.ADMOB_REWARDED_AD_UNIT_ID }}

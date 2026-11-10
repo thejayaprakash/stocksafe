@@ -95,7 +95,9 @@ class _SettingsPageState extends State<SettingsPage> {
             final status = snapshot.data;
             final isPro = status?.isPro ?? false;
             final active = status?.activeProductCount ?? 0;
-            final limit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
+            final baseLimit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
+            final bonusSlots = status?.rewardSlots ?? 0;
+            final limit = status?.effectiveCapacity ?? baseLimit;
             return Builder(
               builder: (context) {
                 return Container(
@@ -136,7 +138,9 @@ class _SettingsPageState extends State<SettingsPage> {
                                 Text(
                                   isPro
                                       ? 'Unlimited products & premium operations unlocked'
-                                      : '$active / $limit products used',
+                                      : (bonusSlots > 0
+                                          ? '$active / $limit products used ($baseLimit + $bonusSlots bonus)'
+                                          : '$active / $limit products used'),
                                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                                 ),
                               ],
