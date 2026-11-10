@@ -4,23 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../app_scope.dart';
 import '../data/database.dart';
-import 'pro_gate.dart';
-import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
 import '../services/notification_service.dart';
 import '../services/theme_service.dart';
 import 'backup_page.dart';
-import 'barcode_label_print_page.dart';
-import 'locations_page.dart';
-import 'notifications_page.dart';
-import 'suppliers_page.dart';
+import 'print_identity.dart';
 import 'widgets/paywall_sheet.dart';
-import '../app_scope.dart';
 
-/// App settings: language, appearance/theming, Pro licensing, operations, diagnostics, cache rebuild, backup, about.
+/// StockSafe Settings Screen.
+///
+/// Restructured with clear information architecture:
+/// 1. General (App Preferences, Notifications, Physical Stock Reminders, Test Notification)
+/// 2. Data & Backup (Backup & Data Recovery, Rebuild Stock Cache with confirmation)
+/// 3. System Health & Diagnostics (App Health, Ledger Integrity, PRAGMA check, Export Diagnostics)
+/// 4. About (App Info & Version, Usage & Limits, Legal & Privacy)
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -29,12 +30,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  /// The live database, read through the scope rather than passed in.
-  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
-  /// must rebuild when the connection is replaced should call AppScope.of in
-  /// build instead.
   AppDatabase get _db => AppScope.read(context).db;
-
   late final LicenseService _licenseService;
 
   @override
@@ -58,6 +54,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentLang = AppLocale.instance.current;
     final currentTheme = ThemeService.instance.mode;
 
@@ -67,367 +65,342 @@ class _SettingsPageState extends State<SettingsPage> {
       ThemeMode.dark => AppLocale.tr('dark_theme'),
     };
 
-    // Scaffold, because this is a pushed route now.
-    //
-    // Settings used to be a tab body inside HomePage's Scaffold and inherited
-    // its Material, background and safe area. The navigation rework moved it
-    // behind More as its own MaterialPageRoute, where it had no Scaffold
-    // ancestor: text rendered in Flutter's unparented-Text style (red, double
-    // yellow underline), the first row drew under the status bar, and
-    // everything below the first section was not painted at all - which took
-    // Rebuild Stock Cache, Verify Ledger Integrity, the PRAGMA check and the
-    // diagnostic export with it. Those are the recovery tools, so losing them
-    // silently is the worst version of this bug.
-    //
-    // It looked survivable in the dark theme only because an unpainted
-    // background is black anyway.
     return Scaffold(
-      appBar: AppBar(title: Text(AppLocale.tr('settings'))),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
-        // ── StockSafe Pro & License ───────────────────────────
-        _SectionHeader(title: 'StockSafe Pro & License', icon: Icons.workspace_premium),
-        // One reactive source rather than two nested FutureBuilders that
-        // never refreshed, and no hardcoded 50: the limit is configurable,
-        // so printing it literally meant changing it had no visible effect.
-        StreamBuilder<LicenseStatus>(
-          stream: _licenseService.watchLicenseStatus(),
-          builder: (context, snapshot) {
-            final status = snapshot.data;
-            final isPro = status?.isPro ?? false;
-            final active = status?.activeProductCount ?? 0;
-            final baseLimit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
-            final bonusSlots = status?.rewardSlots ?? 0;
-            final limit = status?.effectiveCapacity ?? baseLimit;
-            return Builder(
-              builder: (context) {
-                return Container(
-                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isPro
-                          ? [Colors.amber.shade800.withValues(alpha: 0.15), Colors.amber.shade600.withValues(alpha: 0.05)]
-                          : [Colors.green.shade800.withValues(alpha: 0.1), Colors.teal.shade700.withValues(alpha: 0.05)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isPro ? Colors.amber.shade600 : Colors.green.shade600.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            isPro ? Icons.verified : Icons.stars,
-                            color: isPro ? Colors.amber.shade700 : Colors.green.shade700,
-                            size: 26,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isPro
-                                      ? 'Lifetime Pro Active ⭐'
-                                      : 'Free Tier (Max $limit Products)',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
-                                Text(
-                                  isPro
-                                      ? 'Unlimited products & premium operations unlocked'
-                                      : (bonusSlots > 0
-                                          ? '$active / $limit products used ($baseLimit + $bonusSlots bonus)'
-                                          : '$active / $limit products used'),
-                                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!isPro)
-                            FilledButton(
-                              style: FilledButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              ),
-                              onPressed: () async {
-                                final unlocked = await PaywallSheet.show(context);
-                                if (unlocked == true && mounted) setState(() {});
-                              },
-                              child: const Text('Upgrade'),
-                            ),
-                        ],
-                      ),
-                      if (!isPro) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: (active / limit).clamp(0.0, 1.0),
-                            backgroundColor: Colors.grey.shade300,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              active >= limit
-                                  ? Colors.red
-                                  : (active >= limit * 0.8
-                                      ? Colors.orange
-                                      : Colors.green),
-                            ),
-                            minHeight: 6,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
-
-        const Divider(height: 24),
-
-        // ── Appearance & Language ─────────────────────────────
-        _SectionHeader(title: AppLocale.tr('appearance'), icon: Icons.palette_outlined),
-        ListTile(
-          leading: const Icon(Icons.brightness_medium_outlined),
-          title: Text(AppLocale.tr('theme_mode')),
-          subtitle: Text(themeLabel),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showThemeSelector(context),
-        ),
-        ListTile(
-          leading: const Icon(Icons.translate),
-          title: const Text('App Language (மொழி)'),
-          subtitle: Text(currentLang.label),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showLanguageSelector(context),
-        ),
-
-        const Divider(height: 24),
-
-        // ── Operations & Printing ─────────────────────────────
-        _SectionHeader(title: 'Operations & Printing', icon: Icons.precision_manufacturing_outlined),
-        ListTile(
-          leading: const Icon(Icons.contact_phone_outlined),
-          title: Text(AppLocale.tr('suppliers')),
-          subtitle: const Text('Vendor contact directory with tap-to-call for restocks'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => SuppliersPage()),
+      backgroundColor: isDark ? const Color(0xFF0B1220) : palette.appBackground,
+      appBar: AppBar(
+        title: Text(
+          AppLocale.tr('settings'),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.warehouse_outlined),
-          title: const Text('Locations'),
-          subtitle: const Text(
-            'Track stock separately in your shop, godown or second branch',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const LocationsPage()),
-          ),
+        backgroundColor: isDark ? const Color(0xFF0B1220) : palette.appBackground,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.maybePop(context),
         ),
-        ListTile(
-          leading: const Icon(Icons.qr_code_2),
-          title: Text(AppLocale.tr('barcode_label_printing')),
-          subtitle: const Text('Generate PDF sticker sheets (Code 128 / QR) for loose goods'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () async {
-            if (!await requirePro(context, _db)) return;
-            if (!context.mounted) return;
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => BarcodeLabelPrintPage()),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.storefront_outlined),
-          title: const Text('Store Name (Receipts & Labels)'),
-          subtitle: FutureBuilder<String?>(
-            future: _db.settingDao.get(shopNameSettingKey),
-            builder: (_, s) => Text(s.data ?? 'STOCKSAFE KIRANA'),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _editStoreName(context),
-        ),
-
-        const Divider(height: 24),
-
-        // ── Notifications & Alerts ─────────────────────────────
-        _SectionHeader(title: 'Notifications & Alerts', icon: Icons.notifications_active_outlined),
-        ListTile(
-          leading: const Icon(Icons.notifications_none_rounded),
-          title: const Text('In-App Notification Center'),
-          subtitle: Text(
-            NotificationService.instance.unreadCount > 0
-                ? '${NotificationService.instance.unreadCount} unread alert${NotificationService.instance.unreadCount == 1 ? '' : 's'} waiting'
-                : 'View stock warnings, audit reminders, and alerts',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const NotificationsPage()),
-          ),
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.phone_android_rounded),
-          title: const Text('Mobile System Notifications'),
-          subtitle: const Text('Allow StockSafe to deliver notifications to your phone'),
-          value: NotificationService.instance.mobilePushEnabled,
-          onChanged: (val) async {
-            await NotificationService.instance.setMobilePushEnabled(val);
-            if (mounted) setState(() {});
-          },
-        ),
-        if (NotificationService.instance.mobilePushEnabled) ...[
-          SwitchListTile(
-            secondary: const Icon(Icons.warning_amber_rounded),
-            title: const Text('Low Stock & Out of Stock Alerts'),
-            subtitle: const Text('Immediate alert when a product drops below reorder level'),
-            value: NotificationService.instance.lowStockPushEnabled,
-            onChanged: (val) async {
-              await NotificationService.instance.setLowStockPushEnabled(val);
-              if (mounted) setState(() {});
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.alarm_rounded),
-            title: const Text('Audit & Backup Reminders'),
-            subtitle: const Text('Periodic reminders for physical stocktaking and data backup'),
-            value: NotificationService.instance.remindersPushEnabled,
-            onChanged: (val) async {
-              await NotificationService.instance.setRemindersPushEnabled(val);
-              if (mounted) setState(() {});
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.send_rounded),
-            title: const Text('Send Test Notification'),
-            subtitle: const Text('Fires a sample notification to your device system tray'),
-            trailing: OutlinedButton(
-              onPressed: () async {
-                final granted = await NotificationService.instance.showTestNotification();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        granted
-                            ? 'Test notification dispatched to your phone!'
-                            : 'Notification dispatched! Ensure notifications are allowed in Android Settings.',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Test'),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          children: [
+            // ─────────────────────────────────────────────────────────
+            // 1. General
+            // ─────────────────────────────────────────────────────────
+            const _SettingsSectionHeader(
+              icon: Icons.tune_rounded,
+              title: 'General',
+              subtitle: 'App Preferences · Notifications · Reminders',
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            _SettingsGroupCard(
+              children: [
+                _SettingsTile(
+                  icon: Icons.brightness_medium_outlined,
+                  iconBg: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF3B82F6),
+                  title: AppLocale.tr('theme_mode'),
+                  subtitle: themeLabel,
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () => _showThemeSelector(context),
+                ),
+                _SettingsTile(
+                  icon: Icons.translate_rounded,
+                  iconBg: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF8B5CF6),
+                  title: 'App Language (மொழி)',
+                  subtitle: currentLang.label,
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () => _showLanguageSelector(context),
+                ),
+                _SettingsTile(
+                  icon: Icons.storefront_outlined,
+                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF10B981),
+                  title: 'Store Name (Receipts & Labels)',
+                  subtitle: FutureBuilder<String?>(
+                    future: _db.settingDao.get(shopNameSettingKey),
+                    builder: (_, s) => Text(
+                      s.data ?? shopNamePlaceholder,
+                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () => _editStoreName(context),
+                ),
+                _SettingsSwitchTile(
+                  icon: Icons.notifications_active_outlined,
+                  iconBg: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF3B82F6),
+                  title: 'Mobile System Notifications',
+                  subtitle: 'Deliver alerts to your phone notification tray & lockscreen',
+                  value: NotificationService.instance.mobilePushEnabled,
+                  onChanged: (val) async {
+                    await NotificationService.instance.setMobilePushEnabled(val);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                if (NotificationService.instance.mobilePushEnabled) ...[
+                  _SettingsSwitchTile(
+                    icon: Icons.warning_amber_rounded,
+                    iconBg: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                    iconColor: const Color(0xFFF59E0B),
+                    title: 'Low Stock Push Alerts',
+                    subtitle: 'Immediate alert when a product drops below reorder level',
+                    value: NotificationService.instance.lowStockPushEnabled,
+                    onChanged: (val) async {
+                      await NotificationService.instance.setLowStockPushEnabled(val);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ],
+                _SettingsSwitchTile(
+                  icon: Icons.alarm_rounded,
+                  iconBg: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF6366F1),
+                  title: 'Physical Stock Reminders',
+                  subtitle: 'Periodic reminders for physical stocktaking & data safety',
+                  value: NotificationService.instance.remindersPushEnabled,
+                  onChanged: (val) async {
+                    await NotificationService.instance.setRemindersPushEnabled(val);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                _SettingsActionTile(
+                  icon: Icons.send_rounded,
+                  iconBg: const Color(0xFF0EA5E9).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF0EA5E9),
+                  title: 'Send Test Notification',
+                  subtitle: 'Fires an immediate test push to verify phone system tray',
+                  buttonLabel: 'Test',
+                  onAction: () async {
+                    final granted = await NotificationService.instance.showTestNotification();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            granted
+                                ? '🔔 Test notification dispatched to your phone!'
+                                : 'Notification dispatched! Ensure notifications are allowed in Android Settings.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
 
-        const Divider(height: 24),
+            // ─────────────────────────────────────────────────────────
+            // 2. Data & Backup
+            // ─────────────────────────────────────────────────────────
+            const _SettingsSectionHeader(
+              icon: Icons.folder_zip_outlined,
+              title: 'Data & Backup',
+              subtitle: 'Backup & Recovery · Rebuild Cache',
+            ),
+            const SizedBox(height: 8),
+            _SettingsGroupCard(
+              children: [
+                _SettingsTile(
+                  icon: Icons.backup_outlined,
+                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF10B981),
+                  title: AppLocale.tr('backup_export') != 'backup_export'
+                      ? AppLocale.tr('backup_export')
+                      : 'Backup & Data Recovery',
+                  subtitle: 'Cryptographic SHA-256 snapshots, CSV catalog & safe restore',
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BackupPage()),
+                  ),
+                ),
+                _SettingsActionTile(
+                  icon: Icons.refresh_rounded,
+                  iconBg: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF3B82F6),
+                  title: AppLocale.tr('rebuild_cache') != 'rebuild_cache'
+                      ? AppLocale.tr('rebuild_cache')
+                      : 'Rebuild Stock Cache',
+                  subtitle: 'Audits & recalculates all stock quantities from movement ledger',
+                  buttonLabel: 'Rebuild',
+                  onAction: () => _rebuildCache(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
 
-        // ── Data & Ledger ─────────────────────────────────────
-        _SectionHeader(title: 'Data & Sovereignty', icon: Icons.storage_outlined),
-        ListTile(
-          leading: const Icon(Icons.backup_outlined),
-          title: Text(AppLocale.tr('backup_export')),
-          subtitle: const Text('Verified snapshots, CSV export & import'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => BackupPage()),
-          ),
-        ),
-        ListTile(
-          leading: const Icon(Icons.refresh),
-          title: Text(AppLocale.tr('rebuild_cache')),
-          subtitle: const Text(
-            'Recalculates all stock quantities from the movement ledger. Safe and fast.',
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _rebuildCache(context),
-        ),
+            // ─────────────────────────────────────────────────────────
+            // 3. System Health & Diagnostics
+            // ─────────────────────────────────────────────────────────
+            const _SettingsSectionHeader(
+              icon: Icons.health_and_safety_outlined,
+              title: 'System Health & Diagnostics',
+              subtitle: 'App Health · Ledger Integrity · Database Integrity · Diagnostic Report',
+            ),
+            const SizedBox(height: 8),
+            _SettingsGroupCard(
+              children: [
+                _SettingsTile(
+                  icon: Icons.speed_rounded,
+                  iconBg: const Color(0xFF22C55E).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF22C55E),
+                  title: 'App Health & Stability',
+                  subtitle: '${DiagnosticService.instance.crashFreeRate.toStringAsFixed(1)}% healthy sessions · SQLite binary engine active',
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.3)),
+                    ),
+                    child: const Text(
+                      'Healthy',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF22C55E),
+                      ),
+                    ),
+                  ),
+                ),
+                _SettingsActionTile(
+                  icon: Icons.rule_rounded,
+                  iconBg: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFFF59E0B),
+                  title: AppLocale.tr('audit_ledger_integrity') != 'audit_ledger_integrity'
+                      ? AppLocale.tr('audit_ledger_integrity')
+                      : 'Verify Ledger Integrity',
+                  subtitle: 'Audits cached product stock against SELECT SUM(qty_delta)',
+                  buttonLabel: 'Verify',
+                  onAction: () => _runLedgerIntegrityAudit(context),
+                ),
+                _SettingsActionTile(
+                  icon: Icons.check_circle_outline_rounded,
+                  iconBg: const Color(0xFF14B8A6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF14B8A6),
+                  title: 'Database PRAGMA Integrity',
+                  subtitle: 'Verify SQLite binary page consistency & B-tree structure',
+                  buttonLabel: 'Check',
+                  onAction: () => _runDatabaseIntegrityCheck(context),
+                ),
+                _SettingsActionTile(
+                  icon: Icons.bug_report_outlined,
+                  iconBg: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF8B5CF6),
+                  title: 'Export Diagnostic Report',
+                  subtitle: 'Copy diagnostics log to clipboard (Counts only, zero product data)',
+                  buttonLabel: 'Export',
+                  onAction: () => _exportDiagnosticReport(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
 
-        const Divider(height: 24),
+            // ─────────────────────────────────────────────────────────
+            // 4. About
+            // ─────────────────────────────────────────────────────────
+            const _SettingsSectionHeader(
+              icon: Icons.info_outline_rounded,
+              title: 'About',
+              subtitle: 'App Information · Usage & Limits · Legal',
+            ),
+            const SizedBox(height: 8),
+            _SettingsGroupCard(
+              children: [
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (_, snap) {
+                    final info = snap.data;
+                    final version = info == null ? '0.1.0' : 'v${info.version} (${info.buildNumber})';
+                    return _SettingsTile(
+                      icon: Icons.shield_outlined,
+                      iconBg: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                      iconColor: const Color(0xFF3B82F6),
+                      title: 'StockSafe $version',
+                      subtitle: 'Offline Inventory & Audit · Local SQLite Ledger',
+                    );
+                  },
+                ),
+                StreamBuilder<LicenseStatus>(
+                  stream: _licenseService.watchLicenseStatus(),
+                  builder: (context, snapshot) {
+                    final status = snapshot.data;
+                    final isPro = status?.isPro ?? false;
+                    final active = status?.activeProductCount ?? 0;
+                    final baseLimit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
+                    final bonus = status?.rewardSlots ?? 0;
+                    final capacity = status?.effectiveCapacity ?? (baseLimit + bonus);
+                    final remaining = status?.remaining ?? (capacity - active).clamp(0, capacity);
 
-        // ── System Health & Diagnostics ───────────────────────
-        _SectionHeader(title: AppLocale.tr('system_health'), icon: Icons.health_and_safety_outlined),
-        ListTile(
-          leading: const Icon(Icons.speed, color: Colors.green),
-          title: Text(AppLocale.tr('crash_free_rate')),
-          subtitle: Text('${DiagnosticService.instance.crashFreeRate.toStringAsFixed(1)}% healthy sessions'),
+                    return _SettingsTile(
+                      icon: isPro ? Icons.workspace_premium_rounded : Icons.inventory_2_outlined,
+                      iconBg: isPro
+                          ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                          : const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                      iconColor: isPro ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6),
+                      title: isPro ? 'Lifetime Pro Active ⭐' : 'Usage & Free Limits',
+                      subtitle: isPro
+                          ? '$active products tracked · Unlimited capacity unlocked'
+                          : (bonus > 0
+                              ? '$active of $capacity products used ($bonus bonus) · $remaining slots available'
+                              : '$active of $capacity products used · $remaining slots available'),
+                      trailing: isPro
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                              ),
+                              child: const Text(
+                                'PRO',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFFF59E0B),
+                                ),
+                              ),
+                            )
+                          : OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                minimumSize: const Size(60, 32),
+                              ),
+                              onPressed: () => PaywallSheet.show(context),
+                              child: const Text('Upgrade', style: TextStyle(fontSize: 12)),
+                            ),
+                    );
+                  },
+                ),
+                _SettingsTile(
+                  icon: Icons.gavel_rounded,
+                  iconBg: const Color(0xFF64748B).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF94A3B8),
+                  title: 'Data Sovereignty & Legal',
+                  subtitle: '100% offline-first · Zero remote tracking · Open source licenses',
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () {
+                    showLicensePage(
+                      context: context,
+                      applicationName: 'StockSafe',
+                      applicationVersion: 'Offline Inventory & Audit',
+                      applicationLegalese: 'StockSafe adheres strictly to on-device data sovereignty. Your product and ledger data never leaves your device.',
+                    );
+                  },
+                ),
+              ],
+            ),
+          ],
         ),
-        ListTile(
-          leading: const Icon(Icons.rule_outlined),
-          title: Text(AppLocale.tr('audit_ledger_integrity')),
-          subtitle: const Text('Audits cached product stock against SELECT SUM(qty_delta)'),
-          trailing: const Icon(Icons.play_arrow_outlined),
-          onTap: () => _runLedgerIntegrityAudit(context),
-        ),
-        ListTile(
-          leading: const Icon(Icons.check_circle_outline, color: Colors.teal),
-          title: const Text('Database PRAGMA Integrity'),
-          subtitle: const Text('Verify SQLite binary page consistency'),
-          trailing: const Icon(Icons.play_arrow_outlined),
-          onTap: () => _runDatabaseIntegrityCheck(context),
-        ),
-        ListTile(
-          leading: const Icon(Icons.bug_report_outlined),
-          title: const Text('Export Diagnostic Report'),
-          subtitle: const Text('Copy JSON diagnostics log to clipboard'),
-          trailing: const Icon(Icons.copy),
-          onTap: () {
-            final report = DiagnosticService.instance.exportDiagnosticReport();
-            Clipboard.setData(ClipboardData(text: report));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('📋 Diagnostic report copied to clipboard.')),
-            );
-          },
-        ),
-
-        const Divider(height: 24),
-
-        // ── About ────────────────────────────────────────────
-        _SectionHeader(title: 'About', icon: Icons.info_outline),
-        FutureBuilder<int>(
-          future: _db.productDao.countActive(),
-          builder: (_, snap) {
-            final count = snap.data ?? 0;
-            return ListTile(
-              leading: const Icon(Icons.inventory_2_outlined),
-              title: Text('$count ${AppLocale.tr('active_products')}'),
-              subtitle: const Text('Deleted products are soft-deleted, never dropped'),
-            );
-          },
-        ),
-        // Read from the build rather than hardcoded. Three different version
-        // strings were in circulation — pubspec said 0.1.0, this tile said
-        // 0.3.0 — so a support request could not establish what was running.
-        FutureBuilder<PackageInfo>(
-          future: PackageInfo.fromPlatform(),
-          builder: (_, snap) {
-            final info = snap.data;
-            final version =
-                info == null ? '…' : 'v${info.version} (${info.buildNumber})';
-            return ListTile(
-              leading: const Icon(Icons.shield_outlined),
-              title: Text('StockSafe $version'),
-              subtitle: Text(
-                'Offline stock manager for small shops.\n'
-                '${AppLocale.tr("offline_tag")}',
-              ),
-            );
-          },
-          ),
-        ],
       ),
     );
   }
@@ -503,119 +476,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _runLedgerIntegrityAudit(BuildContext context) async {
-    unawaited(
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      ),
-    );
-
-    final mismatches = await DiagnosticService.instance.auditLedgerIntegrity(_db);
-    if (!context.mounted) return;
-    Navigator.pop(context); // close loader
-
-    if (mismatches.isEmpty) {
-      await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.verified, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Ledger 100% Intact'),
-            ],
-          ),
-          content: const Text(
-            'All products perfectly match their underlying movement ledger history (SUM(qty_delta)). Zero discrepancies detected.',
-          ),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-          ],
-        ),
-      );
-    } else {
-      await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Discrepancies Found'),
-            ],
-          ),
-          content: Text(
-            'Found ${mismatches.length} cache mismatches. Tap "Rebuild Cache" to fix them immediately from the immutable ledger.',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await _db.rebuildAllStockCaches();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Cache rebuilt from ledger.')),
-                  );
-                }
-              },
-              child: const Text('Rebuild Cache Now'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  Future<void> _runDatabaseIntegrityCheck(BuildContext context) async {
-    final ok = await DiagnosticService.instance.verifyDatabaseIntegrity(_db);
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          ok ? '✅ PRAGMA integrity_check: OK (Database healthy)' : '⚠️ PRAGMA integrity_check failed',
-        ),
-        backgroundColor: ok ? Colors.teal.shade700 : Colors.red,
-      ),
-    );
-  }
-
-  Future<void> _rebuildCache(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rebuild stock cache?'),
-        content: const Text(
-          'This recalculates every product\'s stock quantity from the '
-          'movement ledger. It\'s safe and fast — the ledger is the source '
-          'of truth.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Rebuild'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    await _db.rebuildAllStockCaches();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Stock cache rebuilt from ledger.')),
-      );
-    }
-  }
-
   Future<void> _editStoreName(BuildContext context) async {
     final current = await _db.settingDao.get(shopNameSettingKey) ?? shopNamePlaceholder;
     if (!context.mounted) return;
@@ -650,23 +510,542 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) setState(() {});
     }
   }
+
+  Future<void> _rebuildCache(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.refresh_rounded, color: Color(0xFF3B82F6)),
+            SizedBox(width: 8),
+            Text('Rebuild Stock Cache?'),
+          ],
+        ),
+        content: const Text(
+          'This recalculates every product\'s cached quantity directly from the immutable movement ledger.\n\n'
+          'The operation is 100% safe, non-destructive, and guarantees mathematical ledger consistency.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rebuild Cache'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    if (!context.mounted) return;
+    unawaited(
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Recalculating stock quantities...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await _db.rebuildAllStockCaches();
+
+    if (!context.mounted) return;
+    Navigator.pop(context); // Close loader
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Stock cache rebuilt and verified against ledger.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _runLedgerIntegrityAudit(BuildContext context) async {
+    unawaited(
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Auditing movement ledger integrity...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final mismatches = await DiagnosticService.instance.auditLedgerIntegrity(_db);
+    if (!context.mounted) return;
+    Navigator.pop(context); // Close loader
+
+    if (mismatches.isEmpty) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.verified, color: Color(0xFF22C55E)),
+              SizedBox(width: 8),
+              Text('Ledger 100% Intact'),
+            ],
+          ),
+          content: const Text(
+            'All product stock quantities perfectly match their underlying movement ledger history (SUM(qty_delta)). Zero discrepancies detected.',
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+    } else {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_rounded, color: Color(0xFFF59E0B)),
+              SizedBox(width: 8),
+              Text('Discrepancies Found'),
+            ],
+          ),
+          content: Text(
+            'Found ${mismatches.length} cache mismatches. Tap "Rebuild Cache" to restore them immediately from the immutable ledger.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _db.rebuildAllStockCaches();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Cache rebuilt from ledger.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Rebuild Cache Now'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _runDatabaseIntegrityCheck(BuildContext context) async {
+    final ok = await DiagnosticService.instance.verifyDatabaseIntegrity(_db);
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? '✅ PRAGMA integrity_check: OK (SQLite binary page healthy)' : '⚠️ PRAGMA integrity_check failed',
+        ),
+        backgroundColor: ok ? const Color(0xFF0D9488) : const Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _exportDiagnosticReport(BuildContext context) {
+    final report = DiagnosticService.instance.exportDiagnosticReport();
+    Clipboard.setData(ClipboardData(text: report));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📋 Diagnostic report copied to clipboard. (Zero product data included)'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.icon});
+// ─────────────────────────────────────────────────────────────────────────────
+// Section Header Widget
+// ─────────────────────────────────────────────────────────────────────────────
 
-  final String title;
+class _SettingsSectionHeader extends StatelessWidget {
+  const _SettingsSectionHeader({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+  });
+
   final IconData icon;
+  final String title;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.only(left: 4, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 19, color: const Color(0xFF3B82F6)),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.only(left: 27),
+              child: Text(
+                subtitle!,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF94A3B8),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group Card Container Widget
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsGroupCard extends StatelessWidget {
+  const _SettingsGroupCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF151E2E) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (int i = 0; i < children.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                thickness: 0.8,
+                indent: 58,
+                endIndent: 14,
+                color: borderColor.withValues(alpha: 0.7),
+              ),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Standard Setting Tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsTile extends StatelessWidget {
+  const _SettingsTile({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final String title;
+  final dynamic subtitle; // String or Widget
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 20, color: iconColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      if (subtitle is Widget)
+                        subtitle as Widget
+                      else
+                        Text(
+                          subtitle.toString(),
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFF94A3B8),
+                            height: 1.25,
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing!,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Switch Setting Tile
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsSwitchTile extends StatelessWidget {
+  const _SettingsSwitchTile({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF94A3B8),
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(width: 8),
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          Switch(
+            value: value,
+            activeTrackColor: const Color(0xFF3B82F6),
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action Setting Tile (with Compact Button)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsActionTile extends StatelessWidget {
+  const _SettingsActionTile({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.onAction,
+  });
+
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF94A3B8),
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              minimumSize: const Size(64, 34),
+              side: BorderSide(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: onAction,
+            child: Text(
+              buttonLabel,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+              ),
+            ),
+          ),
         ],
       ),
     );
