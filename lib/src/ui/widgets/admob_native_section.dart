@@ -148,7 +148,7 @@ class _AdMobNativeSectionState extends State<AdMobNativeSection> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 98,
+          height: 104,
           child: PageView(
             controller: _pageController,
             onPageChanged: (i) => setState(() => _currentPage = i),

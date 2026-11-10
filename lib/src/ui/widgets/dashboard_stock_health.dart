@@ -24,33 +24,46 @@ class DashboardStockHealthCard extends StatelessWidget {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final isOptimal = lowStock.isEmpty;
+    final isEmpty = totalProducts == 0;
+    final isOptimal = lowStock.isEmpty && !isEmpty;
     final outOfStockCount = lowStock.where((p) => p.stockQty <= 0).length;
 
     // Determine colors based on status urgency
     final Color primaryColor;
     final Color badgeBg;
+    final Color iconColor;
     final List<Color> gradientColors;
     final Color borderColor;
     final String title;
     final String subtitle;
     final IconData statusIcon;
 
-    if (isOptimal) {
+    if (isEmpty) {
+      primaryColor = const Color(0xFF3B82F6); // Blue
+      badgeBg = const Color(0xFF007AFF); // Vibrant blue circle matching design
+      iconColor = Colors.white;
+      gradientColors = isDark
+          ? [const Color(0xFF0D1D38), const Color(0xFF132746)]
+          : [const Color(0xFFEFF6FF), const Color(0xFFDBEAFE)];
+      borderColor = const Color(0xFF3B82F6).withValues(alpha: isDark ? 0.45 : 0.55);
+      title = 'No inventory yet';
+      subtitle = 'Add your first product to get started';
+      statusIcon = Icons.inventory_2_outlined;
+    } else if (isOptimal) {
       primaryColor = const Color(0xFF22C55E); // Green
       badgeBg = const Color(0xFF10B981).withValues(alpha: 0.22);
+      iconColor = primaryColor;
       gradientColors = isDark
           ? [const Color(0xFF063321), const Color(0xFF0B462F)]
           : [const Color(0xFFECFDF5), const Color(0xFFD1FAE5)];
       borderColor = const Color(0xFF10B981).withValues(alpha: isDark ? 0.35 : 0.45);
       title = 'All stock levels optimal';
-      subtitle = totalProducts > 0
-          ? '$totalProducts products · No critical shortages'
-          : 'Zero critical shortages';
+      subtitle = '$totalProducts products · No critical shortages';
       statusIcon = Icons.check_circle_rounded;
     } else if (outOfStockCount > 0) {
       primaryColor = const Color(0xFFEF4444); // Red
       badgeBg = const Color(0xFFEF4444).withValues(alpha: 0.22);
+      iconColor = primaryColor;
       gradientColors = isDark
           ? [const Color(0xFF3B0B0B), const Color(0xFF5A1414)]
           : [const Color(0xFFFEF2F2), const Color(0xFFFEE2E2)];
@@ -61,6 +74,7 @@ class DashboardStockHealthCard extends StatelessWidget {
     } else {
       primaryColor = const Color(0xFFF59E0B); // Amber
       badgeBg = const Color(0xFFF59E0B).withValues(alpha: 0.22);
+      iconColor = primaryColor;
       gradientColors = isDark
           ? [const Color(0xFF381E05), const Color(0xFF522E0A)]
           : [const Color(0xFFFFFBEB), const Color(0xFFFEF3C7)];
@@ -106,8 +120,8 @@ class DashboardStockHealthCard extends StatelessWidget {
                   ),
                   child: Icon(
                     statusIcon,
-                    color: primaryColor,
-                    size: 22,
+                    color: iconColor,
+                    size: 21,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -138,7 +152,7 @@ class DashboardStockHealthCard extends StatelessWidget {
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                           color: isDark
-                              ? primaryColor.withValues(alpha: 0.9)
+                              ? (isEmpty ? const Color(0xFF94A3B8) : primaryColor.withValues(alpha: 0.9))
                               : palette.textSecondary,
                         ),
                       ),
@@ -148,19 +162,26 @@ class DashboardStockHealthCard extends StatelessWidget {
 
                 const SizedBox(width: 8),
 
-                // Isometric Box Graphics + Chevron
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _IsometricBoxesIcon(color: isOptimal ? const Color(0xFFF59E0B) : primaryColor),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
-                      size: 20,
-                    ),
-                  ],
-                ),
+                // Trailing: In empty state, show clean blue chevron. In populated state, show 3D boxes + chevron.
+                if (isEmpty)
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF3B82F6),
+                    size: 24,
+                  )
+                else
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _IsometricBoxesIcon(color: isOptimal ? const Color(0xFFF59E0B) : primaryColor),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        size: 20,
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),

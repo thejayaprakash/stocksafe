@@ -38,6 +38,8 @@ import '../services/reward_config.dart';
 import '../services/rewarded_ad_platform.dart';
 import '../services/rewarded_ad_service.dart';
 import '../app_scope.dart';
+import 'ask_stocksafe_page.dart';
+import 'widgets/dashboard_empty_inventory.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
 /// scanner FAB. Supports real-time category filtering, dual-language localization,
@@ -429,8 +431,14 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       actions: [
-        // The bell carries a badge with count when products need reordering or attention.
-        // Tapping it opens the In-App Notification Center.
+        // 1. StockSafe AI Assistant Header Icon
+        _AiHeaderIconButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AskStockSafePage()),
+          ),
+        ),
+        // 2. Notifications Center Header Icon
         StreamBuilder<List<Product>>(
           stream: _db.productDao.watchLowStock(),
           builder: (context, snapshot) {
@@ -439,6 +447,8 @@ class _HomePageState extends State<HomePage> {
               icon: Icons.notifications_none_rounded,
               showBadge: waiting > 0,
               badgeCount: waiting,
+              dotOnly: true,
+              badgeColor: const Color(0xFF3B82F6),
               tooltip: waiting > 0
                   ? '$waiting products need attention'
                   : 'Notifications',
@@ -449,6 +459,7 @@ class _HomePageState extends State<HomePage> {
             );
           },
         ),
+        // 3. Settings Header Icon
         _HeaderIconButton(
           icon: Icons.settings_outlined,
           tooltip: AppLocale.tr('settings'),
@@ -457,7 +468,7 @@ class _HomePageState extends State<HomePage> {
             MaterialPageRoute(builder: (_) => const SettingsPage()),
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -616,6 +627,61 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+/// Circular AI Assistant icon button for the Home dashboard header.
+class _AiHeaderIconButton extends StatelessWidget {
+  const _AiHeaderIconButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Tooltip(
+        message: 'Ask StockSafe AI',
+        child: Semantics(
+          label: 'Ask StockSafe AI',
+          button: true,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF26123D),
+              border: Border.all(
+                color: const Color(0xFFA855F7),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFA855F7).withValues(alpha: 0.38),
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onPressed,
+                child: const Center(
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A circular, softly filled header button, with an optional alert dot.
 class _HeaderIconButton extends StatelessWidget {
   const _HeaderIconButton({
@@ -624,6 +690,8 @@ class _HeaderIconButton extends StatelessWidget {
     required this.onPressed,
     this.showBadge = false,
     this.badgeCount = 0,
+    this.dotOnly = false,
+    this.badgeColor,
   });
 
   final IconData icon;
@@ -631,6 +699,8 @@ class _HeaderIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool showBadge;
   final int badgeCount;
+  final bool dotOnly;
+  final Color? badgeColor;
 
   @override
   Widget build(BuildContext context) {
@@ -658,7 +728,7 @@ class _HeaderIconButton extends StatelessWidget {
                         ? palette.textDisabled
                         : palette.textSecondary,
                   ),
-                  if (showBadge && badgeCount > 0)
+                  if (showBadge && badgeCount > 0 && !dotOnly)
                     Positioned(
                       top: 4,
                       right: 4,
@@ -666,7 +736,7 @@ class _HeaderIconButton extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                         decoration: BoxDecoration(
-                          color: palette.error,
+                          color: badgeColor ?? palette.error,
                           borderRadius: BorderRadius.circular(9),
                           border: Border.all(
                             color: palette.elevatedSurface,
@@ -688,13 +758,13 @@ class _HeaderIconButton extends StatelessWidget {
                     )
                   else if (showBadge)
                     Positioned(
-                      top: 10,
-                      right: 10,
+                      top: 8,
+                      right: 8,
                       child: Container(
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: palette.error,
+                          color: badgeColor ?? palette.error,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: palette.elevatedSurface,
@@ -2104,262 +2174,259 @@ class _DashboardHomeBody extends StatelessWidget {
   final bool showBackupReminder;
   final VoidCallback onDismissBackupBanner;
 
+  Future<void> _navigateToAddProduct(BuildContext context) async {
+    final canAdd = await LicenseService(db).canAddProduct();
+    if (!context.mounted) return;
+    if (!canAdd) {
+      final unlocked = await PaywallSheet.show(context);
+      if (unlocked != true) return;
+    }
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProductEditPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
-      children: [
-        if (showBackupReminder) ...[
-          _StatusCard(
-            icon: Icons.shield_outlined,
-            accent: palette.warning,
-            title: AppLocale.tr('backup_reminder_title'),
-            subtitle: AppLocale.tr('backup_reminder_body'),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const BackupPage()),
-            ),
-            onDismiss: onDismissBackupBanner,
-          ),
-          const SizedBox(height: 10),
-        ],
+    return StreamBuilder<InventoryValuationSummary>(
+      stream: db.productDao.watchInventoryValuation(),
+      builder: (context, valSnap) {
+        final valuation = valSnap.data ??
+            const InventoryValuationSummary(
+              totalProducts: 0,
+              totalUnits: 0,
+              totalCostValue: 0,
+              totalRetailValue: 0,
+              potentialProfit: 0,
+              marginPercent: 0,
+            );
+        final totalProducts = valuation.totalProducts;
+        final isEmptyInventory = totalProducts == 0;
 
-        // ── SECTION 2: STOCK HEALTH ──
-        StreamBuilder<List<Product>>(
+        return StreamBuilder<List<Product>>(
           stream: db.productDao.watchLowStock(),
           builder: (context, lowSnap) {
             final lowStock = lowSnap.data ?? const <Product>[];
-            return StreamBuilder<InventoryValuationSummary>(
-              stream: db.productDao.watchInventoryValuation(),
-              builder: (context, valSnap) {
-                final totalProducts = valSnap.data?.totalProducts ?? 0;
-                return DashboardStockHealthCard(
+            final lowCount = lowStock.length;
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
+              children: [
+                if (showBackupReminder) ...[
+                  _StatusCard(
+                    icon: Icons.shield_outlined,
+                    accent: palette.warning,
+                    title: AppLocale.tr('backup_reminder_title'),
+                    subtitle: AppLocale.tr('backup_reminder_body'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const BackupPage()),
+                    ),
+                    onDismiss: onDismissBackupBanner,
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // ── SECTION 2: STOCK HEALTH ──
+                DashboardStockHealthCard(
                   lowStock: lowStock,
                   totalProducts: totalProducts,
-                  onTap: onNavigateToLowStock,
-                );
-              },
-            );
-          },
-        ),
-        const SizedBox(height: 16),
+                  onTap: isEmptyInventory
+                      ? () => _navigateToAddProduct(context)
+                      : onNavigateToLowStock,
+                ),
+                const SizedBox(height: 16),
 
-        // ── SECTION 3: INVENTORY OVERVIEW (4 METRICS) ──
-        StreamBuilder<InventoryValuationSummary>(
-          stream: db.productDao.watchInventoryValuation(),
-          builder: (context, valSnap) {
-            final valuation = valSnap.data ??
-                const InventoryValuationSummary(
-                  totalProducts: 0,
-                  totalUnits: 0,
-                  totalCostValue: 0,
-                  totalRetailValue: 0,
-                  potentialProfit: 0,
-                  marginPercent: 0,
-                );
-            return StreamBuilder<List<Product>>(
-              stream: db.productDao.watchLowStock(),
-              builder: (context, lowSnap) {
-                final lowCount = lowSnap.data?.length ?? 0;
-                return DashboardInventoryOverview(
+                // ── SECTION 3: INVENTORY OVERVIEW (4 METRICS) ──
+                DashboardInventoryOverview(
                   valuation: valuation,
                   lowStockCount: lowCount,
                   onTapProducts: onNavigateToProducts,
                   onTapLowStock: onNavigateToLowStock,
-                );
-              },
-            );
-          },
-        ),
-        const SizedBox(height: 18),
-
-        // ── SECTION 4: QUICK ACTIONS (2x2 GRID) ──
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const _SectionTitle('Quick Actions'),
-            TextButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Quick action customisation coming soon.'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                foregroundColor: palette.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              child: const Text(
-                'Customize',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickActionGridTile(
-                icon: Icons.qr_code_scanner_rounded,
-                accent: const Color(0xFF3B82F6),
-                title: 'Scan & Adjust',
-                subtitle: 'Single-SKU, Barcode',
-                hasChevron: true,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ScannerPage()),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _QuickActionGridTile(
-                icon: Icons.check_box_outlined,
-                accent: const Color(0xFFA855F7),
-                title: 'Physical Audit',
-                subtitle: 'Cycle Count · Reconcile',
-                hasChevron: false,
-                onTap: onNavigateToAudit,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickActionGridTile(
-                icon: Icons.add_rounded,
-                accent: const Color(0xFF22C55E),
-                title: 'Add Product',
-                subtitle: 'Create or import SKU',
-                hasChevron: false,
-                onTap: () async {
-                  final canAdd = await LicenseService(db).canAddProduct();
-                  if (!context.mounted) return;
-                  if (!canAdd) {
-                    final unlocked = await PaywallSheet.show(context);
-                    if (unlocked != true) return;
-                  }
-                  if (!context.mounted) return;
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ProductEditPage()),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _QuickActionGridTile(
-                icon: Icons.sync_rounded,
-                accent: const Color(0xFFF59E0B),
-                title: 'Sync Data',
-                subtitle: 'Backup & restore',
-                hasChevron: false,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BackupPage()),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
+                const SizedBox(height: 18),
 
-        // ── SECTION 5: NATIVE ADVERTISEMENT (GOOGLE ADMOB) ──
-        AdMobNativeSection(
-          db: db,
-          rewardedCard: _DashboardRewardAdCard(db: db),
-        ),
-        const SizedBox(height: 18),
-
-        // ── SECTION 6: TOP PRODUCTS CAROUSEL ──
-        StreamBuilder<List<Product>>(
-          stream: db.productDao.watchAll(
-            sort: ProductSort.valueHigh,
-            limit: 10,
-          ),
-          builder: (context, snapshot) {
-            final products = snapshot.data ?? const <Product>[];
-            return DashboardTopProducts(
-              products: products,
-              onViewAll: onNavigateToProducts,
-              onAddProduct: () async {
-                final canAdd = await LicenseService(db).canAddProduct();
-                if (!context.mounted) return;
-                if (!canAdd) {
-                  final unlocked = await PaywallSheet.show(context);
-                  if (unlocked != true) return;
-                }
-                if (!context.mounted) return;
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProductEditPage()),
-                );
-              },
-            );
-          },
-        ),
-        const SizedBox(height: 18),
-
-        // ── SECTION 7: RECENT STOCK ACTIVITY ──
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const _SectionTitle('Recent Stock Activity'),
-            TextButton(
-              onPressed: onNavigateToProducts,
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                foregroundColor: palette.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              child: const Text(
-                'View All',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        StreamBuilder<List<Movement>>(
-          stream: db.movementDao.watchRecent(limit: 5),
-          builder: (context, snapshot) {
-            final movements = snapshot.data ?? const <Movement>[];
-            if (movements.isEmpty) return const _NoActivityYet();
-            return Column(
-              children: [
-                for (final m in movements)
-                  FutureBuilder<Product?>(
-                    future: db.productDao.getById(m.productId),
-                    builder: (context, productSnapshot) => _ActivityRow(
-                      movement: m,
-                      product: productSnapshot.data,
-                      productName: productSnapshot.data?.name ??
-                          'Product #${m.productId}',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ProductDetailPage(productId: m.productId),
+                // ── SECTION 4: QUICK ACTIONS (2x2 GRID) ──
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const _SectionTitle('Quick Actions'),
+                    TextButton(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Quick action customisation coming soon.'),
+                            duration: Duration(seconds: 2),
                           ),
                         );
                       },
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: palette.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text(
+                        'Customize',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _QuickActionGridTile(
+                        icon: Icons.qr_code_scanner_rounded,
+                        accent: const Color(0xFF3B82F6),
+                        title: 'Scan & Adjust',
+                        subtitle: 'Single-SKU, Barcode',
+                        hasChevron: true,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ScannerPage()),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _QuickActionGridTile(
+                        icon: Icons.check_box_outlined,
+                        accent: const Color(0xFFA855F7),
+                        title: 'Physical Audit',
+                        subtitle: 'Cycle Count · Reconcile',
+                        hasChevron: false,
+                        onTap: onNavigateToAudit,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _QuickActionGridTile(
+                        icon: Icons.add_rounded,
+                        accent: const Color(0xFF22C55E),
+                        title: 'Add Product',
+                        subtitle: 'Create or import SKU',
+                        hasChevron: false,
+                        onTap: () => _navigateToAddProduct(context),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _QuickActionGridTile(
+                        icon: Icons.sync_rounded,
+                        accent: const Color(0xFFF59E0B),
+                        title: 'Sync Data',
+                        subtitle: 'Backup & restore',
+                        hasChevron: false,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const BackupPage()),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // ── DYNAMIC SECTION: EMPTY STATE vs POPULATED DASHBOARD ──
+                if (isEmptyInventory) ...[
+                  // PHASE 3.5: Empty Inventory Illustration & CTAs
+                  DashboardEmptyInventory(
+                    onAddProduct: () => _navigateToAddProduct(context),
+                    onScanBarcode: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ScannerPage()),
                     ),
                   ),
+                ] else ...[
+                  // ── SECTION 5: NATIVE ADVERTISEMENT (GOOGLE ADMOB) ──
+                  AdMobNativeSection(
+                    db: db,
+                    rewardedCard: _DashboardRewardAdCard(db: db),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // ── SECTION 6: TOP PRODUCTS CAROUSEL ──
+                  StreamBuilder<List<Product>>(
+                    stream: db.productDao.watchAll(
+                      sort: ProductSort.valueHigh,
+                      limit: 10,
+                    ),
+                    builder: (context, snapshot) {
+                      final products = snapshot.data ?? const <Product>[];
+                      return DashboardTopProducts(
+                        products: products,
+                        onViewAll: onNavigateToProducts,
+                        onAddProduct: () => _navigateToAddProduct(context),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
+
+                  // ── SECTION 7: RECENT STOCK ACTIVITY ──
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const _SectionTitle('Recent Stock Activity'),
+                      TextButton(
+                        onPressed: onNavigateToProducts,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: palette.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text(
+                          'View All',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  StreamBuilder<List<Movement>>(
+                    stream: db.movementDao.watchRecent(limit: 5),
+                    builder: (context, snapshot) {
+                      final movements = snapshot.data ?? const <Movement>[];
+                      if (movements.isEmpty) return const _NoActivityYet();
+                      return Column(
+                        children: [
+                          for (final m in movements)
+                            FutureBuilder<Product?>(
+                              future: db.productDao.getById(m.productId),
+                              builder: (context, productSnapshot) => _ActivityRow(
+                                movement: m,
+                                product: productSnapshot.data,
+                                productName: productSnapshot.data?.name ??
+                                    'Product #${m.productId}',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          ProductDetailPage(productId: m.productId),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ],
             );
           },
-        ),
-      ],
+        );
+      },
     );
   }
 }
