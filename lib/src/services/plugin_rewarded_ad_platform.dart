@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'reward_config.dart';
@@ -118,11 +120,15 @@ class PluginRewardedAdPlatform implements RewardedAdPlatform {
         ad.dispose();
         if (!completer.isCompleted) {
           if (rewardEarned && txId != null) {
+            final token = sha256
+                .convert(utf8.encode('stocksafe_ssv_token_${txId}_$grantedAmount'))
+                .toString();
             completer.complete(
               RewardAdShowResult(
                 status: RewardAdShowStatus.rewardGranted,
                 transactionId: txId,
                 rewardAmount: grantedAmount,
+                verificationToken: token,
               ),
             );
           } else {
