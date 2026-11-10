@@ -1,10 +1,8 @@
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:stocksafe/main.dart';
 import 'package:stocksafe/src/app_scope.dart';
-import 'package:stocksafe/src/data/dao/product_dao.dart';
 import 'package:stocksafe/src/data/database.dart';
 import 'package:stocksafe/src/theme/app_palette.dart';
 import 'package:stocksafe/src/ui/widgets/dashboard_inventory_overview.dart';
