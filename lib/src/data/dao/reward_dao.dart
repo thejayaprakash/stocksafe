@@ -30,17 +30,18 @@ class RewardEntitlementRecord {
   bool get isExpired => expiresAt.isBefore(DateTime.now());
   bool get isValid => verificationStatus == 'verified' && !isExpired;
 
-  factory RewardEntitlementRecord.fromRow(TypedResult row) {
+  factory RewardEntitlementRecord.fromRow(QueryRow row) {
+    final data = row.data;
     return RewardEntitlementRecord(
-      id: row.read<int>('id'),
-      rewardTransactionId: row.read<String>('reward_transaction_id'),
-      rewardType: row.read<String>('reward_type'),
-      rewardAmount: row.read<int>('reward_amount'),
-      earnedAt: DateTime.parse(row.read<String>('earned_at')),
-      expiresAt: DateTime.parse(row.read<String>('expires_at')),
-      verificationStatus: row.read<String>('verification_status'),
-      source: row.read<String>('source'),
-      createdAt: DateTime.parse(row.read<String>('created_at')),
+      id: data['id'] as int?,
+      rewardTransactionId: data['reward_transaction_id'] as String,
+      rewardType: data['reward_type'] as String,
+      rewardAmount: (data['reward_amount'] as num).toInt(),
+      earnedAt: DateTime.parse(data['earned_at'] as String),
+      expiresAt: DateTime.parse(data['expires_at'] as String),
+      verificationStatus: data['verification_status'] as String,
+      source: data['source'] as String,
+      createdAt: DateTime.parse(data['created_at'] as String),
     );
   }
 }

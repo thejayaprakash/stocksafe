@@ -324,7 +324,7 @@ void main() {
       expect(activeCount, equals(52));
 
       // All products remain viewable, searchable, and editable
-      final allProds = await db.productDao.getAll();
+      final allProds = await db.productDao.getAllForExport();
       expect(allProds.length, equals(52));
 
       // Only adding NEW products is restricted
@@ -360,7 +360,7 @@ void main() {
       // Product stock and ledger row remain completely intact
       final prodAfter = await db.productDao.getById(pId);
       expect(prodAfter!.stockQty, equals(20));
-      final movements = await db.movementDao.getMovementsForProduct(pId);
+      final movements = await db.movementDao.watchForProduct(pId).first;
       expect(movements.length, equals(1));
       expect(movements.first.qtyDelta, equals(20));
     });
