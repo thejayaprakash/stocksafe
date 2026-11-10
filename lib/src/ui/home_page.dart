@@ -15,6 +15,7 @@ import '../services/voice_assistant_service.dart';
 import 'backup_page.dart';
 import 'low_stock_page.dart';
 import 'more_page.dart';
+import 'notifications_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'scanner_page.dart';
@@ -428,10 +429,8 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       actions: [
-        // The bell carries a dot only when something is genuinely waiting.
-        // There is no notification centre behind it: the one thing this app
-        // ever needs to raise is "you are about to run out", so it opens the
-        // low-stock list and is silent when that list is empty.
+        // The bell carries a badge with count when products need reordering or attention.
+        // Tapping it opens the In-App Notification Center.
         StreamBuilder<List<Product>>(
           stream: _db.productDao.watchLowStock(),
           builder: (context, snapshot) {
@@ -439,12 +438,13 @@ class _HomePageState extends State<HomePage> {
             return _HeaderIconButton(
               icon: Icons.notifications_none_rounded,
               showBadge: waiting > 0,
+              badgeCount: waiting,
               tooltip: waiting > 0
-                  ? '$waiting products need reordering'
-                  : 'Nothing needs attention',
+                  ? '$waiting products need attention'
+                  : 'Notifications',
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const LowStockPage()),
+                MaterialPageRoute(builder: (_) => const NotificationsPage()),
               ),
             );
           },
@@ -623,17 +623,14 @@ class _HeaderIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.showBadge = false,
+    this.badgeCount = 0,
   });
-
 
   final IconData icon;
   final String tooltip;
-
-  /// Null disables the button, which is how the catalogue hides "select
-  /// products" while there is nothing to select.
   final VoidCallback? onPressed;
-
   final bool showBadge;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -661,7 +658,35 @@ class _HeaderIconButton extends StatelessWidget {
                         ? palette.textDisabled
                         : palette.textSecondary,
                   ),
-                  if (showBadge)
+                  if (showBadge && badgeCount > 0)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        decoration: BoxDecoration(
+                          color: palette.error,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: palette.elevatedSurface,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            badgeCount > 9 ? '9+' : '$badgeCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (showBadge)
                     Positioned(
                       top: 10,
                       right: 10,

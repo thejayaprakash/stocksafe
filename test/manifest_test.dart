@@ -44,6 +44,9 @@ void main() {
           'android.permission.RECORD_AUDIO',
           // Network access for Google Play Billing and voluntary AdMob rewarded ads
           'android.permission.INTERNET',
+          // Local notifications for low stock alerts and inventory reminders.
+          'android.permission.POST_NOTIFICATIONS',
+          'android.permission.VIBRATE',
         }),
         reason: 'Changing this set changes what must be declared in '
             'docs/data_safety_form_guide.md and docs/privacy_policy.md. '
