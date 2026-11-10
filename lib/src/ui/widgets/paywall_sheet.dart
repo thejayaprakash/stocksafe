@@ -1,27 +1,39 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+
 import '../../data/database.dart';
 import '../../services/app_localization.dart';
 import '../../services/billing_service.dart';
 import '../../services/license_service.dart';
+import '../../services/reward_config.dart';
+import '../../services/rewarded_ad_service.dart';
+import '../../services/rewarded_ad_platform.dart';
 import '../../app_scope.dart';
+import '../../theme/app_palette.dart';
 
-/// Clean, non-nagging Paywall Sheet for StockSafe Pro.
+/// Clean, non-nagging Paywall & Reward Sheet for StockSafe.
 ///
 /// Triggers when:
-/// 1. Retailer hits the 100-product free tier limit and tries to add product #101.
-/// 2. Retailer accesses "Upgrade to Pro" from Settings.
+/// 1. Retailer hits the product limit and attempts to add another product.
+/// 2. Retailer accesses "Upgrade to Pro" from Settings or More.
+///
+/// Offers retailers the option to:
+/// - Watch a short rewarded ad for +2 temporary product slots (valid 7 days, up to 5/day).
+/// - Purchase the permanent lifetime StockSafe Pro unlock for ₹499 / $5.99.
 class PaywallSheet extends StatefulWidget {
-  const PaywallSheet({super.key, this.onUnlocked});
+  const PaywallSheet({super.key, this.onUnlocked, this.adPlatform});
 
   final VoidCallback? onUnlocked;
+  final RewardedAdPlatform? adPlatform;
 
   /// Show paywall as a modal bottom sheet.
-  static Future<bool?> show(BuildContext context) {
+  static Future<bool?> show(BuildContext context, {RewardedAdPlatform? adPlatform}) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => PaywallSheet(
+        adPlatform: adPlatform,
         onUnlocked: () => Navigator.pop(ctx, true),
       ),
     );
@@ -32,51 +44,67 @@ class PaywallSheet extends StatefulWidget {
 }
 
 class _PaywallSheetState extends State<PaywallSheet> {
-  /// The live database, read through the scope rather than passed in.
-  /// Uses [AppScope.read] so it is safe to call from initState; widgets that
-  /// must rebuild when the connection is replaced should call AppScope.of in
-  /// build instead.
   AppDatabase get _db => AppScope.read(context).db;
 
   late final LicenseService _licenseService;
   late final BillingService _billing;
+  late final RewardedAdService _adService;
+  StreamSubscription<RewardedAdStatus>? _adStatusSub;
+
   bool _isLoading = false;
+  bool _isWatchingAd = false;
   int _activeCount = 0;
-  // Shown only until the real limit loads from LicenseService a frame later.
-  // Kept in step with LicenseService.defaultFreeLimit so the sheet never
-  // flashes a number the app does not enforce.
-  int _freeLimit = LicenseService.defaultFreeLimit;
+  int _freeLimit = RewardConfig.defaultBaseFreeCapacity;
+  int _bonusSlots = 0;
+  RewardedAdStatus? _adStatus;
+
+  int get _effectiveCapacity => _freeLimit + _bonusSlots;
+  bool get _isAtLimit => _activeCount >= _effectiveCapacity;
 
   @override
   void initState() {
     super.initState();
     _licenseService = LicenseService(_db);
     _billing = BillingService();
+    _adService = RewardedAdService(
+      rewardDao: _licenseService.rewardDao,
+      platform: widget.adPlatform,
+    );
+
+    _adStatusSub = _adService.statusStream.listen((status) {
+      if (mounted) {
+        setState(() => _adStatus = status);
+      }
+    });
+
     _loadState();
   }
 
   Future<void> _loadState() async {
     final count = await _db.productDao.countActive();
     final limit = await _licenseService.getFreeLimit();
+    final bonus = await _licenseService.getActiveRewardSlots();
+    final adStatus = await _adService.getStatus();
+
     if (mounted) {
       setState(() {
         _activeCount = count;
         _freeLimit = limit;
+        _bonusSlots = bonus;
+        _adStatus = adStatus;
       });
+    }
+
+    // Preload ad in background if quota remaining
+    if ((adStatus.dailyAdsRemaining) > 0) {
+      unawaited(_adService.preloadAd());
     }
   }
 
-  /// Buys through Google Play, and unlocks only on what Play confirms.
-  ///
-  /// Every outcome gets its own sentence. A shopkeeper who paid by UPI and a
-  /// shopkeeper whose card was declined are in completely different positions,
-  /// and one message for both leaves the first one convinced the app took
-  /// their money and gave nothing back.
   @override
   void dispose() {
-    // Cancels the purchase stream subscription. Without this, every open of
-    // the paywall leaves another listener attached to the plugin's broadcast
-    // stream for the life of the process.
+    _adStatusSub?.cancel();
+    _adService.dispose();
     _billing.dispose();
     super.dispose();
   }
@@ -95,8 +123,6 @@ class _PaywallSheetState extends State<PaywallSheet> {
 
       switch (result.outcome) {
         case BillingOutcome.pending:
-          // UPI and net-banking settle asynchronously. Saying "failed" here is
-          // wrong and alarming; saying "done" would give the app away.
           _say(
             'Payment started. UPI and bank payments can take a while to '
             'confirm — Pro unlocks automatically once your bank completes it. '
@@ -104,7 +130,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
             seconds: 9,
           );
         case BillingOutcome.cancelled:
-          break; // They chose to stop. Nothing to report.
+          break;
         case BillingOutcome.unavailable:
           _say(
             result.message ??
@@ -117,10 +143,39 @@ class _PaywallSheetState extends State<PaywallSheet> {
         case BillingOutcome.nothingToRestore:
         case BillingOutcome.purchased:
         case BillingOutcome.restored:
-          break; // Handled above.
+          break;
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleWatchAd() async {
+    if (_isWatchingAd) return;
+    setState(() => _isWatchingAd = true);
+
+    try {
+      final result = await _adService.showAdAndEarnReward();
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        _say(AppLocale.tr('reward_ad_granted'), good: true);
+        await _loadState();
+        // Notify parent caller if user now has room to add a product
+        widget.onUnlocked?.call();
+      } else if (result.status == RewardAdShowStatus.dismissedWithoutReward) {
+        _say(AppLocale.tr('reward_ad_dismissed'));
+      } else {
+        _say(result.errorMessage ?? AppLocale.tr('reward_ad_failed'));
+      }
+    } catch (_) {
+      if (mounted) {
+        _say(AppLocale.tr('reward_ad_failed'));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isWatchingAd = false);
+      }
     }
   }
 
@@ -149,9 +204,6 @@ class _PaywallSheetState extends State<PaywallSheet> {
         );
         widget.onUnlocked?.call();
       } else {
-        // Play is the authority here, not this device: the entitlement lives
-        // with the Google account, which is what makes a reinstall or a new
-        // phone free.
         _say(
           result.outcome == BillingOutcome.unavailable
               ? (result.message ?? 'The Play Store is not available here.')
@@ -228,6 +280,8 @@ class _PaywallSheetState extends State<PaywallSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.palette;
+    final remainingDaily = _adStatus?.dailyAdsRemaining ?? RewardConfig.maxDailyAds;
 
     return Container(
       decoration: BoxDecoration(
@@ -274,9 +328,11 @@ class _PaywallSheetState extends State<PaywallSheet> {
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        '$_activeCount / $_freeLimit ${AppLocale.tr('products_used_free')}',
+                        _bonusSlots > 0
+                            ? '$_activeCount / $_effectiveCapacity ($_freeLimit + $_bonusSlots bonus) ${AppLocale.tr('products_used_free')}'
+                            : '$_activeCount / $_effectiveCapacity ${AppLocale.tr('products_used_free')}',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: _activeCount >= _freeLimit ? Colors.orange.shade800 : null,
+                          color: _isAtLimit ? Colors.orange.shade800 : null,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -287,7 +343,117 @@ class _PaywallSheetState extends State<PaywallSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Price Card
+            // ── Rewarded Ads Option Card ─────────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: palette.cardSurface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: _isAtLimit
+                      ? palette.primary.withValues(alpha: 0.4)
+                      : theme.dividerColor.withValues(alpha: 0.3),
+                  width: _isAtLimit ? 1.5 : 1.0,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: palette.brandSuccess.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.ondemand_video, color: palette.brandSuccess, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          AppLocale.tr('reward_ad_title'),
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: palette.brandSuccess.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          AppLocale.tr('reward_ad_benefit'),
+                          style: TextStyle(
+                            color: palette.brandSuccess,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    AppLocale.tr('reward_ad_description'),
+                    style: theme.textTheme.bodySmall?.copyWith(color: palette.textSecondary),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        AppLocale.tr('reward_ad_validity'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: palette.textTertiary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      Text(
+                        remainingDaily > 0
+                            ? '$remainingDaily ${AppLocale.tr('reward_ad_remaining_today')}'
+                            : AppLocale.tr('reward_ad_daily_limit'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: remainingDaily > 0 ? palette.primary : palette.warning,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: palette.brandSuccess,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: (_isWatchingAd || remainingDaily <= 0) ? null : _handleWatchAd,
+                      icon: _isWatchingAd
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_arrow, size: 20),
+                      label: Text(
+                        remainingDaily <= 0
+                            ? AppLocale.tr('reward_ad_daily_limit')
+                            : AppLocale.tr('reward_ad_btn'),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Price Card (StockSafe Pro Lifetime Unlock)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),

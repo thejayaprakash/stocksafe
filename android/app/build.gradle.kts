@@ -48,6 +48,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        val admobAppId = (project.findProperty("admobAppId") as String?)
+            ?: System.getenv("ADMOB_APP_ID")
+            ?: "ca-app-pub-8219488680857523~8581680010"
+        manifestPlaceholders["admobAppId"] = admobAppId
     }
 
     signingConfigs {

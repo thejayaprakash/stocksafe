@@ -159,17 +159,18 @@ void main() {
 
     test('the free tier stops at its limit and says why', () async {
       // Ten more than the free tier allows, so the cut is visible.
+      final limit = await LicenseService(db).getEffectiveCapacity();
       final rows = StringBuffer('Name,Initial Stock\n');
-      for (var i = 1; i <= 110; i++) {
+      for (var i = 1; i <= limit + 10; i++) {
         rows.writeln('Item $i,1');
       }
 
       final result = await importer.importFromCsvString(rows.toString());
 
-      expect(result.importedCount, 100);
+      expect(result.importedCount, limit);
       expect(result.skippedCount, 10);
       expect(result.errors.join(' '), contains('Free tier limit'));
-      expect(await db.productDao.countActive(), 100);
+      expect(await db.productDao.countActive(), limit);
     });
 
     test('rows without a barcode never collide with each other', () async {

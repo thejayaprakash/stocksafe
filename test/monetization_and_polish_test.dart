@@ -17,8 +17,9 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     licenseService = LicenseService(db);
-    // Ensure clean settings
+    // Ensure clean settings and configure 100-tier override for this legacy test
     await licenseService.resetForTesting();
+    await db.settingDao.set(SettingDao.freeLimitKey, '100');
   });
 
   tearDown(() async {

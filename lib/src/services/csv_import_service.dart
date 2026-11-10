@@ -85,7 +85,8 @@ class CsvImportService {
     final license = LicenseService(_db);
     final isPro = await license.isProUnlocked();
     final currentCount = await _db.productDao.countActive();
-    final freeLimit = await license.getFreeLimit();
+    final capacity = await license.getEffectiveCapacity();
+    final freeLimit = capacity > 0 ? capacity : await license.getFreeLimit();
     final availableQuota = isPro ? 999999 : (freeLimit - currentCount).clamp(0, freeLimit);
 
     // Every barcode already in the catalogue, read once.

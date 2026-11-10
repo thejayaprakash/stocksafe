@@ -36,17 +36,23 @@ class MorePage extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           // Pro Status / Upgrade Card
-          FutureBuilder<bool>(
-            future: LicenseService(db).isProUnlocked(),
+          FutureBuilder<(bool, int)>(
+            future: () async {
+              final lic = LicenseService(db);
+              final isPro = await lic.isProUnlocked();
+              final cap = await lic.getEffectiveCapacity();
+              return (isPro, cap);
+            }(),
             builder: (context, snapshot) {
               // Null while the check is in flight. Rendering the upgrade
               // offer during that frame would flash "Upgrade to Pro" at
               // somebody who has already paid, so nothing is shown until the
               // answer is in.
-              final isPro = snapshot.data;
-              if (isPro == null) return const SizedBox(height: 74);
+              if (!snapshot.hasData) return const SizedBox(height: 74);
+              final (isPro, capacity) = snapshot.data!;
               return _ProCard(
                 isPro: isPro,
+                effectiveCapacity: capacity,
                 onTap: isPro ? null : () => PaywallSheet.show(context),
               );
             },
@@ -162,9 +168,10 @@ class MorePage extends StatelessWidget {
 /// The gold banner at the top of More: the licence state, and the way to
 /// change it.
 class _ProCard extends StatelessWidget {
-  const _ProCard({required this.isPro, this.onTap});
+  const _ProCard({required this.isPro, this.effectiveCapacity = 50, this.onTap});
 
   final bool isPro;
+  final int effectiveCapacity;
   final VoidCallback? onTap;
 
   @override
@@ -216,8 +223,7 @@ class _ProCard extends StatelessWidget {
                       Text(
                         isPro
                             ? 'Lifetime unlimited products & offline features'
-                            : 'Track as many products as you like — the free '
-                                'tier stops at 100',
+                            : 'Track as many products as you like — the free tier allows $effectiveCapacity products',
                         style: TextStyle(
                           fontSize: 11.5,
                           height: 1.3,

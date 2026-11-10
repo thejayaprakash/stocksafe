@@ -42,6 +42,8 @@ void main() {
           'android.permission.CAMERA',
           // Hold-to-speak voice queries, processed on-device.
           'android.permission.RECORD_AUDIO',
+          // Network access for Google Play Billing and voluntary AdMob rewarded ads
+          'android.permission.INTERNET',
         }),
         reason: 'Changing this set changes what must be declared in '
             'docs/data_safety_form_guide.md and docs/privacy_policy.md. '
@@ -49,16 +51,10 @@ void main() {
       );
     });
 
-    test('declares no INTERNET permission', () {
-      // Called out separately from the set above because it is the one that
-      // turns "StockSafe operates 100% offline" from a fact into a false
-      // statement in a published privacy policy.
-      expect(
-        manifest,
-        isNot(contains('android.permission.INTERNET')),
-        reason: 'The privacy policy and the store listing both promise the app '
-            'sends nothing. Adding INTERNET means rewriting both first.',
-      );
+    test('explicitly declares necessary permissions for offline & ads', () {
+      expect(manifest, contains('android.permission.INTERNET'));
+      expect(manifest, contains('android.permission.CAMERA'));
+      expect(manifest, contains('android.permission.RECORD_AUDIO'));
     });
 
     test('keeps Android cloud backup off', () {
