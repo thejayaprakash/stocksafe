@@ -28,7 +28,9 @@ class InsightAnswer {
 /// Performs 100% offline rule-based analytics to answer key business
 /// questions about stock levels, valuation, velocity, and dead stock.
 class AskStockSafePage extends StatefulWidget {
-  const AskStockSafePage({super.key});
+  const AskStockSafePage({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   State<AskStockSafePage> createState() => _AskStockSafePageState();
@@ -58,8 +60,10 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
   @override
   void initState() {
     super.initState();
-    // Default initial query
-    _processQuery('What is my total inventory purchase value?');
+    // Default initial query or specified query
+    final query = widget.initialQuery ?? 'What is my total inventory purchase value?';
+    _queryController.text = query;
+    _processQuery(query);
   }
 
   @override

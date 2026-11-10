@@ -10,10 +10,12 @@ import 'print_identity.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
+import '../services/notification_service.dart';
 import '../services/theme_service.dart';
 import 'backup_page.dart';
 import 'barcode_label_print_page.dart';
 import 'locations_page.dart';
+import 'notifications_page.dart';
 import 'suppliers_page.dart';
 import 'widgets/paywall_sheet.dart';
 import '../app_scope.dart';
@@ -254,6 +256,81 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _editStoreName(context),
         ),
+
+        const Divider(height: 24),
+
+        // ── Notifications & Alerts ─────────────────────────────
+        _SectionHeader(title: 'Notifications & Alerts', icon: Icons.notifications_active_outlined),
+        ListTile(
+          leading: const Icon(Icons.notifications_none_rounded),
+          title: const Text('In-App Notification Center'),
+          subtitle: Text(
+            NotificationService.instance.unreadCount > 0
+                ? '${NotificationService.instance.unreadCount} unread alert${NotificationService.instance.unreadCount == 1 ? '' : 's'} waiting'
+                : 'View stock warnings, audit reminders, and alerts',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NotificationsPage()),
+          ),
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.phone_android_rounded),
+          title: const Text('Mobile System Notifications'),
+          subtitle: const Text('Allow StockSafe to deliver notifications to your phone'),
+          value: NotificationService.instance.mobilePushEnabled,
+          onChanged: (val) async {
+            await NotificationService.instance.setMobilePushEnabled(val);
+            if (mounted) setState(() {});
+          },
+        ),
+        if (NotificationService.instance.mobilePushEnabled) ...[
+          SwitchListTile(
+            secondary: const Icon(Icons.warning_amber_rounded),
+            title: const Text('Low Stock & Out of Stock Alerts'),
+            subtitle: const Text('Immediate alert when a product drops below reorder level'),
+            value: NotificationService.instance.lowStockPushEnabled,
+            onChanged: (val) async {
+              await NotificationService.instance.setLowStockPushEnabled(val);
+              if (mounted) setState(() {});
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.alarm_rounded),
+            title: const Text('Audit & Backup Reminders'),
+            subtitle: const Text('Periodic reminders for physical stocktaking and data backup'),
+            value: NotificationService.instance.remindersPushEnabled,
+            onChanged: (val) async {
+              await NotificationService.instance.setRemindersPushEnabled(val);
+              if (mounted) setState(() {});
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.send_rounded),
+            title: const Text('Send Test Notification'),
+            subtitle: const Text('Fires a sample notification to your device system tray'),
+            trailing: OutlinedButton(
+              onPressed: () async {
+                final granted = await NotificationService.instance.showTestNotification();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        granted
+                            ? 'Test notification dispatched to your phone!'
+                            : 'Notification dispatched! Ensure notifications are allowed in Android Settings.',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Test'),
+            ),
+          ),
+        ],
 
         const Divider(height: 24),
 

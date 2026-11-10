@@ -9,6 +9,7 @@ import 'src/app_scope.dart';
 import 'src/data/database.dart';
 import 'src/services/app_localization.dart';
 import 'src/services/diagnostic_service.dart';
+import 'src/services/notification_service.dart';
 import 'src/services/product_image_service.dart';
 import 'src/services/theme_service.dart';
 import 'src/ui/home_page.dart';
@@ -81,6 +82,7 @@ class StockSafeApp extends StatelessWidget {
         // Settings. A consistency check runs after the first frame and repairs
         // only if it actually finds a mismatch — see HomePage.
         await ThemeService.instance.init(db);
+        await NotificationService.instance.init(db);
       },
       splash: const _Splash(),
       builder: (context) {

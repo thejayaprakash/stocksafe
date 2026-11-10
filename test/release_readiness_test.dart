@@ -193,6 +193,9 @@ void main() {
           'android.permission.ACCESS_ADSERVICES_TOPICS',
           'android.permission.WAKE_LOCK',
           'android.permission.FOREGROUND_SERVICE',
+          // Local notifications for low stock alerts and inventory reminders.
+          'android.permission.POST_NOTIFICATIONS',
+          'android.permission.VIBRATE',
         }),
         reason: 'A permission appeared in the shipped APK that the published '
             'documents do not account for. Adding a dependency can do this '

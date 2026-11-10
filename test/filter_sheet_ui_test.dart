@@ -152,22 +152,13 @@ void main() {
     });
   });
 
-  testWidgets('a category chip and the sheet agree on what is selected',
+  testWidgets('a category filter and the sheet agree on what is selected',
       (tester) async {
     await withCatalogue(tester, (db) async {
-      // Tap the chip in the bar above the list, then open the sheet: it has
-      // to show that category already ticked, or the two controls are
-      // telling the user different things. The chip row scrolls, so the
-      // chip is brought into view before it is tapped.
-      // Scoped to the app bar: a category name also appears on each
-      // product row's own tag, and tapping that opens the product.
-      final chip = find.descendant(
-        of: find.byType(AppBar),
-        matching: find.widgetWithText(InkWell, 'Spices'),
-      );
-      await tester.ensureVisible(chip);
+      await openSheet(tester);
+      await tester.tap(find.widgetWithText(InkWell, 'Spices').last);
       await tester.pumpAndSettle();
-      await tester.tap(chip);
+      await tester.tap(find.text('Apply 1 filter'));
       await tester.pumpAndSettle();
       expect(find.text('Amul Ghee 1L'), findsNothing);
 

@@ -1,9 +1,11 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../data/database.dart';
 import 'money_format.dart';
-import 'movement_reason.dart';
 import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
@@ -13,6 +15,7 @@ import '../services/voice_assistant_service.dart';
 import 'backup_page.dart';
 import 'low_stock_page.dart';
 import 'more_page.dart';
+import 'notifications_page.dart';
 import 'product_detail_page.dart';
 import 'product_edit_page.dart';
 import 'scanner_page.dart';
@@ -24,8 +27,16 @@ import 'widgets/favourite_button.dart';
 import 'widgets/floating_wave_nav_bar.dart';
 import 'widgets/product_avatar.dart';
 import 'widgets/product_filter_sheet.dart';
+import 'widgets/product_grid_card.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
+import 'widgets/admob_native_section.dart';
+import 'widgets/dashboard_inventory_overview.dart';
+import 'widgets/dashboard_stock_health.dart';
+import 'widgets/dashboard_top_products.dart';
+import '../services/reward_config.dart';
+import '../services/rewarded_ad_platform.dart';
+import '../services/rewarded_ad_service.dart';
 import '../app_scope.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
@@ -316,19 +327,45 @@ class _HomePageState extends State<HomePage> {
     if (_tabIndex >= 3) return null; // StockAuditPage and MorePage manage their own AppBars
 
     if (_tabIndex == 1) {
+      final palette = context.palette;
       return AppBar(
-        toolbarHeight: 58,
-        title: Text(
-          AppLocale.tr('products'),
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 21),
+        toolbarHeight: 64,
+        title: StreamBuilder<ProductStatusCounts>(
+          stream: _db.productDao.watchStatusCounts(),
+          builder: (context, snapshot) {
+            final counts = snapshot.data;
+            final total = counts?.all ?? 0;
+            final low = counts?.low ?? 0;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppLocale.tr('products'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 21,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$total Products · $low Low Stock',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: palette.textSecondary,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         actions: [
           _HeaderIconButton(
-            icon: selectionModeIcon,
-            tooltip: 'Select products',
-            onPressed: _matchingCount == 0
-                ? null
-                : () => setState(() => _selectionMode = true),
+            icon: Icons.tune_outlined,
+            tooltip: 'Filter products',
+            onPressed: _openFilterSheet,
           ),
           _HeaderIconButton(
             icon: Icons.qr_code_scanner_rounded,
@@ -338,35 +375,17 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (_) => const ScannerPage()),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(102),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: _ProductSearchField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _query = value.trim()),
-                  onVoice: _openVoiceAssistant,
-                ),
-              ),
-              _CategoryFilterBar(
-                db: _db,
-                selected: _filters.categories,
-                onToggle: (category) {
-                  final next = Set<String>.from(_filters.categories);
-                  if (category == null) {
-                    next.clear();
-                  } else if (!next.remove(category)) {
-                    next.add(category);
-                  }
-                  setState(() => _filters = _filters.copyWith(categories: next));
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
+          preferredSize: const Size.fromHeight(58),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: _ProductSearchField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _query = value.trim()),
+              onVoice: _openVoiceAssistant,
+            ),
           ),
         ),
       );
@@ -410,10 +429,8 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       actions: [
-        // The bell carries a dot only when something is genuinely waiting.
-        // There is no notification centre behind it: the one thing this app
-        // ever needs to raise is "you are about to run out", so it opens the
-        // low-stock list and is silent when that list is empty.
+        // The bell carries a badge with count when products need reordering or attention.
+        // Tapping it opens the In-App Notification Center.
         StreamBuilder<List<Product>>(
           stream: _db.productDao.watchLowStock(),
           builder: (context, snapshot) {
@@ -421,12 +438,13 @@ class _HomePageState extends State<HomePage> {
             return _HeaderIconButton(
               icon: Icons.notifications_none_rounded,
               showBadge: waiting > 0,
+              badgeCount: waiting,
               tooltip: waiting > 0
-                  ? '$waiting products need reordering'
-                  : 'Nothing needs attention',
+                  ? '$waiting products need attention'
+                  : 'Notifications',
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const LowStockPage()),
+                MaterialPageRoute(builder: (_) => const NotificationsPage()),
               ),
             );
           },
@@ -448,7 +466,15 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: KeyedSubtree(
+          key: ValueKey<int>(_tabIndex),
+          child: _buildBody(),
+        ),
+      ),
       bottomNavigationBar: _selectionMode
           ? BulkActionBar(
               count: _selected.length,
@@ -563,9 +589,13 @@ class _HomePageState extends State<HomePage> {
 
   Widget? _buildFab(BuildContext context) {
     if (_tabIndex != 1) return null;
+    final palette = context.palette;
     return FloatingActionButton(
       heroTag: 'add_product',
       tooltip: AppLocale.tr('add_product'),
+      backgroundColor: palette.primary,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 4,
       onPressed: () async {
         final canAdd = await LicenseService(_db).canAddProduct();
         if (!context.mounted) return;
@@ -581,7 +611,7 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       },
-      child: const Icon(Icons.add),
+      child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
     );
   }
 }
@@ -593,17 +623,14 @@ class _HeaderIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.showBadge = false,
+    this.badgeCount = 0,
   });
-
 
   final IconData icon;
   final String tooltip;
-
-  /// Null disables the button, which is how the catalogue hides "select
-  /// products" while there is nothing to select.
   final VoidCallback? onPressed;
-
   final bool showBadge;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +658,35 @@ class _HeaderIconButton extends StatelessWidget {
                         ? palette.textDisabled
                         : palette.textSecondary,
                   ),
-                  if (showBadge)
+                  if (showBadge && badgeCount > 0)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        decoration: BoxDecoration(
+                          color: palette.error,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: palette.elevatedSurface,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            badgeCount > 9 ? '9+' : '$badgeCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (showBadge)
                     Positioned(
                       top: 10,
                       right: 10,
@@ -708,98 +763,6 @@ class _ProductSearchField extends StatelessWidget {
   }
 }
 
-/// Category chip selector under search bar.
-class _CategoryFilterBar extends StatelessWidget {
-  const _CategoryFilterBar({
-    required this.db,
-    required this.selected,
-    required this.onToggle,
-  });
-
-  final AppDatabase db;
-
-  /// Empty means every category, which is what the "All" chip shows.
-  final Set<String> selected;
-
-  /// Null toggles "All", clearing the set.
-  final ValueChanged<String?> onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<String>>(
-      stream: db.productDao.watchCategories(),
-      builder: (context, snapshot) {
-        final categories = snapshot.data ?? [];
-        if (categories.isEmpty) return const SizedBox.shrink();
-
-        return SizedBox(
-          height: 34,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: [
-              _CategoryChip(
-                label: AppLocale.tr('all_categories'),
-                selected: selected.isEmpty,
-                onTap: () => onToggle(null),
-              ),
-              for (final cat in categories)
-                _CategoryChip(
-                  label: cat,
-                  selected: selected.contains(cat),
-                  onTap: () => onToggle(cat),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// One category pill.
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final radius = BorderRadius.circular(17);
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: selected ? palette.primary : palette.elevatedSurface,
-        borderRadius: radius,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: radius,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 15),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? Colors.white : palette.textSecondary,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// The catalogue: a live, paged product list with search, category filter,
 /// a sort order and a list/grid switch.
@@ -928,6 +891,27 @@ class _ProductListBodyState extends State<_ProductListBody> {
     }
   }
 
+  Future<void> _navigateToAddProduct() async {
+    final canAdd = await LicenseService(widget.db).canAddProduct();
+    if (!mounted) return;
+    if (!canAdd) {
+      final unlocked = await PaywallSheet.show(context);
+      if (unlocked != true) return;
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProductEditPage()),
+    );
+  }
+
+  void _navigateToScanner() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ScannerPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final unfiltered = widget.query.isEmpty && widget.filters.isEmpty;
@@ -948,6 +932,18 @@ class _ProductListBodyState extends State<_ProductListBody> {
             widget.filters.copyWith(favouritesOnly: only),
           ),
         ),
+        const SizedBox(height: 10),
+        if (!widget.selectionMode)
+          _InventoryValuationCard(db: widget.db),
+        if (!widget.selectionMode)
+          _ListControls(
+            sort: widget.sort,
+            onSortChanged: widget.onSortChanged,
+            grid: widget.grid,
+            onLayoutChanged: widget.onLayoutChanged,
+            activeFilterCount: widget.filters.activeCount,
+            onOpenFilterSheet: widget.onOpenFilterSheet,
+          ),
         Expanded(
           child: StreamBuilder<List<Product>>(
             stream: _products,
@@ -964,50 +960,33 @@ class _ProductListBodyState extends State<_ProductListBody> {
               if (products.isEmpty) {
                 return _EmptyCatalogue(
                   filtered: !unfiltered,
-                  onClearFilters: widget.filters.isEmpty
+                  onClearFilters: widget.filters.isEmpty && widget.query.isEmpty
                       ? null
                       : () => widget.onFiltersChanged(const ProductFilters()),
+                  onAddProduct: _navigateToAddProduct,
+                  onScanBarcode: _navigateToScanner,
                 );
               }
 
-              return Column(
-                children: [
-                  // Hidden while selecting: the valuation covers the whole
-                  // shop and says nothing about the rows being picked.
-                  if (unfiltered && !widget.selectionMode)
-                    _InventoryValuationCard(db: widget.db),
-                  if (!widget.selectionMode)
-                    _ListControls(
-                      sort: widget.sort,
-                      onSortChanged: widget.onSortChanged,
-                      grid: widget.grid,
-                      onLayoutChanged: widget.onLayoutChanged,
-                      activeFilterCount: widget.filters.activeCount,
-                      onOpenFilterSheet: widget.onOpenFilterSheet,
-                    ),
-                  Expanded(
-                    child: widget.grid && !widget.selectionMode
-                        ? _ProductGrid(
-                            products: products,
-                            controller: _scrollController,
-                            loadingMore: _mayHaveMore,
-                            onOpen: _open,
-                            onActions: _showActions,
-                          )
-                        : _ProductList(
-                            products: products,
-                            controller: _scrollController,
-                            loadingMore: _mayHaveMore,
-                            selectionMode: widget.selectionMode,
-                            selectedIds: widget.selectedIds,
-                            onOpen: _open,
-                            onActions: _showActions,
-                            onToggleSelected: widget.onToggleSelected,
-                            onEnterSelection: widget.onEnterSelection,
-                          ),
-                  ),
-                ],
-              );
+              return widget.grid && !widget.selectionMode
+                  ? _ProductGrid(
+                      products: products,
+                      controller: _scrollController,
+                      loadingMore: _mayHaveMore,
+                      onOpen: _open,
+                      onActions: _showActions,
+                    )
+                  : _ProductList(
+                      products: products,
+                      controller: _scrollController,
+                      loadingMore: _mayHaveMore,
+                      selectionMode: widget.selectionMode,
+                      selectedIds: widget.selectedIds,
+                      onOpen: _open,
+                      onActions: _showActions,
+                      onToggleSelected: widget.onToggleSelected,
+                      onEnterSelection: widget.onEnterSelection,
+                    );
             },
           ),
         ),
@@ -1104,13 +1083,12 @@ class _StatusFilterBar extends StatelessWidget {
   final ValueChanged<bool> onFavouritesOnlyChanged;
 
   static const _options = [
-    (ProductStockStatus.any, 'All', null),
-    (ProductStockStatus.inStock, 'In Stock', Icons.check_circle_outline),
+    (ProductStockStatus.any, 'All', Icons.layers_rounded),
     (ProductStockStatus.low, 'Low Stock', Icons.warning_amber_rounded),
     (
       ProductStockStatus.outOfStock,
       'Out of Stock',
-      Icons.remove_circle_outline,
+      Icons.remove_circle_outline_rounded,
     ),
   ];
 
@@ -1132,7 +1110,7 @@ class _StatusFilterBar extends StatelessWidget {
         final counts = snapshot.data;
 
         return SizedBox(
-          height: 36,
+          height: 38,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -1141,16 +1119,11 @@ class _StatusFilterBar extends StatelessWidget {
                 _StatusChip(
                   label: label,
                   icon: icon,
-                  // Null while the first count is in flight, rather than a
-                  // zero that would read as "none of these exist".
                   count: counts?.forStatus(value),
                   accent: _accentFor(value, palette),
                   selected: status == value,
                   onTap: () => onChanged(value),
                 ),
-              // Favourites sits alongside the stock filters rather than
-              // among them: it narrows by what the shopkeeper pinned, not by
-              // what is on the shelf, and the two combine.
               StreamBuilder<int>(
                 stream: db.productDao.watchFavouriteCount(),
                 builder: (context, snapshot) => _StatusChip(
@@ -1194,15 +1167,22 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius = BorderRadius.circular(18);
-    final foreground = selected ? accent : palette.textSecondary;
+    final radius = BorderRadius.circular(20);
+
+    final Color bgColor = selected
+        ? palette.primary
+        : (isDark ? const Color(0xFF151E2E) : palette.cardSurface);
+
+    final Color fgColor = selected
+        ? Colors.white
+        : (isDark ? const Color(0xFF94A3B8) : palette.textSecondary);
+
+    final Color iconColor = selected ? Colors.white : accent;
 
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
-        color: selected
-            ? accent.withValues(alpha: isDark ? 0.22 : 0.13)
-            : palette.cardSurface,
+        color: bgColor,
         borderRadius: radius,
         child: InkWell(
           onTap: onTap,
@@ -1212,34 +1192,38 @@ class _StatusChip extends StatelessWidget {
               borderRadius: radius,
               border: Border.all(
                 color: selected
-                    ? accent.withValues(alpha: 0.5)
-                    : palette.border,
+                    ? palette.primary
+                    : (isDark
+                        ? const Color(0xFF334155).withValues(alpha: 0.7)
+                        : palette.border),
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 15, color: foreground),
-                  const SizedBox(width: 5),
+                  Icon(icon, size: 15, color: iconColor),
+                  const SizedBox(width: 6),
                 ],
                 Text(
                   label,
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: foreground,
+                    color: fgColor,
                   ),
                 ),
                 if (count != null) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
-                    '$count',
+                    '($count)',
                     style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: foreground.withValues(alpha: 0.7),
+                      fontSize: 12,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : (isDark ? const Color(0xFF94A3B8) : palette.textSecondary),
                     ),
                   ),
                 ],
@@ -1280,9 +1264,10 @@ class _ListControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       child: Row(
         children: [
           PopupMenuButton<ProductSort>(
@@ -1297,9 +1282,13 @@ class _ListControls extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.fromLTRB(12, 7, 8, 7),
               decoration: BoxDecoration(
-                color: palette.cardSurface,
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(color: palette.border),
+                color: isDark ? const Color(0xFF151E2E) : palette.cardSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark
+                      ? const Color(0xFF334155).withValues(alpha: 0.7)
+                      : palette.border,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1309,13 +1298,18 @@ class _ListControls extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: palette.textSecondary,
+                      color: isDark
+                          ? const Color(0xFFF8FAFC)
+                          : palette.textPrimary,
                     ),
                   ),
+                  const SizedBox(width: 4),
                   Icon(
                     Icons.expand_more_rounded,
                     size: 18,
-                    color: palette.textTertiary,
+                    color: isDark
+                        ? const Color(0xFF94A3B8)
+                        : palette.textTertiary,
                   ),
                 ],
               ),
@@ -1344,6 +1338,7 @@ class _LayoutToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget button(IconData icon, bool isGrid, String tooltip) {
       final selected = grid == isGrid;
@@ -1351,17 +1346,19 @@ class _LayoutToggle extends StatelessWidget {
         message: tooltip,
         child: Material(
           color: selected ? palette.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(8),
           child: InkWell(
             onTap: () => onChanged(isGrid),
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(8),
             child: SizedBox(
-              width: 36,
-              height: 30,
+              width: 38,
+              height: 32,
               child: Icon(
                 icon,
-                size: 18,
-                color: selected ? Colors.white : palette.textTertiary,
+                size: 19,
+                color: selected
+                    ? Colors.white
+                    : (isDark ? const Color(0xFF94A3B8) : palette.textTertiary),
               ),
             ),
           ),
@@ -1372,13 +1369,19 @@ class _LayoutToggle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: palette.elevatedSurface,
+        color: isDark ? const Color(0xFF151E2E) : palette.elevatedSurface,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF334155).withValues(alpha: 0.7)
+              : palette.border,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           button(Icons.view_list_rounded, false, 'List view'),
+          const SizedBox(width: 2),
           button(Icons.grid_view_rounded, true, 'Grid view'),
         ],
       ),
@@ -1477,21 +1480,21 @@ class _ProductGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return GridView.builder(
       controller: controller,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 0.82,
+        childAspectRatio: 0.98,
       ),
       itemCount: products.length + (loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= products.length) return const _LoadingMoreFooter();
         final p = products[index];
-        return _ProductTile(
+        return ProductGridCard(
           product: p,
           onTap: () => onOpen(p),
-          onActions: () => onActions(p),
+          onLongPress: () => onActions(p),
         );
       },
     );
@@ -1499,20 +1502,6 @@ class _ProductGrid extends StatelessWidget {
 }
 
 /// The colour a stock level is shown in: out, low, or fine.
-({Color accent, Color surface}) _stockTone(BuildContext context, Product p) {
-  final palette = context.palette;
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  final accent = p.stockQty <= 0
-      ? palette.error
-      : (p.lowStockLevel > 0 && p.stockQty <= p.lowStockLevel
-          ? palette.warning
-          : palette.success);
-  return (
-    accent: accent,
-    surface: accent.withValues(alpha: isDark ? 0.18 : 0.12),
-  );
-}
-
 /// A small outlined category label.
 class _CategoryTag extends StatelessWidget {
   const _CategoryTag(this.category);
@@ -1534,34 +1523,6 @@ class _CategoryTag extends StatelessWidget {
           fontSize: 10.5,
           fontWeight: FontWeight.w600,
           color: palette.textSecondary,
-        ),
-      ),
-    );
-  }
-}
-
-/// The stock quantity badge.
-class _StockBadge extends StatelessWidget {
-  const _StockBadge({required this.product, this.compact = false});
-
-  final Product product;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final tone = _stockTone(context, product);
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: tone.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        '${product.stockQty}',
-        style: TextStyle(
-          fontSize: compact ? 12.5 : 14,
-          fontWeight: FontWeight.w700,
-          color: tone.accent,
         ),
       ),
     );
@@ -1590,249 +1551,289 @@ class _ProductRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final p = product;
-    final details = [
-      if (p.sku != null && p.sku!.trim().isNotEmpty) 'SKU: ${p.sku}',
-      p.unit,
-    ].join(' · ');
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusStyle = ProductStatusStyle.of(context, p);
+
+    final skuText = (p.sku != null && p.sku!.trim().isNotEmpty)
+        ? p.sku!.trim()
+        : '-';
+
+    final effectivePrice = p.sellPrice > 0 ? p.sellPrice : p.buyPrice;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Material(
         color: selected
-            ? palette.primary.withValues(alpha: isDark ? 0.16 : 0.08)
-            : palette.cardSurface,
-        borderRadius: BorderRadius.circular(12),
+            ? palette.primary.withValues(alpha: isDark ? 0.18 : 0.10)
+            : (isDark ? const Color(0xFF151E2E) : palette.cardSurface),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress ?? onActions,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? palette.primary : palette.border,
-              ),
+          borderRadius: BorderRadius.circular(14),
+          child: CustomPaint(
+            foregroundPainter: CardAccentBorderPainter(
+              color: selected ? palette.primary : statusStyle.color,
+              strokeWidth: 2.0,
+              radius: 14,
+              glow: isDark,
             ),
-            padding: EdgeInsets.fromLTRB(selectionMode ? 2 : 10, 10, 6, 10),
-            child: Row(
-              children: [
-                if (selectionMode)
-                  SelectionCheckbox(
-                    selected: selected,
-                    onChanged: (_) => onTap(),
+            child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected
+                        ? palette.primary
+                        : (isDark
+                            ? const Color(0xFF334155).withValues(alpha: 0.6)
+                            : palette.border),
                   ),
-                ProductAvatar(product: p),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        p.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: palette.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        details,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: palette.textTertiary,
-                        ),
-                      ),
-                      if (p.category != null && p.category!.trim().isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 5),
-                          child: _CategoryTag(p.category!),
-                        ),
-                    ],
-                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
+                padding: EdgeInsets.fromLTRB(selectionMode ? 6 : 14, 10, 8, 10),
+                child: Row(
                   children: [
-                    _StockBadge(product: p),
-                    if (p.sellPrice > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'MRP ${formatRupees(p.sellPrice)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: palette.textTertiary,
+                    if (selectionMode)
+                      SelectionCheckbox(
+                        selected: selected,
+                        onChanged: (_) => onTap(),
+                      ),
+                    Hero(
+                      tag: 'product_row_img_${p.id}',
+                      child: ProductAvatar(product: p, size: 48, radiusFactor: 0.26),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
+                            ),
                           ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'SKU: $skuText · ${p.stockQty} ${p.unit.trim().isEmpty ? 'pcs' : p.unit}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: isDark ? const Color(0xFF94A3B8) : palette.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: statusStyle.color,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                statusStyle.label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusStyle.color,
+                                ),
+                              ),
+                              if (p.category != null && p.category!.trim().isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                _CategoryTag(p.category!),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FavouriteButton(product: p, size: 18),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: statusStyle.backgroundColor,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${p.stockQty}',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusStyle.color,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (effectivePrice > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              formatRupees(effectivePrice),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (!selectionMode)
+                      IconButton(
+                        icon: const Icon(Icons.more_vert_rounded, size: 18),
+                        color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        tooltip: 'Stock actions',
+                        onPressed: onActions,
                       ),
                   ],
                 ),
-                if (!selectionMode)
-                  IconButton(
-                    icon: const Icon(Icons.more_vert_rounded, size: 18),
-                    color: palette.textTertiary,
-                    tooltip: 'Stock actions',
-                    onPressed: onActions,
-                  ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
-/// One product, as a grid tile.
-class _ProductTile extends StatelessWidget {
-  const _ProductTile({
-    required this.product,
-    required this.onTap,
-    required this.onActions,
-  });
-
-  final Product product;
-  final VoidCallback onTap;
-  final VoidCallback onActions;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final p = product;
-
-    return Material(
-      color: palette.cardSurface,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onActions,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: palette.border),
-          ),
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ProductAvatar(product: p, size: 52),
-                  const Spacer(),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      FavouriteButton(product: p, size: 18),
-                      const SizedBox(height: 4),
-                      _StockBadge(product: p, compact: true),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                p.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  height: 1.25,
-                  color: palette.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                p.unit,
-                style: TextStyle(fontSize: 11, color: palette.textTertiary),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  if (p.category != null && p.category!.trim().isNotEmpty)
-                    Flexible(child: _CategoryTag(p.category!)),
-                  const Spacer(),
-                  if (p.sellPrice > 0)
-                    Text(
-                      formatRupees(p.sellPrice),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: palette.textPrimary,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// Shown when the catalogue has nothing to show.
 class _EmptyCatalogue extends StatelessWidget {
-  const _EmptyCatalogue({required this.filtered, this.onClearFilters});
+  const _EmptyCatalogue({
+    required this.filtered,
+    this.onClearFilters,
+    this.onAddProduct,
+    this.onScanBarcode,
+  });
 
   final bool filtered;
 
   /// Offered when the catalogue is non-empty but the filters hide all of it.
   final VoidCallback? onClearFilters;
+  final VoidCallback? onAddProduct;
+  final VoidCallback? onScanBarcode;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 56,
-              color: palette.primary.withValues(alpha: 0.4),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: palette.primary.withValues(alpha: isDark ? 0.16 : 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                filtered ? Icons.search_off_rounded : Icons.inventory_2_outlined,
+                size: 36,
+                color: palette.primary,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             Text(
               filtered ? 'No products match this search' : 'No products yet',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: palette.textPrimary,
+                color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
               ),
             ),
-            if (!filtered)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Tap + to add your first product, or scan a barcode.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12.5, color: palette.textTertiary),
+            const SizedBox(height: 6),
+            Text(
+              filtered
+                  ? 'Try adjusting your search or filters to find what you\'re looking for.'
+                  : 'Add your first product to start tracking stock, value, and movements.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? const Color(0xFF94A3B8) : palette.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (filtered && onClearFilters != null)
+              OutlinedButton.icon(
+                onPressed: onClearFilters,
+                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                label: const Text('Clear filters'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: palette.primary,
+                  side: BorderSide(color: palette.primary.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
-            if (onClearFilters != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: TextButton.icon(
-                  onPressed: onClearFilters,
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-                  label: const Text('Clear filters'),
+            if (!filtered) ...[
+              if (onAddProduct != null)
+                FilledButton.icon(
+                  onPressed: onAddProduct,
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text('+ Add Product'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: palette.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
-              ),
+              if (onScanBarcode != null) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: onScanBarcode,
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                  label: const Text('Scan Barcode Instead'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? const Color(0xFF94A3B8) : palette.textSecondary,
+                    side: BorderSide(
+                      color: isDark ? const Color(0xFF334155) : palette.border,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ],
         ),
       ),
@@ -1840,17 +1841,14 @@ class _EmptyCatalogue extends StatelessWidget {
   }
 }
 
-/// Live inventory valuation, expanding to the retail value and margin behind
-/// it. Shown above the catalogue when nothing is filtered out, because the
-/// number only means anything when it covers everything.
+/// Live inventory valuation and unit totals summary card.
 class _InventoryValuationCard extends StatefulWidget {
   const _InventoryValuationCard({required this.db});
 
   final AppDatabase db;
 
   @override
-  State<_InventoryValuationCard> createState() =>
-      _InventoryValuationCardState();
+  State<_InventoryValuationCard> createState() => _InventoryValuationCardState();
 }
 
 class _InventoryValuationCardState extends State<_InventoryValuationCard> {
@@ -1860,20 +1858,21 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius = BorderRadius.circular(14);
+    final radius = BorderRadius.circular(16);
 
     return StreamBuilder<InventoryValuationSummary>(
       stream: widget.db.productDao.watchInventoryValuation(),
       builder: (context, snapshot) {
         final value = snapshot.data;
-        if (value == null || value.totalProducts == 0) {
-          return const SizedBox.shrink();
-        }
+        final totalUnits = value?.totalUnits ?? 0;
+        final double valuation = value != null
+            ? (value.totalRetailValue > 0 ? value.totalRetailValue : value.totalCostValue)
+            : 0.0;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Material(
-            color: palette.primary.withValues(alpha: isDark ? 0.12 : 0.07),
+            color: isDark ? const Color(0xFF151E2E) : palette.cardSurface,
             borderRadius: radius,
             child: InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
@@ -1882,17 +1881,27 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
                 decoration: BoxDecoration(
                   borderRadius: radius,
                   border: Border.all(
-                    color: palette.primary.withValues(alpha: 0.22),
+                    color: isDark
+                        ? const Color(0xFF334155).withValues(alpha: 0.7)
+                        : palette.border,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                padding: const EdgeInsets.fromLTRB(12, 11, 14, 11),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Column(
                   children: [
                     Row(
                       children: [
+                        // Blue circular currency icon
                         Container(
-                          width: 36,
-                          height: 36,
+                          width: 38,
+                          height: 38,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: palette.primary,
@@ -1902,34 +1911,98 @@ class _InventoryValuationCardState extends State<_InventoryValuationCard> {
                             '₹',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 17,
+                              fontSize: 18,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
+                        // Left metric: Inventory Valuation
                         Expanded(
-                          child: _Stat(
-                            label: AppLocale.tr('inventory_valuation'),
-                            value: formatRupees(value.totalCostValue),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Inventory Valuation',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark
+                                      ? const Color(0xFF94A3B8)
+                                      : palette.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                formatRupees(valuation),
+                                style: TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? const Color(0xFFF8FAFC)
+                                      : palette.textPrimary,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        _Stat(
-                          label: AppLocale.tr('total_units'),
-                          value: '${value.totalUnits}',
-                          alignEnd: true,
+                        // Vertical divider line
+                        Container(
+                          width: 1,
+                          height: 34,
+                          color: isDark
+                              ? const Color(0xFF334155).withValues(alpha: 0.7)
+                              : palette.border,
                         ),
+                        const SizedBox(width: 14),
+                        // Right metric: Total Units
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Units',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? const Color(0xFF94A3B8)
+                                    : palette.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              NumberFormat('#,##,###').format(totalUnits),
+                              style: TextStyle(
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w700,
+                                color: isDark
+                                    ? const Color(0xFFF8FAFC)
+                                    : palette.textPrimary,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
                         Icon(
                           _expanded
                               ? Icons.expand_less_rounded
                               : Icons.expand_more_rounded,
-                          size: 20,
-                          color: palette.textTertiary,
+                          size: 18,
+                          color: isDark
+                              ? const Color(0xFF94A3B8)
+                              : palette.textTertiary,
                         ),
                       ],
                     ),
-                    if (_expanded) ...[
-                      Divider(height: 20, color: palette.border),
+                    if (_expanded && value != null) ...[
+                      Divider(
+                        height: 20,
+                        color: isDark
+                            ? const Color(0xFF334155).withValues(alpha: 0.6)
+                            : palette.border,
+                      ),
                       Row(
                         children: [
                           Expanded(
@@ -2036,7 +2109,7 @@ class _DashboardHomeBody extends StatelessWidget {
     final palette = context.palette;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
       children: [
         if (showBackupReminder) ...[
           _StatusCard(
@@ -2053,95 +2126,190 @@ class _DashboardHomeBody extends StatelessWidget {
           const SizedBox(height: 10),
         ],
 
-        // ── 1. WHAT NEEDS MY ATTENTION? ──
+        // ── SECTION 2: STOCK HEALTH ──
         StreamBuilder<List<Product>>(
           stream: db.productDao.watchLowStock(),
-          builder: (context, snapshot) {
-            final lowStock = snapshot.data ?? const <Product>[];
-            if (lowStock.isEmpty) {
-              return _StatusCard(
-                icon: Icons.check_circle_rounded,
-                accent: palette.success,
-                title: 'All stock levels optimal',
-                subtitle: 'Zero critical shortages',
-                onTap: onNavigateToLowStock,
-              );
-            }
-            final outOfStock = lowStock.where((p) => p.stockQty <= 0).length;
-            return _StatusCard(
-              icon: Icons.warning_amber_rounded,
-              accent: outOfStock > 0 ? palette.error : palette.warning,
-              title: '${lowStock.length} '
-                  '${lowStock.length == 1 ? 'product needs' : 'products need'} '
-                  'reordering',
-              subtitle: outOfStock > 0
-                  ? '$outOfStock out of stock · tap to review restock quantities'
-                  : 'Below reorder threshold · tap to review restock quantities',
-              onTap: onNavigateToLowStock,
+          builder: (context, lowSnap) {
+            final lowStock = lowSnap.data ?? const <Product>[];
+            return StreamBuilder<InventoryValuationSummary>(
+              stream: db.productDao.watchInventoryValuation(),
+              builder: (context, valSnap) {
+                final totalProducts = valSnap.data?.totalProducts ?? 0;
+                return DashboardStockHealthCard(
+                  lowStock: lowStock,
+                  totalProducts: totalProducts,
+                  onTap: onNavigateToLowStock,
+                );
+              },
             );
           },
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 16),
 
-        // ── 2. WHAT CAN I DO RIGHT NOW? ──
-        const _SectionTitle('Quick Actions'),
-        const SizedBox(height: 10),
-        // Intrinsic height so the two tiles match even when one subtitle
-        // wraps to a second line — stretch alone has no height to stretch to
-        // inside a scroll view.
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.qr_code_scanner_rounded,
-                  accent: palette.primary,
-                  title: 'Scan & Adjust',
-                  subtitle: 'Single-SKU Barcode',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ScannerPage()),
+        // ── SECTION 3: INVENTORY OVERVIEW (4 METRICS) ──
+        StreamBuilder<InventoryValuationSummary>(
+          stream: db.productDao.watchInventoryValuation(),
+          builder: (context, valSnap) {
+            final valuation = valSnap.data ??
+                const InventoryValuationSummary(
+                  totalProducts: 0,
+                  totalUnits: 0,
+                  totalCostValue: 0,
+                  totalRetailValue: 0,
+                  potentialProfit: 0,
+                  marginPercent: 0,
+                );
+            return StreamBuilder<List<Product>>(
+              stream: db.productDao.watchLowStock(),
+              builder: (context, lowSnap) {
+                final lowCount = lowSnap.data?.length ?? 0;
+                return DashboardInventoryOverview(
+                  valuation: valuation,
+                  lowStockCount: lowCount,
+                  onTapProducts: onNavigateToProducts,
+                  onTapLowStock: onNavigateToLowStock,
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 4: QUICK ACTIONS (2x2 GRID) ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const _SectionTitle('Quick Actions'),
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Quick action customisation coming soon.'),
+                    duration: Duration(seconds: 2),
                   ),
-                ),
+                );
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: palette.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.check_box_outlined,
-                  accent: palette.secondary,
-                  title: 'Physical Audit',
-                  subtitle: 'Cycle-Count · Reconcile',
-                  onTap: onNavigateToAudit,
-                ),
+              child: const Text(
+                'Customize',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        _WideActionCard(
-          icon: Icons.add_rounded,
-          title: AppLocale.tr('add_product') != 'add_product'
-              ? AppLocale.tr('add_product')
-              : 'Add New Product',
-          subtitle: 'Enter barcode or manual SKU for unbarcoded goods',
-          onTap: () async {
-            final canAdd = await LicenseService(db).canAddProduct();
-            if (!context.mounted) return;
-            if (!canAdd) {
-              final unlocked = await PaywallSheet.show(context);
-              if (unlocked != true) return;
-            }
-            if (!context.mounted) return;
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProductEditPage()),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.qr_code_scanner_rounded,
+                accent: const Color(0xFF3B82F6),
+                title: 'Scan & Adjust',
+                subtitle: 'Single-SKU, Barcode',
+                hasChevron: true,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ScannerPage()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.check_box_outlined,
+                accent: const Color(0xFFA855F7),
+                title: 'Physical Audit',
+                subtitle: 'Cycle Count · Reconcile',
+                hasChevron: false,
+                onTap: onNavigateToAudit,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.add_rounded,
+                accent: const Color(0xFF22C55E),
+                title: 'Add Product',
+                subtitle: 'Create or import SKU',
+                hasChevron: false,
+                onTap: () async {
+                  final canAdd = await LicenseService(db).canAddProduct();
+                  if (!context.mounted) return;
+                  if (!canAdd) {
+                    final unlocked = await PaywallSheet.show(context);
+                    if (unlocked != true) return;
+                  }
+                  if (!context.mounted) return;
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProductEditPage()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.sync_rounded,
+                accent: const Color(0xFFF59E0B),
+                title: 'Sync Data',
+                subtitle: 'Backup & restore',
+                hasChevron: false,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BackupPage()),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 5: NATIVE ADVERTISEMENT (GOOGLE ADMOB) ──
+        AdMobNativeSection(
+          db: db,
+          rewardedCard: _DashboardRewardAdCard(db: db),
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 6: TOP PRODUCTS CAROUSEL ──
+        StreamBuilder<List<Product>>(
+          stream: db.productDao.watchAll(
+            sort: ProductSort.valueHigh,
+            limit: 10,
+          ),
+          builder: (context, snapshot) {
+            final products = snapshot.data ?? const <Product>[];
+            return DashboardTopProducts(
+              products: products,
+              onViewAll: onNavigateToProducts,
+              onAddProduct: () async {
+                final canAdd = await LicenseService(db).canAddProduct();
+                if (!context.mounted) return;
+                if (!canAdd) {
+                  final unlocked = await PaywallSheet.show(context);
+                  if (unlocked != true) return;
+                }
+                if (!context.mounted) return;
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProductEditPage()),
+                );
+              },
             );
           },
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
 
-        // ── 3. WHAT JUST HAPPENED? ──
+        // ── SECTION 7: RECENT STOCK ACTIVITY ──
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -2173,8 +2341,18 @@ class _DashboardHomeBody extends StatelessWidget {
                     future: db.productDao.getById(m.productId),
                     builder: (context, productSnapshot) => _ActivityRow(
                       movement: m,
-                      productName:
-                          productSnapshot.data?.name ?? 'Product #${m.productId}',
+                      product: productSnapshot.data,
+                      productName: productSnapshot.data?.name ??
+                          'Product #${m.productId}',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ProductDetailPage(productId: m.productId),
+                          ),
+                        );
+                      },
                     ),
                   ),
               ],
@@ -2296,13 +2474,14 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-/// One of the two tinted action tiles under "Quick Actions".
-class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({
+/// Compact 2-column grid tile under "Quick Actions".
+class _QuickActionGridTile extends StatelessWidget {
+  const _QuickActionGridTile({
     required this.icon,
     required this.accent,
     required this.title,
     required this.subtitle,
+    required this.hasChevron,
     required this.onTap,
   });
 
@@ -2310,132 +2489,94 @@ class _QuickActionTile extends StatelessWidget {
   final Color accent;
   final String title;
   final String subtitle;
+  final bool hasChevron;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius = BorderRadius.circular(14);
 
-    return Material(
-      color: accent.withValues(alpha: isDark ? 0.13 : 0.08),
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: accent.withValues(alpha: isDark ? 0.3 : 0.2)),
-          ),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: isDark ? 0.24 : 0.16),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, size: 21, color: accent),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: palette.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 11, color: palette.textTertiary),
-              ),
-            ],
-          ),
+    return Container(
+      height: 66,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF151E2E) : palette.surfaceCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF334155).withValues(alpha: 0.7)
+              : palette.border,
+          width: 1,
         ),
-      ),
-    );
-  }
-}
-
-/// The full-width "Add New Product" card.
-class _WideActionCard extends StatelessWidget {
-  const _WideActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final radius = BorderRadius.circular(14);
-
-    return Material(
-      color: palette.cardSurface,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: palette.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 21, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: palette.textPrimary,
-                      ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.25),
+                      width: 0.8,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: palette.textTertiary,
-                      ),
-                    ),
-                  ],
+                  ),
+                  child: Icon(icon, color: accent, size: 20),
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 22,
-                color: palette.textTertiary,
-              ),
-            ],
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 1.5),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasChevron)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2445,79 +2586,130 @@ class _WideActionCard extends StatelessWidget {
 
 /// One row of the recent movement stream.
 class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.movement, required this.productName});
+  const _ActivityRow({
+    required this.movement,
+    required this.productName,
+    this.product,
+    this.onTap,
+  });
 
   final Movement movement;
   final String productName;
+  final Product? product;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isPositive = movement.qtyDelta > 0;
-    final accent = isPositive ? palette.success : palette.error;
+    final accent = isPositive ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: palette.cardSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isDark ? const Color(0xFF151E2E) : palette.surfaceCard,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF334155).withValues(alpha: 0.7)
+                    : palette.border,
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            child: Icon(
-              isPositive
-                  ? Icons.arrow_downward_rounded
-                  : Icons.arrow_upward_rounded,
-              size: 18,
-              color: accent,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  productName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: palette.textPrimary,
+                // Direction Badge Icon (Green Up for Inward / Red Down for Outward)
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    isPositive
+                        ? Icons.arrow_upward_rounded
+                        : Icons.arrow_downward_rounded,
+                    size: 18,
+                    color: accent,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(width: 8),
+
+                // Product Avatar / Thumbnail
+                if (product != null) ...[
+                  ProductAvatar(
+                    product: product!,
+                    size: 34,
+                    radiusFactor: 0.26,
+                  ),
+                  const SizedBox(width: 10),
+                ],
+
+                // Product name and movement details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        productName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${isPositive ? 'Stock In' : 'Stock Out'} · ${_relativeTime(movement.createdAt)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Delta + Chevron
                 Text(
-                  '${readableMovementReason(movement.reason)}'
-                  ' · ${_relativeTime(movement.createdAt)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+                  isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: accent,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2571,6 +2763,238 @@ class _NoActivityYet extends StatelessWidget {
             style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// An elegant, non-disruptive dashboard card offering rewarded ad bonus slots.
+///
+/// Disappears completely when Pro is unlocked.
+class _DashboardRewardAdCard extends StatefulWidget {
+  const _DashboardRewardAdCard({required this.db});
+
+  final AppDatabase db;
+
+  @override
+  State<_DashboardRewardAdCard> createState() => _DashboardRewardAdCardState();
+}
+
+class _DashboardRewardAdCardState extends State<_DashboardRewardAdCard> {
+  late final LicenseService _licenseService;
+  late final RewardedAdService _adService;
+  bool _isPro = false;
+  int _bonusSlots = 0;
+  int _completedAdsToday = 0;
+  bool _isWatching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _licenseService = LicenseService(widget.db);
+    _adService = RewardedAdService(rewardDao: _licenseService.rewardDao);
+    _refreshState();
+  }
+
+  @override
+  void dispose() {
+    _adService.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshState() async {
+    final isPro = await _licenseService.isProUnlocked();
+    if (isPro) {
+      if (mounted) setState(() => _isPro = true);
+      return;
+    }
+    final bonus = await _licenseService.getActiveRewardSlots();
+    final today = await _licenseService.rewardDao.getDailyCompletedCount();
+    if (mounted) {
+      setState(() {
+        _isPro = false;
+        _bonusSlots = bonus;
+        _completedAdsToday = today;
+      });
+    }
+    if (today < RewardConfig.maxDailyAds) {
+      unawaited(_adService.preloadAd());
+    }
+  }
+
+  Future<void> _handleWatchAd() async {
+    if (_isWatching) return;
+    setState(() => _isWatching = true);
+
+    try {
+      final result = await _adService.showAdAndEarnReward();
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Reward granted! +${result.rewardAmount} product slots added for 7 days.',
+            ),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+        await _refreshState();
+      } else if (result.status == RewardAdShowStatus.dismissedWithoutReward) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ad closed before completion. No slots were earned.'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.errorMessage ?? 'Sponsored ad is loading. Please try again in a moment.',
+            ),
+            action: SnackBarAction(
+              label: 'Paywall',
+              onPressed: () => PaywallSheet.show(context),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load ad. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isWatching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isPro) return const SizedBox.shrink();
+
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final remaining = (RewardConfig.maxDailyAds - _completedAdsToday).clamp(0, RewardConfig.maxDailyAds);
+    final canWatch = remaining > 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2822) : const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2D4A3E) : const Color(0xFFBBF7D0),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: canWatch ? _handleWatchAd : () => PaywallSheet.show(context),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A)).withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    canWatch ? Icons.play_circle_filled_rounded : Icons.star_rounded,
+                    size: 24,
+                    color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Earn Free Product Slots',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: palette.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: (isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A)).withValues(alpha: 0.20),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'SPONSORED',
+                              style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        canWatch
+                            ? 'Watch 30s ad for +2 slots (7-day validity) · $remaining left today'
+                            : 'Daily quota completed ($_completedAdsToday/${RewardConfig.maxDailyAds}) · tap to upgrade',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: palette.textTertiary,
+                        ),
+                      ),
+                      if (_bonusSlots > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Active bonus: +$_bonusSlots slots available',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: _isWatching ? null : (canWatch ? _handleWatchAd : () => PaywallSheet.show(context)),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    backgroundColor: isDark ? const Color(0xFF2D4A3E) : const Color(0xFFDCFCE7),
+                    foregroundColor: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                  ),
+                  child: _isWatching
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          canWatch ? 'Watch (+2)' : 'Upgrade',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

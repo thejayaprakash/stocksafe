@@ -425,6 +425,18 @@ class ProductDao extends DatabaseAccessor<AppDatabase> with _$ProductDaoMixin {
     return q.watch();
   }
 
+  /// Low-stock products query for one-off snapshot evaluation.
+  Future<List<Product>> getLowStock({int limit = 200}) {
+    final q = select(products)
+      ..where((p) =>
+          p.deletedAt.isNull() &
+          p.lowStockLevel.isBiggerThanValue(0) &
+          p.stockQty.isSmallerOrEqual(p.lowStockLevel))
+      ..orderBy([(p) => OrderingTerm.asc(p.stockQty)])
+      ..limit(limit);
+    return q.get();
+  }
+
   /// All active products, every column — for CSV/Excel export.
   /// The spec demands every column in exports.
   Future<List<Product>> getAllForExport() =>
