@@ -89,11 +89,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify recent stock activity row shows product name
-    expect(find.text('Organic Wheat Flour'), findsOneWidget);
+    // Verify recent stock activity and top products show product name
+    expect(find.text('Organic Wheat Flour'), findsNWidgets(2));
 
     // Tap on recent activity row
-    await tester.tap(find.text('Organic Wheat Flour'));
+    await tester.tap(find.text('Organic Wheat Flour').last);
     await tester.pumpAndSettle();
 
     // Verify it navigated to ProductDetailPage

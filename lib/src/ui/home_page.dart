@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../data/database.dart';
 import 'money_format.dart';
-import 'movement_reason.dart';
 import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
@@ -28,6 +27,10 @@ import 'widgets/product_avatar.dart';
 import 'widgets/product_filter_sheet.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
+import 'widgets/admob_native_section.dart';
+import 'widgets/dashboard_inventory_overview.dart';
+import 'widgets/dashboard_stock_health.dart';
+import 'widgets/dashboard_top_products.dart';
 import '../services/reward_config.dart';
 import '../services/rewarded_ad_platform.dart';
 import '../services/rewarded_ad_service.dart';
@@ -2049,7 +2052,7 @@ class _DashboardHomeBody extends StatelessWidget {
     final palette = context.palette;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
       children: [
         if (showBackupReminder) ...[
           _StatusCard(
@@ -2066,99 +2069,190 @@ class _DashboardHomeBody extends StatelessWidget {
           const SizedBox(height: 10),
         ],
 
-        // ── 1. WHAT NEEDS MY ATTENTION? ──
+        // ── SECTION 2: STOCK HEALTH ──
         StreamBuilder<List<Product>>(
           stream: db.productDao.watchLowStock(),
-          builder: (context, snapshot) {
-            final lowStock = snapshot.data ?? const <Product>[];
-            if (lowStock.isEmpty) {
-              return _StatusCard(
-                icon: Icons.check_circle_rounded,
-                accent: palette.success,
-                title: 'All stock levels optimal',
-                subtitle: 'Zero critical shortages',
-                onTap: onNavigateToLowStock,
-              );
-            }
-            final outOfStock = lowStock.where((p) => p.stockQty <= 0).length;
-            return _StatusCard(
-              icon: Icons.warning_amber_rounded,
-              accent: outOfStock > 0 ? palette.error : palette.warning,
-              title: '${lowStock.length} '
-                  '${lowStock.length == 1 ? 'product needs' : 'products need'} '
-                  'reordering',
-              subtitle: outOfStock > 0
-                  ? '$outOfStock out of stock · tap to review restock quantities'
-                  : 'Below reorder threshold · tap to review restock quantities',
-              onTap: onNavigateToLowStock,
+          builder: (context, lowSnap) {
+            final lowStock = lowSnap.data ?? const <Product>[];
+            return StreamBuilder<InventoryValuationSummary>(
+              stream: db.productDao.watchInventoryValuation(),
+              builder: (context, valSnap) {
+                final totalProducts = valSnap.data?.totalProducts ?? 0;
+                return DashboardStockHealthCard(
+                  lowStock: lowStock,
+                  totalProducts: totalProducts,
+                  onTap: onNavigateToLowStock,
+                );
+              },
             );
           },
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 16),
 
-        // ── 2. WHAT CAN I DO RIGHT NOW? ──
-        const _SectionTitle('Quick Actions'),
-        const SizedBox(height: 10),
-        // Intrinsic height so the two tiles match even when one subtitle
-        // wraps to a second line — stretch alone has no height to stretch to
-        // inside a scroll view.
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.qr_code_scanner_rounded,
-                  accent: palette.primary,
-                  title: 'Scan & Adjust',
-                  subtitle: 'Single-SKU Barcode',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ScannerPage()),
+        // ── SECTION 3: INVENTORY OVERVIEW (4 METRICS) ──
+        StreamBuilder<InventoryValuationSummary>(
+          stream: db.productDao.watchInventoryValuation(),
+          builder: (context, valSnap) {
+            final valuation = valSnap.data ??
+                const InventoryValuationSummary(
+                  totalProducts: 0,
+                  totalUnits: 0,
+                  totalCostValue: 0,
+                  totalRetailValue: 0,
+                  potentialProfit: 0,
+                  marginPercent: 0,
+                );
+            return StreamBuilder<List<Product>>(
+              stream: db.productDao.watchLowStock(),
+              builder: (context, lowSnap) {
+                final lowCount = lowSnap.data?.length ?? 0;
+                return DashboardInventoryOverview(
+                  valuation: valuation,
+                  lowStockCount: lowCount,
+                  onTapProducts: onNavigateToProducts,
+                  onTapLowStock: onNavigateToLowStock,
+                );
+              },
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 4: QUICK ACTIONS (2x2 GRID) ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const _SectionTitle('Quick Actions'),
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Quick action customisation coming soon.'),
+                    duration: Duration(seconds: 2),
                   ),
-                ),
+                );
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: palette.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickActionTile(
-                  icon: Icons.check_box_outlined,
-                  accent: palette.secondary,
-                  title: 'Physical Audit',
-                  subtitle: 'Cycle-Count · Reconcile',
-                  onTap: onNavigateToAudit,
-                ),
+              child: const Text(
+                'Customize',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        _WideActionCard(
-          icon: Icons.add_rounded,
-          title: AppLocale.tr('add_product') != 'add_product'
-              ? AppLocale.tr('add_product')
-              : 'Add New Product',
-          subtitle: 'Enter barcode or manual SKU for unbarcoded goods',
-          onTap: () async {
-            final canAdd = await LicenseService(db).canAddProduct();
-            if (!context.mounted) return;
-            if (!canAdd) {
-              final unlocked = await PaywallSheet.show(context);
-              if (unlocked != true) return;
-            }
-            if (!context.mounted) return;
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProductEditPage()),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.qr_code_scanner_rounded,
+                accent: const Color(0xFF3B82F6),
+                title: 'Scan & Adjust',
+                subtitle: 'Single-SKU, Barcode',
+                hasChevron: true,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ScannerPage()),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.check_box_outlined,
+                accent: const Color(0xFFA855F7),
+                title: 'Physical Audit',
+                subtitle: 'Cycle Count · Reconcile',
+                hasChevron: false,
+                onTap: onNavigateToAudit,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.add_rounded,
+                accent: const Color(0xFF22C55E),
+                title: 'Add Product',
+                subtitle: 'Create or import SKU',
+                hasChevron: false,
+                onTap: () async {
+                  final canAdd = await LicenseService(db).canAddProduct();
+                  if (!context.mounted) return;
+                  if (!canAdd) {
+                    final unlocked = await PaywallSheet.show(context);
+                    if (unlocked != true) return;
+                  }
+                  if (!context.mounted) return;
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProductEditPage()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _QuickActionGridTile(
+                icon: Icons.sync_rounded,
+                accent: const Color(0xFFF59E0B),
+                title: 'Sync Data',
+                subtitle: 'Backup & restore',
+                hasChevron: false,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BackupPage()),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 5: NATIVE ADVERTISEMENT (GOOGLE ADMOB) ──
+        AdMobNativeSection(
+          db: db,
+          rewardedCard: _DashboardRewardAdCard(db: db),
+        ),
+        const SizedBox(height: 18),
+
+        // ── SECTION 6: TOP PRODUCTS CAROUSEL ──
+        StreamBuilder<List<Product>>(
+          stream: db.productDao.watchAll(
+            sort: ProductSort.valueHigh,
+            limit: 10,
+          ),
+          builder: (context, snapshot) {
+            final products = snapshot.data ?? const <Product>[];
+            return DashboardTopProducts(
+              products: products,
+              onViewAll: onNavigateToProducts,
+              onAddProduct: () async {
+                final canAdd = await LicenseService(db).canAddProduct();
+                if (!context.mounted) return;
+                if (!canAdd) {
+                  final unlocked = await PaywallSheet.show(context);
+                  if (unlocked != true) return;
+                }
+                if (!context.mounted) return;
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProductEditPage()),
+                );
+              },
             );
           },
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
 
-        // ── 2.5 REWARDED AD BONUS CARD (Non-disruptive) ──
-        _DashboardRewardAdCard(db: db),
-        const SizedBox(height: 22),
-
-        // ── 3. WHAT JUST HAPPENED? ──
+        // ── SECTION 7: RECENT STOCK ACTIVITY ──
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -2190,8 +2284,9 @@ class _DashboardHomeBody extends StatelessWidget {
                     future: db.productDao.getById(m.productId),
                     builder: (context, productSnapshot) => _ActivityRow(
                       movement: m,
-                      productName:
-                          productSnapshot.data?.name ?? 'Product #${m.productId}',
+                      product: productSnapshot.data,
+                      productName: productSnapshot.data?.name ??
+                          'Product #${m.productId}',
                       onTap: () {
                         Navigator.push(
                           context,
@@ -2322,13 +2417,14 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-/// One of the two tinted action tiles under "Quick Actions".
-class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({
+/// Compact 2-column grid tile under "Quick Actions".
+class _QuickActionGridTile extends StatelessWidget {
+  const _QuickActionGridTile({
     required this.icon,
     required this.accent,
     required this.title,
     required this.subtitle,
+    required this.hasChevron,
     required this.onTap,
   });
 
@@ -2336,132 +2432,94 @@ class _QuickActionTile extends StatelessWidget {
   final Color accent;
   final String title;
   final String subtitle;
+  final bool hasChevron;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius = BorderRadius.circular(14);
 
-    return Material(
-      color: accent.withValues(alpha: isDark ? 0.13 : 0.08),
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: accent.withValues(alpha: isDark ? 0.3 : 0.2)),
-          ),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: isDark ? 0.24 : 0.16),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, size: 21, color: accent),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: palette.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 11, color: palette.textTertiary),
-              ),
-            ],
-          ),
+    return Container(
+      height: 66,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF151E2E) : palette.surfaceCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark
+              ? const Color(0xFF334155).withValues(alpha: 0.7)
+              : palette.border,
+          width: 1,
         ),
-      ),
-    );
-  }
-}
-
-/// The full-width "Add New Product" card.
-class _WideActionCard extends StatelessWidget {
-  const _WideActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final radius = BorderRadius.circular(14);
-
-    return Material(
-      color: palette.cardSurface,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: palette.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 21, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: palette.textPrimary,
-                      ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.25),
+                      width: 0.8,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: palette.textTertiary,
-                      ),
-                    ),
-                  ],
+                  ),
+                  child: Icon(icon, color: accent, size: 20),
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 22,
-                color: palette.textTertiary,
-              ),
-            ],
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 1.5),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasChevron)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2474,11 +2532,13 @@ class _ActivityRow extends StatelessWidget {
   const _ActivityRow({
     required this.movement,
     required this.productName,
+    this.product,
     this.onTap,
   });
 
   final Movement movement;
   final String productName;
+  final Product? product;
   final VoidCallback? onTap;
 
   @override
@@ -2486,40 +2546,65 @@ class _ActivityRow extends StatelessWidget {
     final palette = context.palette;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isPositive = movement.qtyDelta > 0;
-    final accent = isPositive ? palette.success : palette.error;
+    final accent = isPositive ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: palette.cardSurface,
-        borderRadius: BorderRadius.circular(12),
+        color: isDark ? const Color(0xFF151E2E) : palette.surfaceCard,
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: palette.border),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF334155).withValues(alpha: 0.7)
+                    : palette.border,
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
+                // Direction Badge Icon (Green Up for Inward / Red Down for Outward)
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
                     isPositive
-                        ? Icons.arrow_downward_rounded
-                        : Icons.arrow_upward_rounded,
+                        ? Icons.arrow_upward_rounded
+                        : Icons.arrow_downward_rounded,
                     size: 18,
                     color: accent,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+
+                // Product Avatar / Thumbnail
+                if (product != null) ...[
+                  ProductAvatar(
+                    product: product!,
+                    size: 34,
+                    radiusFactor: 0.26,
+                  ),
+                  const SizedBox(width: 10),
+                ],
+
+                // Product name and movement details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2531,25 +2616,29 @@ class _ActivityRow extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
-                          color: palette.textPrimary,
+                          color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${readableMovementReason(movement.reason)}'
-                        ' · ${_relativeTime(movement.createdAt)}',
+                        '${isPositive ? 'Stock In' : 'Stock Out'} · ${_relativeTime(movement.createdAt)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
+
+                // Delta + Chevron
                 Text(
                   isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w700,
                     color: accent,
                   ),
@@ -2558,7 +2647,7 @@ class _ActivityRow extends StatelessWidget {
                 Icon(
                   Icons.chevron_right_rounded,
                   size: 18,
-                  color: palette.textTertiary.withValues(alpha: 0.6),
+                  color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
                 ),
               ],
             ),
