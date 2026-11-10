@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
@@ -26,6 +28,9 @@ import 'widgets/product_avatar.dart';
 import 'widgets/product_filter_sheet.dart';
 import 'widgets/paywall_sheet.dart';
 import 'widgets/voice_assistant_dialog.dart';
+import '../services/reward_config.dart';
+import '../services/rewarded_ad_platform.dart';
+import '../services/rewarded_ad_service.dart';
 import '../app_scope.dart';
 
 /// Navigation shell: three tabs (Products, Low Stock, Settings) with a
@@ -448,7 +453,15 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: KeyedSubtree(
+          key: ValueKey<int>(_tabIndex),
+          child: _buildBody(),
+        ),
+      ),
       bottomNavigationBar: _selectionMode
           ? BulkActionBar(
               count: _selected.length,
@@ -2139,7 +2152,11 @@ class _DashboardHomeBody extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
+
+        // ── 2.5 REWARDED AD BONUS CARD (Non-disruptive) ──
+        _DashboardRewardAdCard(db: db),
+        const SizedBox(height: 22),
 
         // ── 3. WHAT JUST HAPPENED? ──
         Row(
@@ -2175,6 +2192,15 @@ class _DashboardHomeBody extends StatelessWidget {
                       movement: m,
                       productName:
                           productSnapshot.data?.name ?? 'Product #${m.productId}',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ProductDetailPage(productId: m.productId),
+                          ),
+                        );
+                      },
                     ),
                   ),
               ],
@@ -2445,10 +2471,15 @@ class _WideActionCard extends StatelessWidget {
 
 /// One row of the recent movement stream.
 class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.movement, required this.productName});
+  const _ActivityRow({
+    required this.movement,
+    required this.productName,
+    this.onTap,
+  });
 
   final Movement movement;
   final String productName;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2457,67 +2488,82 @@ class _ActivityRow extends StatelessWidget {
     final isPositive = movement.qtyDelta > 0;
     final accent = isPositive ? palette.success : palette.error;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
         color: palette.cardSurface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: palette.border),
             ),
-            child: Icon(
-              isPositive
-                  ? Icons.arrow_downward_rounded
-                  : Icons.arrow_upward_rounded,
-              size: 18,
-              color: accent,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  productName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: palette.textPrimary,
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isDark ? 0.18 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isPositive
+                        ? Icons.arrow_downward_rounded
+                        : Icons.arrow_upward_rounded,
+                    size: 18,
+                    color: accent,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        productName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: palette.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${readableMovementReason(movement.reason)}'
+                        ' · ${_relativeTime(movement.createdAt)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  '${readableMovementReason(movement.reason)}'
-                  ' · ${_relativeTime(movement.createdAt)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
+                  isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: palette.textTertiary.withValues(alpha: 0.6),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            isPositive ? '+${movement.qtyDelta}' : '${movement.qtyDelta}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: accent,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2571,6 +2617,238 @@ class _NoActivityYet extends StatelessWidget {
             style: TextStyle(fontSize: 11.5, color: palette.textTertiary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// An elegant, non-disruptive dashboard card offering rewarded ad bonus slots.
+///
+/// Disappears completely when Pro is unlocked.
+class _DashboardRewardAdCard extends StatefulWidget {
+  const _DashboardRewardAdCard({required this.db});
+
+  final AppDatabase db;
+
+  @override
+  State<_DashboardRewardAdCard> createState() => _DashboardRewardAdCardState();
+}
+
+class _DashboardRewardAdCardState extends State<_DashboardRewardAdCard> {
+  late final LicenseService _licenseService;
+  late final RewardedAdService _adService;
+  bool _isPro = false;
+  int _bonusSlots = 0;
+  int _completedAdsToday = 0;
+  bool _isWatching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _licenseService = LicenseService(widget.db);
+    _adService = RewardedAdService(rewardDao: _licenseService.rewardDao);
+    _refreshState();
+  }
+
+  @override
+  void dispose() {
+    _adService.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshState() async {
+    final isPro = await _licenseService.isProUnlocked();
+    if (isPro) {
+      if (mounted) setState(() => _isPro = true);
+      return;
+    }
+    final bonus = await _licenseService.getActiveRewardSlots();
+    final today = await _licenseService.rewardDao.getDailyCompletedCount();
+    if (mounted) {
+      setState(() {
+        _isPro = false;
+        _bonusSlots = bonus;
+        _completedAdsToday = today;
+      });
+    }
+    if (today < RewardConfig.maxDailyAds) {
+      unawaited(_adService.preloadAd());
+    }
+  }
+
+  Future<void> _handleWatchAd() async {
+    if (_isWatching) return;
+    setState(() => _isWatching = true);
+
+    try {
+      final result = await _adService.showAdAndEarnReward();
+      if (!mounted) return;
+
+      if (result.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🎉 Reward granted! +${result.rewardAmount} product slots added for 7 days.',
+            ),
+            backgroundColor: Colors.green.shade700,
+          ),
+        );
+        await _refreshState();
+      } else if (result.status == RewardAdShowStatus.dismissedWithoutReward) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ad closed before completion. No slots were earned.'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.errorMessage ?? 'Sponsored ad is loading. Please try again in a moment.',
+            ),
+            action: SnackBarAction(
+              label: 'Paywall',
+              onPressed: () => PaywallSheet.show(context),
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load ad. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isWatching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isPro) return const SizedBox.shrink();
+
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final remaining = (RewardConfig.maxDailyAds - _completedAdsToday).clamp(0, RewardConfig.maxDailyAds);
+    final canWatch = remaining > 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2822) : const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2D4A3E) : const Color(0xFFBBF7D0),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: canWatch ? _handleWatchAd : () => PaywallSheet.show(context),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: (isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A)).withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    canWatch ? Icons.play_circle_filled_rounded : Icons.star_rounded,
+                    size: 24,
+                    color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Earn Free Product Slots',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: palette.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: (isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A)).withValues(alpha: 0.20),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'SPONSORED',
+                              style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        canWatch
+                            ? 'Watch 30s ad for +2 slots (7-day validity) · $remaining left today'
+                            : 'Daily quota completed ($_completedAdsToday/${RewardConfig.maxDailyAds}) · tap to upgrade',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: palette.textTertiary,
+                        ),
+                      ),
+                      if (_bonusSlots > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Active bonus: +$_bonusSlots slots available',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: _isWatching ? null : (canWatch ? _handleWatchAd : () => PaywallSheet.show(context)),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    backgroundColor: isDark ? const Color(0xFF2D4A3E) : const Color(0xFFDCFCE7),
+                    foregroundColor: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
+                  ),
+                  child: _isWatching
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          canWatch ? 'Watch (+2)' : 'Upgrade',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

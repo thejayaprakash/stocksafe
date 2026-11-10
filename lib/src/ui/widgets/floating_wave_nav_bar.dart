@@ -96,7 +96,7 @@ class _FloatingWaveNavBarState extends State<FloatingWaveNavBar>
     _from = _to = widget.selectedIndex.toDouble();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 460),
+      duration: const Duration(milliseconds: 280),
       value: 1,
     );
     _curve = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
@@ -219,9 +219,9 @@ class _FloatingWaveNavBarState extends State<FloatingWaveNavBar>
                         painter: _WaveCrestPainter(
                           centerX: _centerX(constraints.maxWidth),
                           spread: _spread(constraints.maxWidth, bell),
-                          // Flattens as it travels, the way a real wave does.
+                          // Flattens subtly as it travels, preserving the fluid crest curve.
                           height: FloatingWaveNavBar.crestHeight *
-                              (1 - 0.38 * bell),
+                              (1 - 0.20 * bell),
                           color: palette.primary,
                           isDark: isDark,
                         ),
@@ -269,8 +269,8 @@ class _FloatingWaveNavBarState extends State<FloatingWaveNavBar>
 
   double _spread(double width, double bell) {
     final itemWidth = width / widget.items.length;
-    // Stretches while in motion — the slosh that sells the wave.
-    return math.min(itemWidth * 1.08 * (1 + 0.5 * bell), width);
+    // Stretches subtly while in motion — fluid organic crest without excessive smearing.
+    return math.min(itemWidth * 1.08 * (1 + 0.16 * bell), width);
   }
 }
 
