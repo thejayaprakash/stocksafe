@@ -43,7 +43,11 @@ When prompted whether your app collects:
   - *Google ML Kit's diagnostics.* Barcode scanning and label OCR depend on ML Kit, which bundles Google's `datatransport` library. Google's published ML Kit data disclosure states its SDKs collect device information, app information and performance metrics for diagnostics and usage analytics. That library also merges `INTERNET` and `ACCESS_NETWORK_STATE` into the app. Purpose: **App functionality / Analytics**. Collected, **not** shared with the developer - we never receive it. **Not** user-tied in any way we control.
 
   Measured on a test device after install, launch and a full scanning session: Android's per-app traffic accounting attributed **no traffic to StockSafe**. Recorded as a measurement, not a guarantee - the library batches and schedules uploads, so an empty window proves nothing either way. Declared on the conservative side.
-- **Device or other IDs:** No
+- **Device or other IDs:** **Yes (Advertising ID / AD_ID for optional Rewarded Ads)**
+  - Google Mobile Ads SDK (AdMob) uses the Google Play Advertising ID to serve voluntary rewarded advertisements (earning product capacity) and prevent fraud.
+  - Purposes: **Advertising or marketing**, **Fraud prevention, security, and compliance**.
+  - Encrypted in transit: **Yes** (HTTPS).
+  - Required vs Optional: **Optional** (only used when user voluntarily chooses to watch a rewarded ad to earn extra product slots).
 
 ---
 

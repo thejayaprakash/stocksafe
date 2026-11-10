@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
 import '../data/dao/reward_dao.dart';
 import 'reward_config.dart';
 import 'rewarded_ad_platform.dart';
+import 'plugin_rewarded_ad_platform.dart';
 
 /// Lifecycle and presentation states for rewarded ads.
 enum RewardedAdLifecycleState {
@@ -56,7 +56,7 @@ class RewardedAdService {
     RewardedAdPlatform? platform,
     String? adUnitId,
   })  : _rewardDao = rewardDao,
-        _platform = platform ?? FakeRewardedAdPlatform(),
+        _platform = platform ?? PluginRewardedAdPlatform(),
         _adUnitId = adUnitId ?? RewardConfig.rewardedAdUnitId;
 
   final RewardDao _rewardDao;

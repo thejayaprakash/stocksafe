@@ -183,12 +183,16 @@ void main() {
         unorderedEquals(<String>{
           'android.permission.CAMERA',
           'android.permission.RECORD_AUDIO',
-          // Merged in by ML Kit and by in_app_purchase. Used for buying and
-          // restoring the Pro unlock through Google Play, and for nothing
-          // else. docs/privacy_policy.md §1a and §2 say so, and the Data
-          // Safety guide declares it.
+          // Merged in by ML Kit, in_app_purchase, and google_mobile_ads (AdMob).
+          // Used for buying/restoring Pro unlock and voluntary rewarded ads.
+          // docs/privacy_policy.md and Data Safety guide declare them.
           'android.permission.INTERNET',
           'android.permission.ACCESS_NETWORK_STATE',
+          'android.permission.ACCESS_ADSERVICES_AD_ID',
+          'android.permission.ACCESS_ADSERVICES_ATTRIBUTION',
+          'android.permission.ACCESS_ADSERVICES_TOPICS',
+          'android.permission.WAKE_LOCK',
+          'android.permission.FOREGROUND_SERVICE',
         }),
         reason: 'A permission appeared in the shipped APK that the published '
             'documents do not account for. Adding a dependency can do this '

@@ -97,7 +97,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
 
     // Preload ad in background if quota remaining
     if ((adStatus.dailyAdsRemaining) > 0) {
-      _adService.preloadAd();
+      unawaited(_adService.preloadAd());
     }
   }
 
@@ -329,7 +329,7 @@ class _PaywallSheetState extends State<PaywallSheet> {
                       ),
                       Text(
                         _bonusSlots > 0
-                            ? '$_activeCount / $_effectiveCapacity (${_freeLimit} + $_bonusSlots bonus) ${AppLocale.tr('products_used_free')}'
+                            ? '$_activeCount / $_effectiveCapacity ($_freeLimit + $_bonusSlots bonus) ${AppLocale.tr('products_used_free')}'
                             : '$_activeCount / $_effectiveCapacity ${AppLocale.tr('products_used_free')}',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: _isAtLimit ? Colors.orange.shade800 : null,

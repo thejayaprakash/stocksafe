@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Centralized configuration for Rewarded Ads & Product Capacity Rewards.
 ///
 /// Policy rules (Beta specification):

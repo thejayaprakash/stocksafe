@@ -14,17 +14,15 @@ StockSafe does **NOT** collect, transmit, sell, or monetize your personal or bus
 
 - **Local Storage Only:** All inventory catalogs, product details, stock movements, supplier directory entries, audit records, and business settings are stored locally on your device in a private SQLite database. The file lives in StockSafe's private app storage, which Android keeps inaccessible to other apps, and is covered by your device's own disk encryption. StockSafe does not add a separate password or encryption layer of its own.
 - **No Cloud Servers / No Accounts:** You do not need to create an account, provide an email address, or sign in to use StockSafe. We operate no remote servers to receive your inventory data.
-- **No Ad Networks or Marketing SDKs:** StockSafe contains no advertising networks, no attribution SDKs and no third-party marketing trackers. We do not profile you and we sell nothing.
+- **Optional Rewarded Ads Only:** StockSafe contains no banner ads, no popups, and no tracking trackers for your inventory. The app integrates Google AdMob solely to provide an optional, user-initiated Rewarded Ad feature where free users can voluntarily watch a short video to earn additional product slots.
 
 ---
 
 ## 1a. What uses the network, and what does not
 
-**Buying Pro uses the network.** StockSafe sells its lifetime unlock through
-Google Play Billing, so tapping *Upgrade* or *Restore Purchases* talks to
-Google Play. That is how the purchase is remembered against your Google
-account — and why reinstalling the app, or moving to a new phone, costs you
-nothing.
+**Buying Pro and voluntary Rewarded Ads use the network.** StockSafe sells its lifetime unlock through
+Google Play Billing, and integrates Google AdMob for optional rewarded ads. Tapping *Upgrade* or *Restore Purchases* talks to
+Google Play. Tapping *Watch Ad & Earn 2 Products* requests a rewarded advertisement from Google AdMob.
 
 Google sees the purchase. We do not send them your inventory, and there is no
 StockSafe server for any of it to go to. If you would rather not use Play at
@@ -57,7 +55,8 @@ StockSafe requests only the permissions its features need, plus two that arrive 
 
 | Permission | Technical Name | Purpose |
 |---|---|---|
-| **Network** | `android.permission.INTERNET`, `android.permission.ACCESS_NETWORK_STATE` | Used for **one thing only: buying or restoring the Pro unlock through Google Play.** That conversation is between your phone and Google; it carries your purchase, not your shop. The permissions are also declared automatically by Google's ML Kit library, which barcode scanning and label OCR depend on. StockSafe has no server of its own, and none of your products, prices, stock levels or supplier details are ever sent anywhere. |
+| **Network** | `android.permission.INTERNET`, `android.permission.ACCESS_NETWORK_STATE` | Used for buying/restoring the Pro unlock through Google Play Billing and displaying voluntary rewarded ads via Google AdMob. StockSafe has no server of its own, and none of your products, prices, stock levels or supplier details are ever sent anywhere. |
+| **Advertising ID** | `com.google.android.gms.permission.AD_ID`, `ACCESS_ADSERVICES_AD_ID` | Included by Google Mobile Ads SDK for serving voluntary rewarded ads and preventing fraudulent reward claims. |
 | **Camera** | `android.permission.CAMERA` | Used exclusively to scan product barcodes and capture product packaging labels for on-device ML Kit OCR (detecting MRP, Batch numbers, and Expiry dates). No camera frames or pictures are ever sent over the network. |
 | **Microphone / Speech** | `android.permission.RECORD_AUDIO` | Used exclusively when the user explicitly taps the microphone button to dictate retail queries (e.g., checking stock or low-stock items in English or Tamil). Speech processing is handled on-device. |
 | **Phone / Dialer** | `android.intent.action.DIAL` | Used solely when you tap the "Call Supplier" button to launch your device's native phone dialer with the supplier's number prefilled. StockSafe never makes calls automatically. |
