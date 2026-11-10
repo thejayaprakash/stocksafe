@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../data/database.dart';
@@ -98,9 +100,14 @@ class ProductGridCard extends StatelessWidget {
             : onTap,
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Container(
+        child: CustomPaint(
+          foregroundPainter: CardAccentBorderPainter(
+            color: selected ? palette.primary : statusStyle.color,
+            strokeWidth: 2.0,
+            radius: 16,
+            glow: isDark,
+          ),
+          child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
@@ -119,7 +126,7 @@ class ProductGridCard extends StatelessWidget {
                   ),
                 ],
               ),
-              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              padding: const EdgeInsets.fromLTRB(11, 9, 9, 9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -133,8 +140,8 @@ class ProductGridCard extends StatelessWidget {
                             tag: 'product_img_${product.id}',
                             child: ProductAvatar(
                               product: product,
-                              size: 54,
-                              radiusFactor: 0.26,
+                              size: 46,
+                              radiusFactor: 0.28,
                             ),
                           ),
                           if (selectionMode)
@@ -153,21 +160,21 @@ class ProductGridCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          FavouriteButton(product: product, size: 20),
-                          const SizedBox(height: 6),
+                          FavouriteButton(product: product, size: 18),
+                          const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
+                              horizontal: 7,
+                              vertical: 2.5,
                             ),
                             decoration: BoxDecoration(
                               color: statusStyle.backgroundColor,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               '${product.stockQty}',
                               style: TextStyle(
-                                fontSize: 12.5,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w700,
                                 color: statusStyle.color,
                               ),
@@ -177,7 +184,7 @@ class ProductGridCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
 
                   // ── Product Name (2 lines max) ─────────────────────────
                   Text(
@@ -185,13 +192,13 @@ class ProductGridCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      height: 1.22,
+                      height: 1.18,
                       color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
 
                   // ── SKU ─────────────────────────────────────────────────
                   Text(
@@ -199,33 +206,33 @@ class ProductGridCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       color: isDark ? const Color(0xFF94A3B8) : palette.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
 
                   // ── Stock Status Dot + Label ────────────────────────────
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 6,
-                        height: 6,
+                        width: 5.5,
+                        height: 5.5,
                         decoration: BoxDecoration(
                           color: statusStyle.color,
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4.5),
                       Flexible(
                         child: Text(
                           statusStyle.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: statusStyle.color,
                           ),
@@ -238,8 +245,8 @@ class ProductGridCard extends StatelessWidget {
 
                   // ── Footer Divider & Info ──────────────────────────────
                   Divider(
-                    height: 14,
-                    thickness: 0.8,
+                    height: 10,
+                    thickness: 0.7,
                     color: isDark
                         ? const Color(0xFF334155).withValues(alpha: 0.5)
                         : palette.border,
@@ -248,54 +255,128 @@ class ProductGridCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.inventory_2_outlined,
-                        size: 13.5,
+                        size: 13,
                         color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
                       ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          product.unit,
+                          '${product.stockQty} ${product.unit.trim().isEmpty ? 'pcs' : product.unit}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 11,
                             fontWeight: FontWeight.w500,
                             color: isDark ? const Color(0xFF94A3B8) : palette.textTertiary,
                           ),
                         ),
                       ),
-                      if (effectivePrice > 0)
-                        Text(
-                          formatRupees(effectivePrice),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
-                          ),
+                      Container(
+                        width: 0.8,
+                        height: 11,
+                        color: isDark
+                            ? const Color(0xFF334155).withValues(alpha: 0.7)
+                            : palette.border,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        formatRupees(effectivePrice),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? const Color(0xFFF8FAFC) : palette.textPrimary,
                         ),
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: 3.5,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: statusStyle.color,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    bottomLeft: Radius.circular(16),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
+      );
   }
+}
+
+/// Paints a sleek rounded accent border stroke along the left edge and corners of a card.
+class CardAccentBorderPainter extends CustomPainter {
+  const CardAccentBorderPainter({
+    required this.color,
+    this.strokeWidth = 2.0,
+    this.radius = 16.0,
+    this.glow = false,
+  });
+
+  final Color color;
+  final double strokeWidth;
+  final double radius;
+  final bool glow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (color == Colors.transparent || color.a == 0) return;
+
+    final h = size.height;
+    final r = radius;
+    final half = strokeWidth / 2;
+
+    // Corner radius clamped to half height
+    final cornerR = math.min(r, h / 2) - half;
+
+    // Trace path:
+    // Starts 10px past the top-left curve on the top edge,
+    // rounds the top-left corner, runs down the left edge,
+    // rounds the bottom-left corner, and ends 10px past bottom-left curve.
+    final path = Path()
+      ..moveTo(half + cornerR + 10, half)
+      ..lineTo(half + cornerR, half)
+      ..arcTo(
+        Rect.fromLTWH(half, half, cornerR * 2, cornerR * 2),
+        -math.pi / 2,
+        -math.pi / 2,
+        false,
+      )
+      ..lineTo(half, h - half - cornerR)
+      ..arcTo(
+        Rect.fromLTWH(half, h - half - cornerR * 2, cornerR * 2, cornerR * 2),
+        math.pi,
+        -math.pi / 2,
+        false,
+      )
+      ..lineTo(half + cornerR + 10, h - half);
+
+    if (glow) {
+      final glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth + 2.0
+        ..strokeCap = StrokeCap.round
+        ..color = color.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      canvas.drawPath(path, glowPaint);
+    }
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          color,
+          color,
+          color.withValues(alpha: 0.15),
+        ],
+        stops: const [0.0, 0.65, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, cornerR + 14, h));
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CardAccentBorderPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.strokeWidth != strokeWidth ||
+      oldDelegate.radius != radius ||
+      oldDelegate.glow != glow;
 }

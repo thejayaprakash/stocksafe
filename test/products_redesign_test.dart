@@ -101,7 +101,7 @@ void main() {
       expect(find.text('SKU: ACP-001'), findsOneWidget);
       expect(find.text('In Stock'), findsOneWidget);
       expect(find.text('15'), findsOneWidget);
-      expect(find.text('pcs'), findsOneWidget);
+      expect(find.text('15 pcs'), findsOneWidget);
       expect(find.text('₹450'), findsOneWidget);
     });
 
@@ -138,7 +138,7 @@ void main() {
       expect(find.text('SKU: CIN-007'), findsOneWidget);
       expect(find.text('Out of Stock'), findsOneWidget);
       expect(find.text('0'), findsOneWidget);
-      expect(find.text('kg'), findsOneWidget);
+      expect(find.text('0 kg'), findsOneWidget);
       expect(find.text('₹720'), findsOneWidget);
     });
 

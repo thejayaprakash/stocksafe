@@ -1458,9 +1458,9 @@ class _ProductGrid extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.73,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.98,
       ),
       itemCount: products.length + (loadingMore ? 1 : 0),
       itemBuilder: (context, index) {
@@ -1546,9 +1546,14 @@ class _ProductRow extends StatelessWidget {
           onTap: onTap,
           onLongPress: onLongPress ?? onActions,
           borderRadius: BorderRadius.circular(14),
-          child: Stack(
-            children: [
-              Container(
+          child: CustomPaint(
+            foregroundPainter: CardAccentBorderPainter(
+              color: selected ? palette.primary : statusStyle.color,
+              strokeWidth: 2.0,
+              radius: 14,
+              glow: isDark,
+            ),
+            child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
@@ -1595,7 +1600,7 @@ class _ProductRow extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'SKU: $skuText · ${p.unit}',
+                            'SKU: $skuText · ${p.stockQty} ${p.unit.trim().isEmpty ? 'pcs' : p.unit}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1685,26 +1690,10 @@ class _ProductRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3.5,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: statusStyle.color,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
