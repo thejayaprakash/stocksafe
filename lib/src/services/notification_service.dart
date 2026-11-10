@@ -258,7 +258,8 @@ class NotificationService extends ChangeNotifier {
   }
 
   /// Fire a test mobile notification so users can verify it works on their device.
-  Future<void> showTestNotification() async {
+  Future<bool> showTestNotification() async {
+    final granted = await requestPermissions();
     await showMobileNotification(
       id: 77777,
       title: '🔔 StockSafe Notification Test',
@@ -267,6 +268,7 @@ class NotificationService extends ChangeNotifier {
       payload: 'test_notification',
       channelId: channelStockAlertsId,
     );
+    return granted;
   }
 
   /// Evaluates the current state of products and database reminders.

@@ -312,13 +312,17 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Fires a sample notification to your device system tray'),
             trailing: OutlinedButton(
               onPressed: () async {
-                await NotificationService.instance.showTestNotification();
+                final granted = await NotificationService.instance.showTestNotification();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Test notification dispatched to your phone!'),
+                    SnackBar(
+                      content: Text(
+                        granted
+                            ? 'Test notification dispatched to your phone!'
+                            : 'Notification dispatched! Ensure notifications are allowed in Android Settings.',
+                      ),
                       behavior: SnackBarBehavior.floating,
-                      duration: Duration(seconds: 2),
+                      duration: const Duration(seconds: 3),
                     ),
                   );
                 }
