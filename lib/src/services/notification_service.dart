@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../data/database.dart';
 import '../models/in_app_notification.dart';
@@ -74,6 +76,12 @@ class NotificationService extends ChangeNotifier {
 
     if (!_initialized) {
       try {
+        tz.initializeTimeZones();
+      } catch (e) {
+        debugPrint('Timezone initialization skipped/failed: $e');
+      }
+
+      try {
         const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
         const initSettings = InitializationSettings(android: androidInit);
 
@@ -121,6 +129,7 @@ class NotificationService extends ChangeNotifier {
     }
 
     await refreshFromDatabase();
+    await scheduleBackgroundReminders();
   }
 
   @visibleForTesting
@@ -133,13 +142,17 @@ class NotificationService extends ChangeNotifier {
     _lastAlertedStock.clear();
   }
 
-  /// Request runtime notification permissions on Android 13+ (API 33+).
+  /// Request runtime notification permissions on Android 13+ (API 33+),
+  /// as well as exact alarm scheduling for background alerts.
   Future<bool> requestPermissions() async {
     try {
       final android = _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
+        try {
+          await android.requestExactAlarmsPermission();
+        } catch (_) {}
         final granted = await android.requestNotificationsPermission();
         return granted ?? false;
       }
@@ -147,6 +160,156 @@ class NotificationService extends ChangeNotifier {
       debugPrint('Permission request error: $e');
     }
     return false;
+  }
+
+  /// Schedules background reminders via Android AlarmManager that wake the phone
+  /// and display notifications even when the app is completely closed.
+  Future<void> scheduleBackgroundReminders() async {
+    if (!_mobilePushEnabled) return;
+    try {
+      if (_remindersPushEnabled) {
+        await scheduleDailyStockAuditReminder();
+      }
+      if (_lowStockPushEnabled && _db != null) {
+        final lowStock = await _db!.productDao.getLowStock();
+        if (lowStock.isNotEmpty) {
+          await scheduleLowStockReminder(count: lowStock.length);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error scheduling background reminders: $e');
+    }
+  }
+
+  /// Schedule daily store closing audit reminder at 8:00 PM via Android AlarmManager.
+  Future<void> scheduleDailyStockAuditReminder({
+    int hour = 20,
+    int minute = 0,
+  }) async {
+    if (!_mobilePushEnabled || !_remindersPushEnabled) return;
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      var scheduledDate = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      );
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      const androidDetails = AndroidNotificationDetails(
+        channelRemindersId,
+        channelRemindersName,
+        channelDescription:
+            'Reminders for physical stock counts, backups, and inventory safety',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications.zonedSchedule(
+        88881,
+        '📋 Daily Stock Audit Reminder',
+        'Store closing check: Reconcile today\'s physical inventory and verify stock levels.',
+        scheduledDate,
+        const NotificationDetails(android: androidDetails),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+      debugPrint('Scheduled daily audit reminder at $scheduledDate');
+    } catch (e) {
+      debugPrint('Failed to schedule daily audit reminder: $e');
+    }
+  }
+
+  /// Schedule a morning low stock alert at 9:00 AM via Android AlarmManager.
+  Future<void> scheduleLowStockReminder({required int count}) async {
+    if (!_mobilePushEnabled || !_lowStockPushEnabled || count <= 0) return;
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      var scheduledDate = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        9,
+        0,
+      );
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      const androidDetails = AndroidNotificationDetails(
+        channelStockAlertsId,
+        channelStockAlertsName,
+        channelDescription:
+            'High-priority alerts when products fall below minimum stock or run out',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications.zonedSchedule(
+        88882,
+        '⚠️ Low Stock Morning Alert',
+        '$count products need reordering today before store opening.',
+        scheduledDate,
+        const NotificationDetails(android: androidDetails),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      debugPrint('Failed to schedule low stock reminder: $e');
+    }
+  }
+
+  /// Schedule a test notification that fires outside the app after [seconds].
+  Future<bool> scheduleTestBackgroundNotification({int seconds = 10}) async {
+    final granted = await requestPermissions();
+    if (!granted && !_mobilePushEnabled) return false;
+
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      final scheduledTime = now.add(Duration(seconds: seconds));
+
+      const androidDetails = AndroidNotificationDetails(
+        channelStockAlertsId,
+        channelStockAlertsName,
+        channelDescription: 'Testing background notification',
+        importance: Importance.max,
+        priority: Priority.max,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications.zonedSchedule(
+        77778,
+        '🔔 StockSafe Background Alert',
+        'Success! Notifications are working even when StockSafe is closed.',
+        scheduledTime,
+        const NotificationDetails(android: androidDetails),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('Failed to schedule background test notification: $e');
+      return false;
+    }
   }
 
   /// Load persisted user settings and read/dismissed sets from SQLite settingDao.

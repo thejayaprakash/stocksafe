@@ -194,6 +194,32 @@ class _SettingsPageState extends State<SettingsPage> {
                     }
                   },
                 ),
+                _SettingsActionTile(
+                  icon: Icons.timer_outlined,
+                  iconBg: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFFA78BFA),
+                  title: 'Test Outside App (10s Delay)',
+                  subtitle: 'Schedules an alarm to ring 10s after closing the app',
+                  buttonLabel: '10s Test',
+                  onAction: () async {
+                    final ok = await NotificationService.instance
+                        .scheduleTestBackgroundNotification(seconds: 10);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            ok
+                                ? '⏱️ Background alert scheduled in 10s! Close or minimize StockSafe now.'
+                                : 'Failed to schedule alarm. Please enable notification permissions.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 5),
+                          backgroundColor: const Color(0xFF1E293B),
+                        ),
+                      );
+                    }
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 22),

@@ -10,6 +10,7 @@ import 'pro_gate.dart';
 import '../services/app_localization.dart';
 import '../services/diagnostic_service.dart';
 import '../services/license_service.dart';
+import '../services/notification_service.dart';
 import '../services/theme_service.dart';
 import '../services/voice_assistant_service.dart';
 import 'backup_page.dart';
@@ -51,7 +52,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The live database, read through the scope rather than passed in.
   /// Uses [AppScope.read] so it is safe to call from initState; widgets that
   /// must rebuild when the connection is replaced should call AppScope.of in
@@ -85,6 +86,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AppLocale.instance.addListener(_onLocaleChange);
     _checkBackupHygiene();
   }
@@ -123,9 +125,17 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     AppLocale.instance.removeListener(_onLocaleChange);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      NotificationService.instance.scheduleBackgroundReminders();
+    }
   }
 
   void _onLocaleChange() {
