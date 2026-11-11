@@ -30,6 +30,7 @@ class NotificationService extends ChangeNotifier {
   static const String keyRemindersPushEnabled = 'notifications_reminders_enabled';
   static const String keyReadIds = 'notifications_read_ids';
   static const String keyDismissedIds = 'notifications_dismissed_ids';
+  static const String keyLastAlertedStock = 'notifications_last_alerted_stock';
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -68,7 +69,7 @@ class NotificationService extends ChangeNotifier {
     final isNewDb = _db != db;
     _db = db;
     if (_initialized && !isNewDb) {
-      await refreshFromDatabase();
+      await refreshFromDatabase(notifyOs: false);
       return;
     }
 
@@ -128,7 +129,7 @@ class NotificationService extends ChangeNotifier {
       _initialized = true;
     }
 
-    await refreshFromDatabase();
+    await refreshFromDatabase(notifyOs: false);
     await scheduleBackgroundReminders();
   }
 
@@ -336,9 +337,33 @@ class NotificationService extends ChangeNotifier {
         final list = (jsonDecode(dismissedRaw) as List).cast<String>();
         _dismissedIds = list.toSet();
       }
+
+      final alertedRaw = await _db!.settingDao.get(keyLastAlertedStock);
+      if (alertedRaw != null && alertedRaw.isNotEmpty) {
+        try {
+          final Map<String, dynamic> decoded =
+              jsonDecode(alertedRaw) as Map<String, dynamic>;
+          _lastAlertedStock.clear();
+          decoded.forEach((k, v) {
+            final id = int.tryParse(k);
+            final qty = (v as num?)?.toInt();
+            if (id != null && qty != null) {
+              _lastAlertedStock[id] = qty;
+            }
+          });
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('Error loading notification preferences: $e');
     }
+  }
+
+  Future<void> _saveAlertedStock() async {
+    if (_db == null) return;
+    try {
+      final map = _lastAlertedStock.map((k, v) => MapEntry(k.toString(), v));
+      await _db!.settingDao.set(keyLastAlertedStock, jsonEncode(map));
+    } catch (_) {}
   }
 
   Future<void> _saveReadIds() async {
@@ -435,22 +460,30 @@ class NotificationService extends ChangeNotifier {
   }
 
   /// Evaluates the current state of products and database reminders.
-  Future<void> refreshFromDatabase() async {
+  /// [notifyOs] specifies whether newly detected low-stock products should trigger
+  /// an immediate OS push notification. Defaults to false so opening or refreshing
+  /// the app never spams the user with system notifications while they are using the app.
+  Future<void> refreshFromDatabase({bool notifyOs = false}) async {
     if (_db == null) return;
     try {
       final lowStock = await _db!.productDao.getLowStock();
-      await _processLowStockUpdate(lowStock);
+      await _processLowStockUpdate(lowStock, notifyOs: notifyOs);
     } catch (e) {
       debugPrint('Error refreshing notifications from database: $e');
     }
   }
 
-  Future<void> _processLowStockUpdate(List<Product> lowStockProducts) async {
+  Future<void> _processLowStockUpdate(
+    List<Product> lowStockProducts, {
+    bool notifyOs = false,
+  }) async {
     final List<InAppNotification> items = [];
     final now = DateTime.now();
 
     // 1. Stock items: Out of Stock and Low Stock
+    final currentLowStockIds = <int>{};
     for (final p in lowStockProducts) {
+      currentLowStockIds.add(p.id);
       final isOutOfStock = p.stockQty <= 0;
       final id = isOutOfStock ? 'out_of_stock_${p.id}' : 'low_stock_${p.id}';
 
@@ -479,8 +512,9 @@ class NotificationService extends ChangeNotifier {
         ),
       );
 
-      // Trigger OS Mobile Notification if stock level changed or not alerted yet
-      if (_mobilePushEnabled && _lowStockPushEnabled) {
+      // Only trigger OS Mobile Notification if explicitly requested (e.g. background check or live stock change)
+      // and NOT during app launch / standard UI refresh.
+      if (notifyOs && _mobilePushEnabled && _lowStockPushEnabled) {
         final lastAlerted = _lastAlertedStock[p.id];
         if (lastAlerted == null || lastAlerted != p.stockQty) {
           _lastAlertedStock[p.id] = p.stockQty;
@@ -492,8 +526,15 @@ class NotificationService extends ChangeNotifier {
             channelId: channelStockAlertsId,
           ));
         }
+      } else {
+        // Track current stock level without firing an OS push notification
+        _lastAlertedStock[p.id] = p.stockQty;
       }
     }
+
+    // Clean up products that are no longer low-stock so they can alert again if restocked and dropped later
+    _lastAlertedStock.removeWhere((id, _) => !currentLowStockIds.contains(id));
+    await _saveAlertedStock();
 
     // 2. Data Safety / Backup Reminder
     if (_db != null) {

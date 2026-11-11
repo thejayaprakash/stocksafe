@@ -205,5 +205,41 @@ void main() {
       expect(find.text('CRITICAL OUT OF STOCK'), findsOneWidget);
       expect(find.text('Reorder Now'), findsOneWidget);
     });
+
+    test('Alerted stock levels are persisted to SQLite so app restart does not trigger repeat OS alerts', () async {
+      final service = NotificationService.instance;
+      await service.init(db);
+
+      final now = DateTime(2026, 4, 1);
+      final pId = await db.productDao.insertProduct(
+        ProductsCompanion.insert(
+          name: 'Cardamom',
+          category: const Value('Spices'),
+          unit: const Value('pcs'),
+          stockQty: const Value(2),
+          lowStockLevel: const Value(10),
+          buyPrice: const Value(300),
+          sellPrice: const Value(400),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+
+      // Refresh without notifying OS (standard app behavior on launch)
+      await service.refreshFromDatabase(notifyOs: false);
+
+      // Verify setting was saved into SQLite settingDao
+      final savedAlerted = await db.settingDao.get(NotificationService.keyLastAlertedStock);
+      expect(savedAlerted, isNotNull);
+      expect(savedAlerted, contains('"$pId":2'));
+
+      // Simulate app kill & cold restart
+      await service.resetForTesting();
+      await service.init(db);
+
+      // Service should have loaded the persisted state
+      final reloadedAlerted = await db.settingDao.get(NotificationService.keyLastAlertedStock);
+      expect(reloadedAlerted, contains('"$pId":2'));
+    });
   });
 }
