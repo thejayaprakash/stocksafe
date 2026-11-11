@@ -389,10 +389,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: '100% offline-first · Zero remote tracking · Open source licenses',
                   trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
                   onTap: () {
+                    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
                     showLicensePage(
                       context: context,
                       applicationName: 'StockSafe',
                       applicationVersion: 'Offline Inventory & Audit',
+                      applicationIcon: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Image.asset(
+                          isDarkTheme
+                              ? 'assets/images/logo_shield_dark.png'
+                              : 'assets/images/logo_shield_light.png',
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.shield_outlined,
+                            size: 40,
+                            color: Color(0xFF0080FF),
+                          ),
+                        ),
+                      ),
                       applicationLegalese: 'StockSafe adheres strictly to on-device data sovereignty. Your product and ledger data never leaves your device.',
                     );
                   },

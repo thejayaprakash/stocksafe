@@ -48,3 +48,4 @@ flutter:
     # built-in Helvetica/Courier have no Unicode coverage, so Tamil shop and
     # product names printed as blank boxes.
     - assets/fonts/NotoSansTamil.ttf
+    - assets/images/

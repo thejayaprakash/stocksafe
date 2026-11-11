@@ -394,39 +394,70 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Tab 0: Home Dashboard
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final palette = context.palette;
     return AppBar(
       toolbarHeight: 66,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      title: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: 'Stock',
-                  style: TextStyle(color: palette.textPrimary),
-                ),
-                TextSpan(
-                  text: 'Safe',
-                  style: TextStyle(color: palette.primary),
-                ),
-              ],
-            ),
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 21,
-              letterSpacing: -0.3,
+          Image.asset(
+            isDark
+                ? 'assets/images/logo_shield_dark.png'
+                : 'assets/images/logo_shield_light.png',
+            width: 32,
+            height: 34,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.shield_outlined,
+              color: Color(0xFF0080FF),
+              size: 28,
             ),
           ),
-          Text(
-            'Offline Inventory & Audit',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-              color: palette.textTertiary,
-            ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Stock',
+                      style: TextStyle(
+                        color: isDark
+                            ? const Color(0xFFF8FAFC)
+                            : const Color(0xFF0F172A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const TextSpan(
+                      text: 'Safe',
+                      style: TextStyle(
+                        color: Color(0xFF0080FF),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 21,
+                  letterSpacing: -0.4,
+                  height: 1.15,
+                ),
+              ),
+              Text(
+                'Offline Inventory & Audit',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: palette.textTertiary,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
           ),
         ],
       ),

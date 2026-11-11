@@ -219,30 +219,46 @@ class MorePage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                isDark
+                    ? 'assets/images/logo_shield_dark.png'
+                    : 'assets/images/logo_shield_light.png',
+                width: 20,
+                height: 22,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
-              children: [
-                TextSpan(
-                  text: 'Stock',
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+              const SizedBox(width: 8),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
+                  children: [
+                    TextSpan(
+                      text: 'Stock',
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const TextSpan(
+                      text: 'Safe',
+                      style: TextStyle(
+                        color: Color(0xFF0080FF),
+                      ),
+                    ),
+                  ],
                 ),
-                const TextSpan(
-                  text: 'Safe',
-                  style: TextStyle(
-                    color: Color(0xFF3B82F6),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             AppLocale.tr('more_tools') != 'more_tools'
                 ? AppLocale.tr('more_tools')
