@@ -440,9 +440,123 @@ class _SettingsPageState extends State<SettingsPage> {
                     );
                   },
                 ),
+                _SettingsTile(
+                  icon: Icons.privacy_tip_outlined,
+                  iconBg: const Color(0xFF10B981).withValues(alpha: 0.15),
+                  iconColor: const Color(0xFF10B981),
+                  title: 'Privacy Policy',
+                  subtitle: '100% sovereign local data · Zero remote telemetry',
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                  onTap: () => _showPrivacyPolicySheet(context),
+                ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showPrivacyPolicySheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF151E2E) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.privacy_tip_outlined, color: Color(0xFF10B981), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Privacy Policy & Sovereignty', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                        Text('StockSafe · Local SQLite Ledger', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: const [
+                    Text(
+                      '1. Core Sovereignty Promise',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'StockSafe stores all inventory catalogues, prices, barcodes, movements, audits, and supplier records strictly in a local SQLite database on your device. We operate no remote servers to receive your inventory data. Your business records never leave your physical phone.',
+                      style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF94A3B8)),
+                    ),
+                    SizedBox(height: 14),
+                    Text(
+                      '2. Permissions Used & Purpose',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '• Camera: Used solely for scanning barcodes and reading product expiry/batch info on-device via Google ML Kit. No frames are sent online.\n'
+                      '• Microphone: Used strictly when you tap the mic icon for speech-to-text queries. No audio is recorded or stored.\n'
+                      '• Notifications: Used for daily store-closing audit reminders and low-stock alerts.\n'
+                      '• Internet: Used strictly for Google Play Pro license verification and voluntary rewarded ads via Google AdMob.',
+                      style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF94A3B8)),
+                    ),
+                    SizedBox(height: 14),
+                    Text(
+                      '3. Data Deletion & Backups',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'You own full control of your records. You can export complete CSV spreadsheets or rolling verified backups anytime. Uninstalling StockSafe permanently purges the local database from your device.',
+                      style: TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF94A3B8)),
+                    ),
+                    SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

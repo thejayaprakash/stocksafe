@@ -220,7 +220,7 @@ class NotificationService extends ChangeNotifier {
         'Store closing check: Reconcile today\'s physical inventory and verify stock levels.',
         scheduledDate,
         const NotificationDetails(android: androidDetails),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexact,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
@@ -266,7 +266,7 @@ class NotificationService extends ChangeNotifier {
         '$count products need reordering today before store opening.',
         scheduledDate,
         const NotificationDetails(android: androidDetails),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexact,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
@@ -296,16 +296,29 @@ class NotificationService extends ChangeNotifier {
         enableVibration: true,
       );
 
-      await _localNotifications.zonedSchedule(
-        77778,
-        '🔔 StockSafe Background Alert',
-        'Success! Notifications are working even when StockSafe is closed.',
-        scheduledTime,
-        const NotificationDetails(android: androidDetails),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
+      try {
+        await _localNotifications.zonedSchedule(
+          77778,
+          '🔔 StockSafe Background Alert',
+          'Success! Notifications are working even when StockSafe is closed.',
+          scheduledTime,
+          const NotificationDetails(android: androidDetails),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (_) {
+        await _localNotifications.zonedSchedule(
+          77778,
+          '🔔 StockSafe Background Alert',
+          'Success! Notifications are working even when StockSafe is closed.',
+          scheduledTime,
+          const NotificationDetails(android: androidDetails),
+          androidScheduleMode: AndroidScheduleMode.inexact,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      }
       return true;
     } catch (e) {
       debugPrint('Failed to schedule background test notification: $e');
