@@ -25,7 +25,7 @@ val allowDebugSigning = (project.findProperty("allowDebugSigning") as String?) =
 
 android {
     namespace = "app.stocksafe.inventory"
-    compileSdk = 35
+    compileSdk = 36
     // ndkVersion = flutter.ndkVersion
 
     compileOptions {
