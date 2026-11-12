@@ -51,6 +51,15 @@ if ($secret -eq 'stocksafe-dev-voucher-secret-do-not-ship') {
     Write-Error 'That file contains the development placeholder, not a real secret.'
 }
 
+$flutterCmd = 'flutter'
+if (-not (Get-Command 'flutter' -ErrorAction SilentlyContinue)) {
+    if (Test-Path 'E:\tools\flutter\bin\flutter.bat') {
+        $flutterCmd = 'E:\tools\flutter\bin\flutter.bat'
+    } elseif (Test-Path 'C:\tools\flutter\bin\flutter.bat') {
+        $flutterCmd = 'C:\tools\flutter\bin\flutter.bat'
+    }
+}
+
 $target = if ($Apk) { 'apk' } else { 'appbundle' }
 
 Write-Host "Building $target with the voucher secret from $SecretFile" -ForegroundColor Cyan
@@ -67,12 +76,12 @@ if ($AdmobAppId) {
     $adArgs += "-PadmobAppId=$AdmobAppId"
 }
 
-& flutter build $target --release "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret" @adArgs
+& $flutterCmd build $target --release "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret" --android-skip-build-dependency-validation @adArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ''
 Write-Host 'Checking the launch gate against the same secret...' -ForegroundColor Cyan
-& flutter test test/release_readiness_test.dart "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret"
+& $flutterCmd test test/release_readiness_test.dart "--dart-define=STOCKSAFE_VOUCHER_SECRET=$secret"
 if ($LASTEXITCODE -ne 0) {
     Write-Host ''
     Write-Warning 'The launch gate failed. Do not upload this artifact until it passes.'
@@ -80,6 +89,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ''
-Write-Host 'Done. Verify the signing certificate before uploading:' -ForegroundColor Green
-Write-Host '  jarsigner -verify -verbose:summary -certs build\app\outputs\bundle\release\app-release.aab'
-Write-Host 'The DN must be yours, not CN=Android Debug.'
+Write-Host 'Done. Artifact generated successfully!' -ForegroundColor Green
+$artifactPath = if ($Apk) { 'build\app\outputs\flutter-apk\app-release.apk' } else { 'build\app\outputs\bundle\release\app-release.aab' }
+if (Test-Path $artifactPath) {
+    Write-Host "Verifying signature on $artifactPath..." -ForegroundColor Cyan
+    & jarsigner -verify -verbose:summary -certs $artifactPath
+}
