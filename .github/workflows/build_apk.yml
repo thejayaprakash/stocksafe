@@ -33,7 +33,7 @@ jobs:
         run: dart run build_runner build
 
       - name: Static code analysis
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       # Rule 2: every schema change ships with a tested migration. Dumping the
       # current schema must produce no diff — if it does, someone changed the

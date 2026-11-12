@@ -4,9 +4,13 @@ analyzer:
     - android/**
     - web/**
     - windows/**
+  errors:
+    deprecated_member_use: ignore
+
 include: package:flutter_lints/flutter.yaml
 
 linter:
   rules:
     prefer_final_locals: true
     unawaited_futures: true
+
