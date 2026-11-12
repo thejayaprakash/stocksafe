@@ -44,19 +44,23 @@ class MorePage extends StatelessWidget {
             const SizedBox(height: 14),
 
             // ── Pro Status / Upgrade Banner ─────────────────────────
-            FutureBuilder<(bool, int)>(
-              future: () async {
-                final lic = LicenseService(db);
-                final isPro = await lic.isProUnlocked();
-                final cap = await lic.getEffectiveCapacity();
-                return (isPro, cap);
-              }(),
+            StreamBuilder<LicenseStatus>(
+              stream: LicenseService(db).watchLicenseStatus(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const SizedBox(height: 80);
-                final (isPro, capacity) = snapshot.data!;
+                final status = snapshot.data;
+                final isPro = status?.isPro ?? false;
+                final active = status?.activeProductCount ?? 0;
+                final baseLimit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
+                final bonusSlots = status?.rewardSlots ?? 0;
+                final capacity = status?.effectiveCapacity ?? (baseLimit + bonusSlots);
+                final remaining = status?.remaining ?? (capacity - active).clamp(0, capacity);
+
                 return _ProBannerCard(
                   isPro: isPro,
+                  activeProducts: active,
                   effectiveCapacity: capacity,
+                  remainingSlots: remaining,
+                  bonusSlots: bonusSlots,
                   onTap: isPro ? null : () => PaywallSheet.show(context),
                 );
               },
@@ -215,30 +219,46 @@ class MorePage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Image.asset(
+                isDark
+                    ? 'assets/images/logo_shield_dark.png'
+                    : 'assets/images/logo_shield_light.png',
+                width: 20,
+                height: 22,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
-              children: [
-                TextSpan(
-                  text: 'Stock',
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+              const SizedBox(width: 8),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
+                  children: [
+                    TextSpan(
+                      text: 'Stock',
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const TextSpan(
+                      text: 'Safe',
+                      style: TextStyle(
+                        color: Color(0xFF0080FF),
+                      ),
+                    ),
+                  ],
                 ),
-                const TextSpan(
-                  text: 'Safe',
-                  style: TextStyle(
-                    color: Color(0xFF3B82F6),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             AppLocale.tr('more_tools') != 'more_tools'
                 ? AppLocale.tr('more_tools')
@@ -336,12 +356,18 @@ class _MoreSectionHeader extends StatelessWidget {
 class _ProBannerCard extends StatelessWidget {
   const _ProBannerCard({
     required this.isPro,
+    required this.activeProducts,
     required this.effectiveCapacity,
+    required this.remainingSlots,
+    this.bonusSlots = 0,
     this.onTap,
   });
 
   final bool isPro;
+  final int activeProducts;
   final int effectiveCapacity;
+  final int remainingSlots;
+  final int bonusSlots;
   final VoidCallback? onTap;
 
   @override
@@ -385,118 +411,147 @@ class _ProBannerCard extends StatelessWidget {
             ],
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: gold.withValues(alpha: isDark ? 0.22 : 0.18),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: gold.withValues(alpha: isDark ? 0.50 : 0.35),
-                    width: 0.8,
-                  ),
-                ),
-                child: Icon(
-                  isPro ? Icons.workspace_premium_rounded : Icons.emoji_events_rounded,
-                  size: 26,
-                  color: gold,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isPro
-                          ? 'StockSafe Pro Active'
-                          : 'Upgrade to Pro — ₹499 Lifetime',
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: gold.withValues(alpha: isDark ? 0.22 : 0.18),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: gold.withValues(alpha: isDark ? 0.50 : 0.35),
+                        width: 0.8,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      isPro
-                          ? 'Lifetime unlimited products & offline features'
-                          : 'Track unlimited products, advanced tools, and more (the free tier allows $effectiveCapacity products).',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.25,
-                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    child: Icon(
+                      isPro ? Icons.workspace_premium_rounded : Icons.emoji_events_rounded,
+                      size: 26,
+                      color: gold,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isPro
+                              ? 'StockSafe Pro Active ⭐'
+                              : 'Upgrade to Pro — ₹499 Lifetime',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          isPro
+                              ? '$activeProducts products tracked · Unlimited capacity'
+                              : (bonusSlots > 0
+                                  ? '$activeProducts of $effectiveCapacity products used ($bonusSlots bonus) · $remainingSlots pending'
+                                  : '$activeProducts of $effectiveCapacity products used · $remainingSlots pending'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (!isPro) ...[
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: gold,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: gold.withValues(alpha: 0.4),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '👑 Pro',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1E1500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: gold.withValues(alpha: isDark ? 0.20 : 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: gold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.5)),
+                      ),
+                      child: const Text(
+                        'ACTIVE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF22C55E),
+                        ),
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
               if (!isPro) ...[
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: gold,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: gold.withValues(alpha: 0.4),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '👑 Pro',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1E1500),
-                            ),
-                          ),
-                        ],
-                      ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: effectiveCapacity > 0
+                        ? (activeProducts / effectiveCapacity).clamp(0.0, 1.0)
+                        : 0.0,
+                    backgroundColor: isDark
+                        ? const Color(0xFF334155).withValues(alpha: 0.5)
+                        : Colors.amber.shade200,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      activeProducts >= effectiveCapacity
+                          ? const Color(0xFFEF4444)
+                          : (activeProducts >= effectiveCapacity * 0.8
+                              ? const Color(0xFFF59E0B)
+                              : gold),
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: gold.withValues(alpha: isDark ? 0.20 : 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 20,
-                        color: gold,
-                      ),
-                    ),
-                  ],
-                ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.5)),
-                  ),
-                  child: const Text(
-                    'ACTIVE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF22C55E),
-                    ),
+                    minHeight: 5,
                   ),
                 ),
               ],

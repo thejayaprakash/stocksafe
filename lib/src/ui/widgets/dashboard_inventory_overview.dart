@@ -49,15 +49,19 @@ class _DashboardInventoryOverviewState
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Inventory Overview',
-              style: TextStyle(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-                color: palette.textPrimary,
+            Flexible(
+              child: Text(
+                'Inventory Overview',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  color: palette.textPrimary,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             // Timeframe dropdown pill
             _TimeframeDropdown(
               selected: _selectedTimeframe,

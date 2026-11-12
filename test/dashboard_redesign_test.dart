@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +21,27 @@ Widget _wrap(Widget child) {
 
 void main() {
   group('DashboardStockHealthCard', () {
-    testWidgets('renders optimal status when low stock list is empty',
+    testWidgets('renders empty inventory banner when totalProducts is 0',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          DashboardStockHealthCard(
+            lowStock: const [],
+            totalProducts: 0,
+            onTap: () {},
+          ),
+        ),
+      );
+
+      expect(find.text('No inventory yet'), findsOneWidget);
+      expect(
+        find.text('Add your first product to get started'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.inventory_2_outlined), findsOneWidget);
+    });
+
+    testWidgets('renders optimal status when low stock list is empty and totalProducts > 0',
         (tester) async {
       await tester.pumpWidget(
         _wrap(
@@ -191,12 +212,14 @@ void main() {
       final host =
           AppScope.of(tester.element(find.text('StockSafe'))).host;
 
-      // Section 1: Header
+      // Section 1: Header (includes dedicated AI icon, Notifications, Settings)
       expect(find.text('StockSafe'), findsOneWidget);
       expect(find.text('Offline Inventory & Audit'), findsOneWidget);
+      expect(find.byTooltip('Ask StockSafe AI'), findsOneWidget);
 
-      // Section 2: Stock Health
-      expect(find.text('All stock levels optimal'), findsOneWidget);
+      // Section 2: Stock Health Empty Banner
+      expect(find.text('No inventory yet'), findsOneWidget);
+      expect(find.text('Add your first product to get started'), findsOneWidget);
 
       // Section 3: Inventory Overview & Bottom Bar
       expect(find.text('Inventory Overview'), findsOneWidget);
@@ -209,24 +232,50 @@ void main() {
       expect(find.text('Quick Actions'), findsOneWidget);
       expect(find.text('Scan & Adjust'), findsOneWidget);
       expect(find.text('Physical Audit'), findsOneWidget);
-      expect(find.text('Add Product'), findsOneWidget);
+      expect(find.text('Add Product'), findsNWidgets(2)); // Quick action tile & empty CTA
       expect(find.text('Sync Data'), findsOneWidget);
 
-      // Section 5: Native & Sponsored Ad Section
-      expect(find.text('Earn Free Product Slots'), findsOneWidget);
-      expect(find.text('SPONSORED'), findsOneWidget);
+      // Empty State Illustration & CTAs
+      expect(find.text('No products yet'), findsOneWidget);
+      expect(find.text('Scan Barcode Instead'), findsOneWidget);
 
-      // Section 6: Top Products
-      expect(find.text('Top Products'), findsOneWidget);
-
-      // Section 7: Recent Stock Activity
-      expect(find.text('Recent Stock Activity'), findsOneWidget);
+      // Populated-only sections should be hidden
+      expect(find.text('SPONSORED'), findsNothing);
+      expect(find.text('Top Products'), findsNothing);
+      expect(find.text('Recent Stock Activity'), findsNothing);
 
       // Section 8: Bottom Navigation
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Scan'), findsOneWidget);
       expect(find.text('Stock Count'), findsOneWidget);
       expect(find.text('More'), findsOneWidget);
+
+      // Now insert a product and verify dynamic switch to populated dashboard
+      final now = DateTime.now();
+      await host.db.productDao.insertProduct(
+        ProductsCompanion.insert(
+          name: 'Coriander Powder',
+          unit: const Value('pcs'),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Populated stock health
+      expect(find.text('All stock levels optimal'), findsOneWidget);
+
+      // Populated Ad Section
+      expect(find.text('Earn Free Product Slots'), findsOneWidget);
+      expect(find.text('SPONSORED'), findsOneWidget);
+
+      // Populated Top Products & Activity
+      expect(find.text('Top Products'), findsOneWidget);
+      expect(find.text('Recent Stock Activity'), findsOneWidget);
+
+      // Empty-only section must now be hidden
+      expect(find.text('No products yet'), findsNothing);
+      expect(find.text('Scan Barcode Instead'), findsNothing);
 
       await host.db.close();
       await tester.pump();

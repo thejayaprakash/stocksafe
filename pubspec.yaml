@@ -30,6 +30,7 @@ dependencies:
   in_app_purchase: ^3.3.1
   google_mobile_ads: 6.0.0
   flutter_local_notifications: 18.0.1
+  timezone: ^0.10.0
 
 dev_dependencies:
   flutter_test:
@@ -48,3 +49,4 @@ flutter:
     # built-in Helvetica/Courier have no Unicode coverage, so Tamil shop and
     # product names printed as blank boxes.
     - assets/fonts/NotoSansTamil.ttf
+    - assets/images/

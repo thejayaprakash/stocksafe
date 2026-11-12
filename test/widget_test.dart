@@ -50,11 +50,49 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('Dashboard renders empty inventory state and AI header icon when zero products exist',
+      (WidgetTester tester) async {
+    final host = await pumpApp(tester);
+
+    // Verify header AI icon exists and is accessible
+    expect(find.byTooltip('Ask StockSafe AI'), findsOneWidget);
+
+    // Verify empty state health banner, illustration, and CTAs
+    expect(find.text('No inventory yet'), findsOneWidget);
+    expect(find.text('Add your first product to get started'), findsOneWidget);
+    expect(find.text('No products yet'), findsOneWidget);
+    expect(find.text('Scan Barcode Instead'), findsOneWidget);
+
+    // Populated-only sections must be hidden
+    expect(find.text('Top Products'), findsNothing);
+    expect(find.text('Recent Stock Activity'), findsNothing);
+
+    // Tap AI icon and verify navigation to AskStockSafePage
+    await tester.tap(find.byTooltip('Ask StockSafe AI'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ask StockSafe AI'), findsOneWidget);
+
+    await host.db.close();
+    await tester.pump();
+  });
+
   testWidgets('Dashboard renders non-disruptive rewarded ad card for free users',
       (WidgetTester tester) async {
     final host = await pumpApp(tester);
 
-    // Verify the ad reward card appears on the dashboard
+    // Insert a product to switch into populated dashboard state
+    final now = DateTime.now();
+    await host.db.productDao.insertProduct(
+      ProductsCompanion.insert(
+        name: 'Turmeric Powder',
+        unit: const Value('pcs'),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify the ad reward card appears on the populated dashboard
     expect(find.text('Earn Free Product Slots'), findsOneWidget);
     expect(find.text('SPONSORED'), findsOneWidget);
     expect(find.text('Watch (+2)'), findsOneWidget);

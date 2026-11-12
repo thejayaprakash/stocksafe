@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../data/database.dart';
 import '../models/in_app_notification.dart';
@@ -28,6 +30,7 @@ class NotificationService extends ChangeNotifier {
   static const String keyRemindersPushEnabled = 'notifications_reminders_enabled';
   static const String keyReadIds = 'notifications_read_ids';
   static const String keyDismissedIds = 'notifications_dismissed_ids';
+  static const String keyLastAlertedStock = 'notifications_last_alerted_stock';
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -66,13 +69,19 @@ class NotificationService extends ChangeNotifier {
     final isNewDb = _db != db;
     _db = db;
     if (_initialized && !isNewDb) {
-      await refreshFromDatabase();
+      await refreshFromDatabase(notifyOs: false);
       return;
     }
 
     await _loadPreferences();
 
     if (!_initialized) {
+      try {
+        tz.initializeTimeZones();
+      } catch (e) {
+        debugPrint('Timezone initialization skipped/failed: $e');
+      }
+
       try {
         const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
         const initSettings = InitializationSettings(android: androidInit);
@@ -120,7 +129,8 @@ class NotificationService extends ChangeNotifier {
       _initialized = true;
     }
 
-    await refreshFromDatabase();
+    await refreshFromDatabase(notifyOs: false);
+    await scheduleBackgroundReminders();
   }
 
   @visibleForTesting
@@ -133,13 +143,17 @@ class NotificationService extends ChangeNotifier {
     _lastAlertedStock.clear();
   }
 
-  /// Request runtime notification permissions on Android 13+ (API 33+).
+  /// Request runtime notification permissions on Android 13+ (API 33+),
+  /// as well as exact alarm scheduling for background alerts.
   Future<bool> requestPermissions() async {
     try {
       final android = _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
+        try {
+          await android.requestExactAlarmsPermission();
+        } catch (_) {}
         final granted = await android.requestNotificationsPermission();
         return granted ?? false;
       }
@@ -147,6 +161,169 @@ class NotificationService extends ChangeNotifier {
       debugPrint('Permission request error: $e');
     }
     return false;
+  }
+
+  /// Schedules background reminders via Android AlarmManager that wake the phone
+  /// and display notifications even when the app is completely closed.
+  Future<void> scheduleBackgroundReminders() async {
+    if (!_mobilePushEnabled) return;
+    try {
+      if (_remindersPushEnabled) {
+        await scheduleDailyStockAuditReminder();
+      }
+      if (_lowStockPushEnabled && _db != null) {
+        final lowStock = await _db!.productDao.getLowStock();
+        if (lowStock.isNotEmpty) {
+          await scheduleLowStockReminder(count: lowStock.length);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error scheduling background reminders: $e');
+    }
+  }
+
+  /// Schedule daily store closing audit reminder at 8:00 PM via Android AlarmManager.
+  Future<void> scheduleDailyStockAuditReminder({
+    int hour = 20,
+    int minute = 0,
+  }) async {
+    if (!_mobilePushEnabled || !_remindersPushEnabled) return;
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      var scheduledDate = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      );
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      const androidDetails = AndroidNotificationDetails(
+        channelRemindersId,
+        channelRemindersName,
+        channelDescription:
+            'Reminders for physical stock counts, backups, and inventory safety',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications.zonedSchedule(
+        88881,
+        '📋 Daily Stock Audit Reminder',
+        'Store closing check: Reconcile today\'s physical inventory and verify stock levels.',
+        scheduledDate,
+        const NotificationDetails(android: androidDetails),
+        androidScheduleMode: AndroidScheduleMode.inexact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+      debugPrint('Scheduled daily audit reminder at $scheduledDate');
+    } catch (e) {
+      debugPrint('Failed to schedule daily audit reminder: $e');
+    }
+  }
+
+  /// Schedule a morning low stock alert at 9:00 AM via Android AlarmManager.
+  Future<void> scheduleLowStockReminder({required int count}) async {
+    if (!_mobilePushEnabled || !_lowStockPushEnabled || count <= 0) return;
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      var scheduledDate = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        9,
+        0,
+      );
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      const androidDetails = AndroidNotificationDetails(
+        channelStockAlertsId,
+        channelStockAlertsName,
+        channelDescription:
+            'High-priority alerts when products fall below minimum stock or run out',
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications.zonedSchedule(
+        88882,
+        '⚠️ Low Stock Morning Alert',
+        '$count products need reordering today before store opening.',
+        scheduledDate,
+        const NotificationDetails(android: androidDetails),
+        androidScheduleMode: AndroidScheduleMode.inexact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      debugPrint('Failed to schedule low stock reminder: $e');
+    }
+  }
+
+  /// Schedule a test notification that fires outside the app after [seconds].
+  Future<bool> scheduleTestBackgroundNotification({int seconds = 10}) async {
+    final granted = await requestPermissions();
+    if (!granted && !_mobilePushEnabled) return false;
+
+    try {
+      final now = tz.TZDateTime.now(tz.local);
+      final scheduledTime = now.add(Duration(seconds: seconds));
+
+      const androidDetails = AndroidNotificationDetails(
+        channelStockAlertsId,
+        channelStockAlertsName,
+        channelDescription: 'Testing background notification',
+        importance: Importance.max,
+        priority: Priority.max,
+        icon: '@mipmap/ic_launcher',
+        playSound: true,
+        enableVibration: true,
+      );
+
+      try {
+        await _localNotifications.zonedSchedule(
+          77778,
+          '🔔 StockSafe Background Alert',
+          'Success! Notifications are working even when StockSafe is closed.',
+          scheduledTime,
+          const NotificationDetails(android: androidDetails),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (_) {
+        await _localNotifications.zonedSchedule(
+          77778,
+          '🔔 StockSafe Background Alert',
+          'Success! Notifications are working even when StockSafe is closed.',
+          scheduledTime,
+          const NotificationDetails(android: androidDetails),
+          androidScheduleMode: AndroidScheduleMode.inexact,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Failed to schedule background test notification: $e');
+      return false;
+    }
   }
 
   /// Load persisted user settings and read/dismissed sets from SQLite settingDao.
@@ -173,9 +350,33 @@ class NotificationService extends ChangeNotifier {
         final list = (jsonDecode(dismissedRaw) as List).cast<String>();
         _dismissedIds = list.toSet();
       }
+
+      final alertedRaw = await _db!.settingDao.get(keyLastAlertedStock);
+      if (alertedRaw != null && alertedRaw.isNotEmpty) {
+        try {
+          final Map<String, dynamic> decoded =
+              jsonDecode(alertedRaw) as Map<String, dynamic>;
+          _lastAlertedStock.clear();
+          decoded.forEach((k, v) {
+            final id = int.tryParse(k);
+            final qty = (v as num?)?.toInt();
+            if (id != null && qty != null) {
+              _lastAlertedStock[id] = qty;
+            }
+          });
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('Error loading notification preferences: $e');
     }
+  }
+
+  Future<void> _saveAlertedStock() async {
+    if (_db == null) return;
+    try {
+      final map = _lastAlertedStock.map((k, v) => MapEntry(k.toString(), v));
+      await _db!.settingDao.set(keyLastAlertedStock, jsonEncode(map));
+    } catch (_) {}
   }
 
   Future<void> _saveReadIds() async {
@@ -272,22 +473,30 @@ class NotificationService extends ChangeNotifier {
   }
 
   /// Evaluates the current state of products and database reminders.
-  Future<void> refreshFromDatabase() async {
+  /// [notifyOs] specifies whether newly detected low-stock products should trigger
+  /// an immediate OS push notification. Defaults to false so opening or refreshing
+  /// the app never spams the user with system notifications while they are using the app.
+  Future<void> refreshFromDatabase({bool notifyOs = false}) async {
     if (_db == null) return;
     try {
       final lowStock = await _db!.productDao.getLowStock();
-      await _processLowStockUpdate(lowStock);
+      await _processLowStockUpdate(lowStock, notifyOs: notifyOs);
     } catch (e) {
       debugPrint('Error refreshing notifications from database: $e');
     }
   }
 
-  Future<void> _processLowStockUpdate(List<Product> lowStockProducts) async {
+  Future<void> _processLowStockUpdate(
+    List<Product> lowStockProducts, {
+    bool notifyOs = false,
+  }) async {
     final List<InAppNotification> items = [];
     final now = DateTime.now();
 
     // 1. Stock items: Out of Stock and Low Stock
+    final currentLowStockIds = <int>{};
     for (final p in lowStockProducts) {
+      currentLowStockIds.add(p.id);
       final isOutOfStock = p.stockQty <= 0;
       final id = isOutOfStock ? 'out_of_stock_${p.id}' : 'low_stock_${p.id}';
 
@@ -316,8 +525,9 @@ class NotificationService extends ChangeNotifier {
         ),
       );
 
-      // Trigger OS Mobile Notification if stock level changed or not alerted yet
-      if (_mobilePushEnabled && _lowStockPushEnabled) {
+      // Only trigger OS Mobile Notification if explicitly requested (e.g. background check or live stock change)
+      // and NOT during app launch / standard UI refresh.
+      if (notifyOs && _mobilePushEnabled && _lowStockPushEnabled) {
         final lastAlerted = _lastAlertedStock[p.id];
         if (lastAlerted == null || lastAlerted != p.stockQty) {
           _lastAlertedStock[p.id] = p.stockQty;
@@ -329,8 +539,15 @@ class NotificationService extends ChangeNotifier {
             channelId: channelStockAlertsId,
           ));
         }
+      } else {
+        // Track current stock level without firing an OS push notification
+        _lastAlertedStock[p.id] = p.stockQty;
       }
     }
+
+    // Clean up products that are no longer low-stock so they can alert again if restocked and dropped later
+    _lastAlertedStock.removeWhere((id, _) => !currentLowStockIds.contains(id));
+    await _saveAlertedStock();
 
     // 2. Data Safety / Backup Reminder
     if (_db != null) {

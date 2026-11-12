@@ -89,10 +89,16 @@ class _AskStockSafePageState extends State<AskStockSafePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.auto_awesome, color: Colors.amber),
             SizedBox(width: 8),
-            Text('Ask StockSafe AI'),
+            Flexible(
+              child: Text(
+                'Ask StockSafe AI',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),

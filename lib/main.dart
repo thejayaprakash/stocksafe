@@ -13,6 +13,7 @@ import 'src/services/notification_service.dart';
 import 'src/services/product_image_service.dart';
 import 'src/services/theme_service.dart';
 import 'src/ui/home_page.dart';
+import 'src/ui/initial_splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,16 +59,25 @@ Future<void> main() async {
 }
 
 class StockSafeApp extends StatelessWidget {
-  const StockSafeApp({super.key, this.createDatabase});
+  const StockSafeApp({
+    super.key,
+    this.createDatabase,
+    this.showSplash,
+  });
 
   /// Overridable so tests can supply an in-memory database.
   final AppDatabaseFactory? createDatabase;
+
+  /// Whether to display the initial animated splash screen.
+  /// Defaults to true in production (`createDatabase == null`), and false in tests.
+  final bool? showSplash;
 
   static AppDatabase _defaultDatabase() =>
       AppDatabase(driftDatabase(name: 'stocksafe'));
 
   @override
   Widget build(BuildContext context) {
+    final shouldShowSplash = showSplash ?? (createDatabase == null);
     return AppScopeHost(
       createDatabase: createDatabase ?? _defaultDatabase,
       onReady: (db) async {
@@ -116,7 +126,9 @@ class StockSafeApp extends StatelessWidget {
                       ),
                 child: child!,
               ),
-              home: const HomePage(),
+              home: shouldShowSplash
+                  ? const InitialSplashScreen()
+                  : const HomePage(),
             );
           },
         );
@@ -135,7 +147,22 @@ class _Splash extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeService.lightTheme,
       darkTheme: ThemeService.darkTheme,
-      home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0B1220),
+        body: Center(
+          child: Image.asset(
+            'assets/images/logo_shield_dark.png',
+            width: 88,
+            height: 98,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.shield_rounded,
+              size: 80,
+              color: Color(0xFF0080FF),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
