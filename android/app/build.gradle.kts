@@ -108,8 +108,8 @@ android {
             // but not literals either. The voucher scheme is honest about
             // this (see LicenseKey): it deters sharing and guessing, and Play
             // Billing is the answer to anything stronger.
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

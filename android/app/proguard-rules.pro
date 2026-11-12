@@ -16,6 +16,18 @@
     native <methods>;
 }
 
+# AndroidX Startup
+-keep class androidx.startup.** { *; }
+
+# AndroidX WorkManager & Room (used by flutter_local_notifications)
+-keep class androidx.work.** { *; }
+-keep class androidx.work.impl.** { *; }
+-keep class * extends androidx.work.Worker { *; }
+-keep class * extends androidx.work.ListenableWorker { *; }
+-keep class * extends androidx.room.RoomDatabase { *; }
+-dontwarn androidx.work.**
+-dontwarn androidx.room.**
+
 # Google ML Kit Text Recognition Rules
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
