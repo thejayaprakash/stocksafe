@@ -90,26 +90,86 @@ jobs:
       - name: Generate Drift code
         run: dart run build_runner build
 
-      # NOT PUBLISHABLE. CI holds no signing key, so these are signed with the
-      # public Android debug key and the build has to opt into that explicitly
-      # -- without the flag it now fails outright (see android/app/build.gradle.kts).
-      #
-      # Until this change the fallback was silent apart from a logger.warn()
-      # buried in the Gradle output, and the results were uploaded as
-      # "StockSafe-release-apk", which read like something you could ship.
-      - name: Build tester APK & App Bundle (debug-signed, NOT publishable)
-        run: |
-          flutter build apk --release -PallowDebugSigning=true \
-            --android-skip-build-dependency-validation \
-            --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
-          flutter build appbundle --release -PallowDebugSigning=true \
-            --android-skip-build-dependency-validation \
-            --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
+      - name: Check and Configure Release Keystore
+        id: signing_config
         env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'stocksafe' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "::notice::Production release keystore detected. Configuring signed release build..."
+            mkdir -p /home/runner/keystores
+            echo "$KEYSTORE_BASE64" | base64 -d > /home/runner/keystores/stocksafe-upload.p12
+            cat <<EOF > android/key.properties
+storeFile=/home/runner/keystores/stocksafe-upload.p12
+storePassword=$KEYSTORE_PASSWORD
+keyAlias=$KEY_ALIAS
+keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}
+EOF
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Release keystore secrets not found. Generating debug-signed tester artifacts."
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Android Artifacts
+        env:
+          IS_PRODUCTION: ${{ steps.signing_config.outputs.is_production }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || vars.ADMOB_APP_ID }}
           ADMOB_REWARDED_AD_UNIT_ID: ${{ secrets.ADMOB_REWARDED_AD_UNIT_ID || vars.ADMOB_REWARDED_AD_UNIT_ID }}
+          STOCKSAFE_VOUCHER_SECRET: ${{ secrets.STOCKSAFE_VOUCHER_SECRET }}
+        run: |
+          DART_DEFINES=""
+          if [ -n "$ADMOB_REWARDED_AD_UNIT_ID" ]; then
+            DART_DEFINES="$DART_DEFINES --dart-define=ADMOB_REWARDED_AD_UNIT_ID=${ADMOB_REWARDED_AD_UNIT_ID}"
+          fi
+          if [ -n "$STOCKSAFE_VOUCHER_SECRET" ]; then
+            DART_DEFINES="$DART_DEFINES --dart-define=STOCKSAFE_VOUCHER_SECRET=${STOCKSAFE_VOUCHER_SECRET}"
+          fi
+
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            echo "Building PRODUCTION-READY signed App Bundle (AAB)..."
+            flutter build appbundle --release \
+              --android-skip-build-dependency-validation \
+              $DART_DEFINES
+
+            echo "Building PRODUCTION-READY signed APK..."
+            flutter build apk --release \
+              --android-skip-build-dependency-validation \
+              $DART_DEFINES
+
+            echo "Verifying App Bundle signing certificate..."
+            jarsigner -verify -verbose:summary -certs build/app/outputs/bundle/release/app-release.aab
+          else
+            echo "Building debug-signed tester APK & App Bundle..."
+            flutter build apk --release -PallowDebugSigning=true \
+              --android-skip-build-dependency-validation \
+              $DART_DEFINES
+            flutter build appbundle --release -PallowDebugSigning=true \
+              --android-skip-build-dependency-validation \
+              $DART_DEFINES
+          fi
+
+      - name: Upload Production App Bundle (AAB for Play Store)
+        if: steps.signing_config.outputs.is_production == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StockSafe-PRODUCTION-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      - name: Upload Production APK
+        if: steps.signing_config.outputs.is_production == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StockSafe-PRODUCTION-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
 
       - name: Upload tester APK artifact
+        if: steps.signing_config.outputs.is_production != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: StockSafe-TESTING-ONLY-debug-signed-apk
@@ -117,6 +177,7 @@ jobs:
           retention-days: 14
 
       - name: Upload tester App Bundle artifact (AAB)
+        if: steps.signing_config.outputs.is_production != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: StockSafe-TESTING-ONLY-debug-signed-aab

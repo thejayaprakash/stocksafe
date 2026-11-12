@@ -9,7 +9,23 @@ malicious update that Android would accept in its place.
 This is now wired to a real key. Nothing here needs a Play Console account —
 that is only required to publish.
 
-## One-time setup
+## Quick setup (Automated)
+
+Run the setup helper in PowerShell:
+
+```powershell
+.\tool\setup_keystore.ps1
+```
+
+This single command will:
+1. Create a secure 10,000-day PKCS12 keystore at `C:\keys\stocksafe-upload.p12` (prompting for password).
+2. Configure `android/key.properties` correctly with forward slashes.
+3. Generate a secure random offline voucher secret at `C:\keys\stocksafe-voucher-secret.txt`.
+4. Display the base64-encoded keystore and variables to add to GitHub Actions secrets.
+
+---
+
+## One-time setup (Manual)
 
 ### 1. Create the keystore
 
@@ -138,16 +154,25 @@ correspondence you would rather not have.
 signing key, every install and every review to it. It was previously
 `com.example.stocksafe`, which Play rejects outright.
 
-## CI
+## CI Automated Production Signing
 
-The `release` job builds artifacts that are **not publishable**, because
-`key.properties` is not in the repository. It passes `-PallowDebugSigning=true`
-explicitly and names its outputs `StockSafe-TESTING-ONLY-debug-signed-*`, so
-nobody downloads one expecting to upload it.
+The workflow in `.github/workflows/build_apk.yml` automatically produces official production artifacts when repository secrets are provided.
 
-To produce a publishable AAB in CI, add the keystore as a base64 GitHub secret,
-decode it during the job, and write `key.properties` from secrets. Do not commit
-either.
+Under **Settings → Secrets and variables → Actions**, add:
+- `ANDROID_KEYSTORE_BASE64`: Base64 string of `stocksafe-upload.p12` (printed by `tool/setup_keystore.ps1`)
+- `KEYSTORE_PASSWORD`: Keystore password
+- `KEY_ALIAS`: Keystore alias (default: `stocksafe`)
+- `KEY_PASSWORD`: Key password (identical to keystore password)
+- `STOCKSAFE_VOUCHER_SECRET`: Production voucher secret from `C:\keys\stocksafe-voucher-secret.txt`
+
+When these secrets are set:
+1. CI securely decodes the release keystore to a temporary directory outside the repo.
+2. Generates `android/key.properties`.
+3. Builds the production App Bundle with `--dart-define=STOCKSAFE_VOUCHER_SECRET=...` (without debug signing flags).
+4. Verifies the signature certificate with `jarsigner`.
+5. Uploads `StockSafe-PRODUCTION-release-aab` as a build artifact ready for upload to Google Play Console.
+
+When these secrets are not configured, CI gracefully defaults to debug-signed tester builds (`StockSafe-TESTING-ONLY-debug-signed-*`) so tests and PR validation continue seamlessly.
 
 ## The launch gate
 
