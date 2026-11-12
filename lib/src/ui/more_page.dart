@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../data/database.dart';
 import '../services/app_localization.dart';
 import '../services/license_service.dart';
 import '../theme/app_palette.dart';
@@ -20,8 +21,26 @@ import 'widgets/paywall_sheet.dart';
 /// Designed as a high-density, professional business operations center
 /// with dedicated feature cards for inventory replenishment, vendor management,
 /// barcode label printing, offline AI insights, diagnostic support, and data safety.
-class MorePage extends StatelessWidget {
+class MorePage extends StatefulWidget {
   const MorePage({super.key});
+
+  @override
+  State<MorePage> createState() => _MorePageState();
+}
+
+class _MorePageState extends State<MorePage> {
+  Stream<LicenseStatus>? _licenseStream;
+  AppDatabase? _lastDb;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final db = AppScope.read(context).db;
+    if (_licenseStream == null || _lastDb != db) {
+      _lastDb = db;
+      _licenseStream = LicenseService(db).watchLicenseStatus();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +64,7 @@ class MorePage extends StatelessWidget {
 
             // ── Pro Status / Upgrade Banner ─────────────────────────
             StreamBuilder<LicenseStatus>(
-              stream: LicenseService(db).watchLicenseStatus(),
+              stream: _licenseStream,
               builder: (context, snapshot) {
                 final status = snapshot.data;
                 final isPro = status?.isPro ?? false;
