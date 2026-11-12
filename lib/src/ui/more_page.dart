@@ -66,13 +66,15 @@ class _MorePageState extends State<MorePage> {
             StreamBuilder<LicenseStatus>(
               stream: _licenseStream,
               builder: (context, snapshot) {
-                final status = snapshot.data;
-                final isPro = status?.isPro ?? false;
-                final active = status?.activeProductCount ?? 0;
-                final baseLimit = status?.freeLimit ?? LicenseService.defaultFreeLimit;
-                final bonusSlots = status?.rewardSlots ?? 0;
-                final capacity = status?.effectiveCapacity ?? (baseLimit + bonusSlots);
-                final remaining = status?.remaining ?? (capacity - active).clamp(0, capacity);
+                if (!snapshot.hasData) {
+                  return const SizedBox(height: 84);
+                }
+                final status = snapshot.data!;
+                final isPro = status.isPro;
+                final active = status.activeProductCount;
+                final bonusSlots = status.rewardSlots;
+                final capacity = status.effectiveCapacity;
+                final remaining = status.remaining;
 
                 return _ProBannerCard(
                   isPro: isPro,
@@ -459,7 +461,7 @@ class _ProBannerCard extends StatelessWidget {
                       children: [
                         Text(
                           isPro
-                              ? 'StockSafe Pro Active ⭐'
+                              ? 'StockSafe Pro Active'
                               : 'Upgrade to Pro — ₹499 Lifetime',
                           style: TextStyle(
                             fontSize: 14.5,
