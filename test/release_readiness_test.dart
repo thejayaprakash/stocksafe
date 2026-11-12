@@ -196,6 +196,8 @@ void main() {
           // Local notifications for low stock alerts and inventory reminders.
           'android.permission.POST_NOTIFICATIONS',
           'android.permission.VIBRATE',
+          'android.permission.RECEIVE_BOOT_COMPLETED',
+          'android.permission.SCHEDULE_EXACT_ALARM',
         }),
         reason: 'A permission appeared in the shipped APK that the published '
             'documents do not account for. Adding a dependency can do this '
