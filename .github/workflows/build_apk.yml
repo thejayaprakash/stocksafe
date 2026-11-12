@@ -102,12 +102,12 @@ jobs:
             echo "::notice::Production release keystore detected. Configuring signed release build..."
             mkdir -p /home/runner/keystores
             echo "$KEYSTORE_BASE64" | base64 -d > /home/runner/keystores/stocksafe-upload.p12
-            cat <<EOF > android/key.properties
-storeFile=/home/runner/keystores/stocksafe-upload.p12
-storePassword=$KEYSTORE_PASSWORD
-keyAlias=$KEY_ALIAS
-keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}
-EOF
+            printf "%s\n" \
+              "storeFile=/home/runner/keystores/stocksafe-upload.p12" \
+              "storePassword=$KEYSTORE_PASSWORD" \
+              "keyAlias=$KEY_ALIAS" \
+              "keyPassword=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" \
+              > android/key.properties
             echo "is_production=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::Release keystore secrets not found. Generating debug-signed tester artifacts."
