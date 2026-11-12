@@ -51,6 +51,20 @@ if ($secret -eq 'stocksafe-dev-voucher-secret-do-not-ship') {
     Write-Error 'That file contains the development placeholder, not a real secret.'
 }
 
+if (-not (Test-Path "$env:JAVA_HOME\bin\javac.exe")) {
+    $candidates = @(
+        'C:\Program Files\Microsoft\jdk-17.0.21.21-hotspot',
+        (Get-Item 'C:\Program Files\Microsoft\jdk-17*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1),
+        (Get-Item 'C:\Program Files\Java\jdk-17*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1)
+    )
+    foreach ($cand in $candidates) {
+        if ($cand -and (Test-Path "$cand\bin\javac.exe")) {
+            $env:JAVA_HOME = $cand
+            break
+        }
+    }
+}
+
 $flutterCmd = 'flutter'
 if (-not (Get-Command 'flutter' -ErrorAction SilentlyContinue)) {
     if (Test-Path 'E:\tools\flutter\bin\flutter.bat') {

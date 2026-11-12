@@ -1,5 +1,7 @@
-# No tag exclusions.
-#
+# Tag definitions.
+tags:
+  release:
+
 # test/release_readiness_test.dart used to be tagged `release` and intended to
 # be excluded from ordinary runs. The exclusion was never actually configured,
 # so the gate ran on every push and failed on the one check that needs a

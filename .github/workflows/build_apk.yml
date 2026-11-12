@@ -212,7 +212,7 @@ jobs:
 
       - name: Launch gate (identity, signing, voucher secret)
         run: |
-          flutter test --tags release \
+          flutter test test/release_readiness_test.dart \
             --dart-define=STOCKSAFE_VOUCHER_SECRET="$STOCKSAFE_VOUCHER_SECRET" \
             --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
         env:
