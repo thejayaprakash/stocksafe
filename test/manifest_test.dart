@@ -47,6 +47,9 @@ void main() {
           // Local notifications for low stock alerts and inventory reminders.
           'android.permission.POST_NOTIFICATIONS',
           'android.permission.VIBRATE',
+          'android.permission.RECEIVE_BOOT_COMPLETED',
+          'android.permission.WAKE_LOCK',
+          'android.permission.SCHEDULE_EXACT_ALARM',
         }),
         reason: 'Changing this set changes what must be declared in '
             'docs/data_safety_form_guide.md and docs/privacy_policy.md. '
