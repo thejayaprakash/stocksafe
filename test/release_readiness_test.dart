@@ -1,3 +1,4 @@
+@Tags(['release'])
 library;
 
 import 'dart:io';
