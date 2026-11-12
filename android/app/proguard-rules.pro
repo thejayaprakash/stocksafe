@@ -1,3 +1,7 @@
+# Disable bytecode optimization to prevent R8 from inlining or stripping
+# reflection and dynamic invocations used across Flutter plugins and JNI.
+-dontoptimize
+
 # Flutter wrapper
 -keep class io.flutter.app.** { *; }
 -keep class io.flutter.plugin.** { *; }
