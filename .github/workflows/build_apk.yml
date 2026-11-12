@@ -100,8 +100,10 @@ jobs:
       - name: Build tester APK & App Bundle (debug-signed, NOT publishable)
         run: |
           flutter build apk --release -PallowDebugSigning=true \
+            --android-skip-build-dependency-validation \
             --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
           flutter build appbundle --release -PallowDebugSigning=true \
+            --android-skip-build-dependency-validation \
             --dart-define=ADMOB_REWARDED_AD_UNIT_ID="${ADMOB_REWARDED_AD_UNIT_ID}"
         env:
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID || vars.ADMOB_APP_ID }}
